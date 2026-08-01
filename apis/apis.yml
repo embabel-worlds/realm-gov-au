@@ -18,3 +18,18 @@
   name: aphHandbook
   type: openapi
   auth: none
+
+# Brave Search — the ONLY non-government source in this realm, and the only one behind a key.
+# Vendored from realm-research (keep the two copies identical) so gov-au is self-contained rather
+# than depending on another realm being installed. Used for ONE thing: independent press coverage
+# of a contract's parties, which no government register carries.
+#
+# If BRAVE_API_KEY is absent the entry is skipped at load, the `brave` namespace does not exist,
+# and the coverage lens reports the search as unavailable rather than guessing — the same
+# degradation realm-nsw-property uses for Google Maps. Coverage is NEVER part of a register
+# answer; it is a separate, clearly-labelled panel.
+- url: brave.yaml
+  name: brave
+  type: openapi
+  auth: api-key
+  token-env: BRAVE_API_KEY

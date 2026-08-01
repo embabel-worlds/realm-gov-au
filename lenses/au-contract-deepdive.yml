@@ -1,0 +1,193 @@
+id: au-contract-deepdive
+name: Deep dive on one contract
+description: >-
+  Everything the registers and the open web hold about one contract notice, in three clearly
+  separated tiers: the REGISTER (what was signed, amended and stated), the CROSS-REGISTER context
+  (the agency's portfolio, the ground's own text, the supplier's lobbying disclosures), and
+  UNVERIFIED press coverage matched on a search phrase. The tiers never blend — coverage is
+  material about the parties, never evidence about the contract.
+params:
+  - name: cnId
+    type: STRING
+    label: Contract notice id (e.g. CN4118426)
+    required: true
+    default: CN4118426
+  - name: searchPhrase
+    type: STRING
+    label: Coverage search phrase (blank = composed from supplier + agency)
+    required: false
+    default: ""
+spec:
+  kind: cypherscript
+  script: |
+    const cnId = String(lensArgs.cnId || "").trim().toUpperCase();
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const isFetchFailure = (w) => {
+      const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED");
+    };
+    const warnings = [];
+
+    // ---- TIER 1: the register ------------------------------------------------------------
+    const v = await gateway.kg.query({
+      cypher: `
+        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
+        RETURN v.releaseDate AS releaseDate, toFloat(v.amount) AS amount, v.tags AS tags,
+               v.description AS description, v.title AS title,
+               v.supplierName AS supplierName, v.supplierAbn AS supplierAbn,
+               v.agencyName AS agencyName, v.dateSigned AS dateSigned,
+               v.startDate AS startDate, v.endDate AS endDate,
+               v.procurementMethod AS procurementMethod,
+               v.limitedTenderReason AS limitedTenderReason,
+               v.limitedTenderReasonCode AS limitedTenderReasonCode,
+               v.exemption AS exemption, v.exemptionCode AS exemptionCode
+        ORDER BY v.releaseDate ASC
+      `,
+      params: JSON.stringify({ cnId }),
+    });
+    const versions = ((v && v.rows) ? v.rows : (v || []));
+    warnings.push(...((v && v.warnings) || []));
+    if (!versions.length) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-contract-deepdive", cnId, found: false,
+        status: warnings.some(isFetchFailure) ? "FAILED" : "COMPLETE",
+        note: warnings.some(isFetchFailure)
+          ? "The AusTender fetch did not complete — whether this notice exists is UNKNOWN."
+          : "AusTender's OCDS register has no notice with this id.",
+        warnings, source: "AusTender OCDS API (CC BY 3.0 AU)",
+      }) });
+    } else {
+    const head = versions[versions.length - 1];
+    const amounts = versions.map(x => x.amount).filter(a => Number.isFinite(a));
+
+    // ---- TIER 2: cross-register context ---------------------------------------------------
+    // Each hop is optional: a missing seed or an unmatched name yields null, never a wrong answer.
+    const ctx = await gateway.kg.query({
+      cypher: `
+        OPTIONAL MATCH (a:Agency)
+          WHERE a.name = $agencyName OR $agencyName IN a.austenderAliases
+        OPTIONAL MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)
+        OPTIONAL MATCH (g:ProcurementGround {code: $groundCode})
+        OPTIONAL MATCH (x:ProcurementGround {code: $exemptionCode})
+        RETURN a.name AS agencyLegalName, a.abn AS agencyAbn, a.bodyType AS bodyType,
+               a.staffingLevel AS staffingLevel, a.website AS agencyWebsite,
+               p.name AS portfolio,
+               g.text AS groundText, g.kind AS groundKind,
+               x.text AS exemptionText, x.kind AS exemptionKind
+      `,
+      params: JSON.stringify({
+        agencyName: head.agencyName || "",
+        groundCode: head.limitedTenderReasonCode || "",
+        exemptionCode: head.exemptionCode || "",
+      }),
+    });
+    const c = ((ctx && ctx.rows) ? ctx.rows : (ctx || []))[0] || {};
+    warnings.push(...((ctx && ctx.warnings) || []));
+
+    // ---- TIER 3: press coverage (UNVERIFIED, fenced) --------------------------------------
+    // The phrase is a JUDGMENT the lens makes and shows: supplier + agency is the pairing most
+    // likely to surface reporting about this procurement, and most likely to surface unrelated
+    // stories about a large supplier. Both facts are stated in the output.
+    const phrase = String(lensArgs.searchPhrase || "").trim() ||
+      [head.supplierName, head.agencyName].filter(Boolean).join(" ");
+    let coverage = [], coverageStatus = "COMPLETE", coverageNote = null;
+    if (!phrase) {
+      coverageStatus = "SKIPPED";
+      coverageNote = "No supplier or agency name to search on.";
+    } else {
+      const cov = await gateway.kg.query({
+        cypher: `
+          MATCH (q:CoverageQuery {phrase:$phrase})-[:HAS_COVERAGE]->(x:ContractCoverage)
+          RETURN x.title AS title, x.url AS url, x.snippet AS snippet, x.age AS age
+          LIMIT 8
+        `,
+        params: JSON.stringify({ phrase }),
+      });
+      coverage = ((cov && cov.rows) ? cov.rows : (cov || []));
+      const cw = (cov && cov.warnings) || [];
+      // NO KEY / NO NAMESPACE is "we could not look", which must never render as "nothing found".
+      const unavailable = cw.some(w => {
+        const t = asText(w);
+        return t.includes("BRAVE") || t.includes("NAMESPACE") || t.includes("NOT A WORLD TOOL") ||
+               t.includes("AUTH") || isFetchFailure(w);
+      });
+      if (unavailable) {
+        coverageStatus = "UNAVAILABLE";
+        coverageNote = "Press search could not run (no search key configured, or the search failed). " +
+                       "This is NOT a finding of 'no coverage' — nothing was looked at.";
+        warnings.push(...cw);
+      } else if (!coverage.length) {
+        coverageNote = "No results for this phrase, in this window, from this index. That is a fact " +
+                       "about the search, not about the contract.";
+      }
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-contract-deepdive",
+      cnId, found: true,
+      status: warnings.some(isFetchFailure) ? "PARTIAL" : "COMPLETE",
+      warnings,
+      tiers: {
+        register: "What the Commonwealth published. Facts.",
+        context: "Other GOVERNMENT registers joined to it. Facts, from a different register.",
+        coverage: "Third-party press matching a search phrase. NOT evidence about this contract.",
+      },
+      register: {
+        title: head.title, description: head.description,
+        supplierName: head.supplierName, supplierAbn: head.supplierAbn || null,
+        agencyName: head.agencyName,
+        dateSigned: head.dateSigned, startDate: head.startDate, endDate: head.endDate,
+        procurementMethod: head.procurementMethod,
+        originalAmount: amounts[0], currentAmount: amounts[amounts.length - 1],
+        amendments: versions.length - 1,
+        growthPct: (amounts.length > 1 && amounts[0] > 0)
+          ? Math.round(((amounts[amounts.length - 1] - amounts[0]) / amounts[0]) * 1000) / 10 : null,
+        versions: versions.map(x => ({
+          releaseDate: x.releaseDate, amount: x.amount,
+          isAmendment: (x.tags || []).includes("contractAmendment"),
+        })),
+        limitedTenderReason: head.limitedTenderReason || null,
+        exemption: head.exemption || null,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId),
+        supplierUrl: head.supplierName
+          ? "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(head.supplierName) : null,
+      },
+      context: {
+        agencyLegalName: c.agencyLegalName || null,
+        agencyResolved: !!c.agencyLegalName,
+        agencyAbn: c.agencyAbn || null,
+        bodyType: c.bodyType || null,
+        staffingLevel: c.staffingLevel || null,
+        agencyWebsite: c.agencyWebsite || null,
+        portfolio: c.portfolio || null,
+        groundCode: head.limitedTenderReasonCode || null,
+        groundText: c.groundText || head.limitedTenderReason || null,
+        exemptionCode: head.exemptionCode || null,
+        exemptionText: c.exemptionText || head.exemption || null,
+        unresolvedNote: c.agencyLegalName ? null
+          : "This agency name matched no seeded agency — either name drift, or a body AGOR does not " +
+            "list. Portfolio context is therefore unavailable for this contract, not absent from government.",
+      },
+      coverage: {
+        status: coverageStatus,
+        searchPhrase: phrase,
+        phraseBasis: "Composed from the supplier and agency names. A JUDGMENT by this lens, not a " +
+                     "register field — and a broad one: a large supplier's name surfaces stories that " +
+                     "have nothing to do with this contract.",
+        note: coverageNote,
+        results: coverage.map(x => ({ title: x.title, url: x.url, snippet: x.snippet, age: x.age || null })),
+      },
+      method: "Three tiers fetched separately and never merged: the register's own versions; other " +
+              "government registers joined by name and code; and a press search whose scope is stated.",
+      limits: [
+        "Press results match a phrase, not a contract. Presence of an article is not evidence about this procurement, and absence is not evidence of anything.",
+        "AusTender records commitments, not expenditure; an amended value is a recorded change to an agreement.",
+        "A stated ground or exemption is the agency's own words, reported verbatim and never assessed.",
+        "Agency context depends on seeded reference data; an unresolved name says so rather than guessing.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) · AGOR (CC BY 3.0 AU, seeded) · Brave Search (third-party, keyed)",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html

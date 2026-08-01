@@ -9,7 +9,7 @@
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script src="oz-map-data.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-current-members"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-current-members","au-portfolio-themes","au-contract-deepdive"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -176,6 +176,29 @@
     background:var(--embabel-bg); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); }
   .chat-row input:focus { border-color:var(--embabel-accent); outline:3px solid color-mix(in srgb, var(--embabel-accent) 18%, transparent); }
 
+  /* Deep dive tiers + judged blocks */
+  .tier { margin-top:1rem; border-radius:var(--embabel-radius-sm); padding:.9rem 1rem; border:1px solid var(--embabel-border); }
+  .tier .tlabel { font:750 .7rem/1.3 var(--embabel-font); letter-spacing:.08em; text-transform:uppercase; }
+  .tier.t-register { background:color-mix(in srgb, var(--embabel-accent) 6%, transparent); }
+  .tier.t-register .tlabel { color:var(--embabel-accent-strong); }
+  .tier.t-context { background:var(--embabel-surface-subtle); }
+  .tier.t-context .tlabel { color:var(--embabel-text-muted); }
+  .tier.t-coverage { background:var(--embabel-warning-bg); border-color:color-mix(in srgb, var(--embabel-warning) 35%, transparent); }
+  .tier.t-coverage .tlabel { color:var(--embabel-warning); }
+  .tier .tdesc { font-size:.78rem; color:var(--embabel-text-muted); margin:.15rem 0 .6rem; }
+  .cov { padding:.55rem 0; border-bottom:1px solid color-mix(in srgb, var(--embabel-border) 55%, transparent); }
+  .cov a { font-weight:650; color:var(--embabel-accent); text-decoration:none; }
+  .cov a:hover { text-decoration:underline; }
+  .cov .cmeta { font-size:.75rem; color:var(--embabel-text-muted); margin-top:.15rem; }
+  .judged { border-left:3px solid color-mix(in srgb, var(--embabel-accent) 45%, transparent);
+    background:color-mix(in srgb, var(--embabel-accent) 5%, transparent); padding:.7rem .9rem;
+    border-radius:0 var(--embabel-radius-sm) var(--embabel-radius-sm) 0; margin-top:.5rem; }
+  .judged .jlabel { font:750 .68rem/1.3 var(--embabel-font); letter-spacing:.08em; text-transform:uppercase;
+    color:var(--embabel-accent-strong); }
+  .chiprow { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem; }
+  .chiprow span { font-size:.78rem; background:var(--embabel-surface); border:1px solid var(--embabel-border);
+    border-radius:999px; padding:.2rem .6rem; }
+
   /* How-it-works tab */
   .how h3 { margin:1.4rem 0 .3rem; font-size:1.02rem; letter-spacing:-.01em; }
   .how h3:first-of-type { margin-top:0; }
@@ -270,6 +293,18 @@
       </div>
       <embabel-operation-state id="l-state-el"></embabel-operation-state>
       <div id="l-result" hidden></div>
+    </section>
+
+    <!-- ============ WHAT A PORTFOLIO IS BUYING ============ -->
+    <section class="card" id="themes-card">
+      <h2>What a portfolio is actually buying</h2>
+      <p class="sub">Categories are UNSPSC codes and titles are internal references — only the descriptions say what was bought. This reduces them per portfolio: counts stay arithmetic, the character is a labelled model judgment.</p>
+      <div class="filterbar">
+        <select id="t-portfolio" aria-label="Portfolio"><option value="">All portfolios</option></select>
+        <button class="embabel-button" id="t-go">Read the window</button>
+      </div>
+      <embabel-operation-state id="t-state-el"></embabel-operation-state>
+      <div id="t-result" hidden></div>
     </section>
 
     <!-- ============ WHAT WAS SIGNED ============ -->
@@ -718,6 +753,7 @@
       '<div><span class="k">Category (UNSPSC)</span>' + esc((c.unspscCodes || []).join(', ') || '—') + '</div>' +
       '<div><span class="k">Registered at</span>' + esc([c.supplierLocality, c.supplierRegion, c.supplierPostcode].filter(Boolean).join(' ') || '—') +
         (elect ? ' · ' + elect : '') + '</div>' +
+      '<div><span class="k">Deep dive</span><span class="linky" id="dd-go" data-cn="' + esc(d.cnId) + '">Registers + press coverage →</span></div>' +
       '<div><span class="k">Register record</span>' + (d.austenderUrl
         ? '<a class="ext" target="_blank" rel="noopener" href="' + esc(d.austenderUrl) + '">View on AusTender ↗</a>' : '—') + '</div>' +
       '</div>' +
@@ -751,9 +787,11 @@
       (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
       '</ul>Source: ' + esc(d.source || '') + '</div>';
 
-    box.innerHTML = tiles + chart + needle + meta + vtable + fine;
+    box.innerHTML = tiles + chart + needle + meta + vtable + fine + '<div id="dd-result"></div>';
     box.hidden = false;
     wireCurveHover(box, curve.pts);
+    var ddBtn = box.querySelector('#dd-go');
+    if (ddBtn) ddBtn.addEventListener('click', function () { runDeepDive(ddBtn.dataset.cn); });
 
     // The lobbying check follows the passport's supplier automatically.
     if (c.supplierName) runLobby(c.supplierName);
@@ -1073,6 +1111,102 @@
     chatDisable('Chat needs a running Embabel world — this standalone demo has no host. The example questions show what the assistant answers when the gov-au realm is loaded; every answer follows the same rules as the panels above.');
   }
 
+  // ---- Deep dive: three tiers that never blend -------------------------------
+  var ddRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
+  async function runDeepDive(cnId) {
+    var box = $('dd-result');
+    box.innerHTML = '<div class="fine" style="margin-top:1rem">Looking across the registers and the press…</div>';
+    try {
+      var d;
+      if (DEMO) d = (demoData.deepdive || {})[String(cnId).toUpperCase()] || null;
+      else { var env = await ddRunner.lens('au-contract-deepdive', { cnId: cnId, searchPhrase: '' }); d = env ? lensData(env) : null; }
+      if (!d) { box.innerHTML = '<div class="fine" style="margin-top:1rem">Demo mode carries a deep dive for CN4118426 only — run against a world for any other contract.</div>'; return; }
+      renderDeepDive(d, box);
+    } catch (e) {
+      box.innerHTML = '<div class="fine" style="margin-top:1rem">Deep dive failed: ' + esc(e && e.message || e) + '</div>';
+    }
+  }
+  function renderDeepDive(d, box) {
+    var ctx = d.context || {}, cov = d.coverage || {};
+    var ctxRows = [
+      ['Portfolio', ctx.portfolio], ['Agency legal name', ctx.agencyLegalName],
+      ['Agency ABN', ctx.agencyAbn], ['Body type', ctx.bodyType],
+      ['Staffing (ASL)', ctx.staffingLevel],
+      ['Ground ' + (ctx.groundCode ? '(' + ctx.groundCode + ')' : ''), ctx.groundText],
+      ['Exemption ' + (ctx.exemptionCode ? '(' + ctx.exemptionCode + ')' : ''), ctx.exemptionText],
+    ].filter(function (r) { return r[1]; });
+    var context = '<div class="tier t-context"><div class="tlabel">Other government registers</div>' +
+      '<div class="tdesc">' + esc((d.tiers && d.tiers.context) || '') + '</div>' +
+      (ctxRows.length ? '<div class="meta">' + ctxRows.map(function (r) {
+        return '<div><span class="k">' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>';
+      }).join('') + '</div>' : '<div class="fine">No cross-register context resolved.</div>') +
+      (ctx.unresolvedNote ? '<div class="fine">' + esc(ctx.unresolvedNote) + '</div>' : '') + '</div>';
+
+    var covBody;
+    if (cov.status === 'UNAVAILABLE' || cov.status === 'SKIPPED') {
+      covBody = '<div class="fine" style="font-size:.9rem"><b>Not looked at.</b> ' + esc(cov.note || '') + '</div>';
+    } else if (!(cov.results || []).length) {
+      covBody = '<div class="fine" style="font-size:.9rem"><b>No results.</b> ' + esc(cov.note || '') + '</div>';
+    } else {
+      covBody = cov.results.map(function (r) {
+        return '<div class="cov"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title) + ' ↗</a>' +
+          '<div class="cmeta">' + esc(r.age || 'undated') + ' · ' + esc((r.url || '').replace(/^https?:\/\//, '').split('/')[0]) + '</div>' +
+          (r.snippet ? '<div class="cmeta">' + esc(String(r.snippet).replace(/<[^>]*>/g, '')) + '</div>' : '') + '</div>';
+      }).join('');
+    }
+    var coverage = '<div class="tier t-coverage"><div class="tlabel">Press coverage — not evidence about this contract</div>' +
+      '<div class="tdesc">' + esc((d.tiers && d.tiers.coverage) || '') + '</div>' + covBody +
+      '<div class="fine">Searched: <b>' + esc(cov.searchPhrase || '') + '</b>. ' + esc(cov.phraseBasis || '') + '</div></div>';
+
+    box.innerHTML = context + coverage;
+  }
+
+  // ---- Portfolio themes: facts and judgments, visibly separated ---------------
+  var thRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  async function runThemes() {
+    var from = $('w-from').value, to = $('w-to').value;
+    $('t-result').hidden = true;
+    var args = { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', portfolio: $('t-portfolio').value };
+    try {
+      var d;
+      if (DEMO) { setState($('t-state-el'), 'loading', {}); d = demoData.themes || null; setState($('t-state-el'), d ? 'ready' : 'empty', {}); }
+      else { var env = await thRunner.lens('au-portfolio-themes', args, { state: $('t-state-el') }); d = env ? lensData(env) : null; }
+      if (d) renderThemes(d);
+    } catch (e) { /* state element shows it */ }
+  }
+  function renderThemes(d) {
+    var box = $('t-result');
+    var rows = d.portfolios || [];
+    var body = rows.map(function (p) {
+      var j = p.judged || {};
+      var topics = (j.topics || []);
+      var clusters = (j.clusters || []);
+      return '<div style="margin-top:1.1rem">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:baseline">' +
+        '<b style="font-size:1.02rem">' + esc(p.portfolio) + '</b>' +
+        '<span class="bar-val">' + esc(aud(p.committed, true)) + ' · ' + p.contracts + ' contracts · ' +
+        p.limitedCount + ' limited</span></div>' +
+        (topics.length || clusters.length || j.digest ?
+          '<div class="judged"><div class="jlabel">Model judgment — not the register\'s words</div>' +
+          (j.digest ? '<div style="font-size:.92rem;margin-top:.3rem">' + esc(j.digest) + '</div>' : '') +
+          (topics.length ? '<div class="chiprow">' + topics.map(function (t) {
+            return '<span>' + esc(typeof t === 'string' ? t : JSON.stringify(t)) + '</span>'; }).join('') + '</div>' : '') +
+          (j.vaguestDescriptionCn ? '<div class="fine" style="margin-top:.4rem">Least informative description for its value: ' +
+            '<span class="linky" data-cn="' + esc(String(j.vaguestDescriptionCn)) + '">' + esc(String(j.vaguestDescriptionCn)) + '</span></div>' : '') +
+          '</div>' : '') +
+        '</div>';
+    }).join('');
+    var un = d.unplaced || {};
+    var unplaced = (un.contracts ? '<div class="rule" style="margin-top:1rem"><b>' + esc(aud(un.committed, true)) +
+      '</b> across ' + un.contracts + ' contract(s) could not be placed in a portfolio. ' + esc(un.note || '') +
+      ((un.exampleNames || []).length ? ' e.g. ' + esc(un.exampleNames.slice(0, 3).join('; ')) : '') + '</div>' : '');
+    var fine = '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
+      '</ul>Source: ' + esc(d.source || '') + '</div>';
+    box.innerHTML = body + unplaced + fine;
+    box.hidden = false;
+    wireRowLinks(box);
+  }
+
   // Tabs: Explore ↔ How this works.
   function selectTab(which) {
     var explore = which === 'explore';
@@ -1094,6 +1228,7 @@
   $('q-go').addEventListener('click', runSearch);
   $('q-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') runSearch(); });
   $('l-go').addEventListener('click', runLeague);
+  $('t-go').addEventListener('click', runThemes);
   document.addEventListener('embabel-retry', function (e) {
     var host = e.target && e.target.id;
     if (host === 'pp-state') loadPassport($('cn-input').value);

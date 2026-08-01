@@ -1,0 +1,47 @@
+# Press coverage — the one type in this realm that is NOT a government record, kept in its own
+# file so that boundary is impossible to miss.
+#
+# WHY IT EXISTS: the registers say what was signed and by whom. They never say whether anyone
+# noticed. For a contract that later became a story — the Deloitte assurance review is the
+# canonical example — the register carries the $97,587.11 repayment in a description field and
+# nothing else, while the reporting that explains it lives entirely outside government.
+#
+# WHY IT IS FENCED: a search engine's results are not evidence about a contract. They are
+# third-party material that MENTIONS terms we searched for. Three rules follow, and every surface
+# that renders this type carries them:
+#   1. Coverage is never merged into a register answer. It is a separate, labelled panel.
+#   2. A result is shown with its publisher, date and link so a human can judge it. We do not
+#      summarise a story into a claim about a contract.
+#   3. Absence of coverage means nothing was found by this search, in this window, with these
+#      terms — never that nothing happened.
+
+- name: ContractCoverage
+  visibility: internal
+  description: >-
+    A news result for a search phrase composed from a contract's parties. NOT a government record
+    and NOT evidence about the contract: a third-party article that matched the terms searched.
+    Carries its own publisher, link and freshness so a reader can go and judge the source.
+
+    The phrase is composed by the CALLER (supplier + agency, usually) and pinned as the anchor,
+    because no register publishes "the right search terms for this contract" and deriving them is
+    a judgment the lens makes explicit rather than hides. A result matching the phrase does not
+    establish that the article is about this contract — a supplier's name appearing in the press
+    is, most often, about something else entirely.
+  properties:
+    url:
+      metadata: { identity: "true" }
+    title: "The article's headline as the search index reports it."
+    snippet: "The index's snippet. May contain highlight markup; render as text, never as a claim."
+    age: "Human-readable freshness label from the index (e.g. '2 days ago'); absent on undated results."
+    searchPhrase: "The phrase this result answered — stamped from the anchor, and the honest scope of the match."
+  virtualJoins:
+    - anchorLabel: CoverageQuery
+      relationship: HAS_COVERAGE
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: newsForPhrase
+      description: >-
+        News results for a pinned search phrase:
+        `MATCH (q:CoverageQuery {phrase:'Acme Ltd Department of X'})-[:HAS_COVERAGE]->(c:ContractCoverage)`.
+        Requires BRAVE_API_KEY in the world; without it the namespace does not exist and the
+        traversal yields nothing, which the lens reports as UNAVAILABLE rather than as "no coverage".

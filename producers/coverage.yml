@@ -1,0 +1,35 @@
+# The press-coverage producer. Vendored in shape from realm-research's newsByTopic — a REAL search
+# API returning real URLs, deliberately chosen over an LLM generative producer with web tools.
+#
+# The generative route was considered and rejected for this job: a model composing news records
+# can misattribute a headline to the wrong publisher or emit a plausible URL that does not exist,
+# and the subject here is real suppliers and real agencies. A search API cannot fabricate a result;
+# it can only return what its index holds. Where this realm does want model judgment (themes,
+# clusters, relevance) that judgment is labelled — but it is never allowed to invent a source.
+
+- name: newsForPhrase
+  kind: remote
+  operation: newsSearch
+  records: "$.results[*]"
+  args:
+    q: "{keys}"
+    count: 8
+    country: au          # an Australian contract's coverage is overwhelmingly Australian press
+    freshness: py        # a year: procurement stories break long after the notice is published
+  keyTemplate: "{key}"
+  # Brave does not echo the query, so the searched phrase is stamped back onto each record for
+  # the join to match its anchor — and it doubles as the honest scope shown beside every result.
+  echoKeyAs: searchPhrase
+  project:
+    url: url
+    title: title
+    snippet: description
+    age: age
+  # An hour: news moves, but not within one demo session, and the free tier is ~1 req/s.
+  # negativeTtl matters here — "nothing found for this phrase" is a real answer and re-asking the
+  # index every time to re-confirm nothing is pure latency.
+  cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
+  cost:
+    bucket: "brave"
+    rate: "1/sec"
+    yield: medium

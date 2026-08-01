@@ -27,6 +27,8 @@ lead demo of the AU-government suite (`target-customers/demos/au-government/`).
 | AusTender OCDS API (`api.tenders.gov.au/ocds`) | by CN id and by date window; cursor-paged 100/page; amendments first-class | CC BY 3.0 AU |
 | Register of Lobbyists (`api.lobbyists.ag.gov.au`) | whole-register index + per-firm profiles (the two GETs that answer anonymously) | AGD site CC BY 4.0; API subdomain unverified |
 | Parliamentary Handbook (`handbookapi.aph.gov.au`) | current House members with party + division, one OData call | aph.gov.au; API terms unverified |
+| AGOR via seeded reference data | 17 portfolios + 195 agencies (ABN, body type, staffing, appropriations) — the portfolio spine AusTender has no field for | CC BY 3.0 AU |
+| **Brave Search** (`api.search.brave.com`) — the ONLY non-government source, and the only keyed one | press coverage for a composed phrase; absent key ⇒ the lens reports UNAVAILABLE, never "no coverage" | third-party, `BRAVE_API_KEY` |
 | Geo assets (build-time, `scripts/build-geo-assets.py`) | Natural Earth outline (PD) · GeoNames postcode centroids (CC BY 4.0) · AEC March-2025 boundaries (CC BY) → postcode→division by **centroid-in-polygon** (approximate on straddling postcodes — every surface says so) | mixed, attributed in file headers |
 
 **The geography rule**, stated once here and rendered wherever the join renders: locating a

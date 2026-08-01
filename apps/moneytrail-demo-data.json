@@ -4494,5 +4494,225 @@
     "austenderUrl": "https://www.tenders.gov.au/Search/KeywordSearch?keyword=CN4264014"
    }
   ]
+ },
+ "deepdive": {
+  "CN4118426": {
+   "kind": "au-contract-deepdive",
+   "cnId": "CN4118426",
+   "found": true,
+   "status": "COMPLETE",
+   "warnings": [],
+   "tiers": {
+    "register": "What the Commonwealth published. Facts.",
+    "context": "Other GOVERNMENT registers joined to it. Facts, from a different register.",
+    "coverage": "Third-party press matching a search phrase. NOT evidence about this contract."
+   },
+   "register": {
+    "title": "4400074032",
+    "description": "Assurance Review to support the Targeted Compliance Framework. Final Instalment of $97,587.11 (GST inclusive) repaid to department.",
+    "supplierName": "DELOITTE TOUCHE TOHMATSU",
+    "supplierAbn": "74490121060",
+    "agencyName": "Department of Employment and Workplace Relations",
+    "originalAmount": 439142.0,
+    "currentAmount": 439142.0,
+    "amendments": 0,
+    "austenderUrl": "https://www.tenders.gov.au/Search/KeywordSearch?keyword=CN4118426"
+   },
+   "context": {
+    "portfolio": "Employment and Workplace Relations",
+    "agencyLegalName": "Department of Employment and Workplace Relations",
+    "agencyResolved": true,
+    "bodyType": "A. Non-corporate Commonwealth entity",
+    "groundCode": null,
+    "groundText": null,
+    "exemptionCode": null,
+    "exemptionText": null,
+    "unresolvedNote": null
+   },
+   "coverage": {
+    "status": "COMPLETE",
+    "searchPhrase": "Deloitte Department of Employment and Workplace Relations",
+    "phraseBasis": "Composed from the supplier and agency names. A JUDGMENT by this lens, not a register field \u2014 and a broad one: a large supplier's name surfaces stories that have nothing to do with this contract.",
+    "note": null,
+    "results": [
+     {
+      "title": "PwC Reports Caught With AI Slop Is A Warning To Every Worker Right Now",
+      "url": "https://forbes.com/sites/rachelwells/2026/07/31/pwc-reports-caught-with-ai-slop-is-a-warning-to-every-worker-right-now",
+      "snippet": "The first incident was Deloitte in 2025, which produced an independent assurance review for A$440,000 for the Australian government's Department of Employment and Workplace Relations.",
+      "age": "9 hours ago"
+     },
+     {
+      "title": "First-of-its-kind government report says AI not yet causing mass job lay-offs - ABC News",
+      "url": "https://www.abc.net.au/news/2026-07-08/government-report-finds-ai-not-yet-causing-mass-job-losses/106889304",
+      "snippet": "Artificial intelligence is not yet causing a broad disruption to Australia's labour market, according to a government report.",
+      "age": "3 weeks ago"
+     },
+     {
+      "title": "Deloitte report suspected of containing AI invented quote",
+      "url": "https://www.afr.com/companies/professional-services/deloitte-report-suspected-of-ai-invented-quote-from-robo-debt-case-20250825-p5mpjj",
+      "snippet": "On Friday The Australian Financial Review revealed that Deloitte\u2019s report for the Department of Employment and Workplace Relations on welfare compliance systems, which cost taxpayers $439,000, contained at least half a d",
+      "age": "August 27, 2025"
+     },
+     {
+      "title": "Women and university graduates in Australia most at risk of losing jobs to AI, report finds | Australia news | The Guardian",
+      "url": "https://www.theguardian.com/australia-news/2026/jul/08/women-and-university-graduates-most-at-risk-ai-job-loss-australia-report",
+      "snippet": "Those with high levels of vocational training, including tradespeople, are least exposed to AI displacement, according to government review",
+      "age": "3 weeks ago"
+     },
+     {
+      "title": "Partner responsible for Deloitte AI bungle reportedly leaving the firm | Accounting Times",
+      "url": "https://www.accountingtimes.com.au/profession/partner-responsible-for-deloitte-ai-bungle-reportedly-leaving-the-firm",
+      "snippet": "The Deloitte partner responsible for the infamous report riddled with AI-generated errors is reportedly exiting the firm.",
+      "age": "December 4, 2025"
+     },
+     {
+      "title": "AI not yet driving large-scale job loss in Australia, department says",
+      "url": "https://www.themandarin.com.au/315927-ai-not-yet-driving-large-scale-job-loss-in-australia-department-says/",
+      "snippet": "A new Department of Employment and Workplace Relations report has found no evidence that AI has caused broad disruption to Australia\u2019s labour market.",
+      "age": "3 weeks ago"
+     }
+    ]
+   },
+   "limits": [
+    "Press results match a phrase, not a contract. Presence of an article is not evidence about this procurement, and absence is not evidence of anything.",
+    "AusTender records commitments, not expenditure.",
+    "Agency context depends on seeded reference data; an unresolved name says so rather than guessing."
+   ],
+   "source": "AusTender OCDS API (CC BY 3.0 AU) \u00b7 AGOR (CC BY 3.0 AU, seeded) \u00b7 Brave Search (third-party, keyed)"
+  }
+ },
+ "themes": {
+  "kind": "au-portfolio-themes",
+  "status": "PARTIAL",
+  "warnings": [
+   "Baked demo: portfolio mapping covers the agencies in this window; model judgments need a live world."
+  ],
+  "portfolios": [
+   {
+    "portfolio": "Foreign Affairs and Trade",
+    "contracts": 7,
+    "committed": 23399909,
+    "limitedCount": 2,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Attorney-General's",
+    "contracts": 12,
+    "committed": 23188337,
+    "limitedCount": 1,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Defence",
+    "contracts": 138,
+    "committed": 15905632,
+    "limitedCount": 117,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Veterans' Affairs",
+    "contracts": 1,
+    "committed": 8191040,
+    "limitedCount": 0,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Agriculture, Fisheries and Forestry",
+    "contracts": 1,
+    "committed": 7174421,
+    "limitedCount": 0,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Finance",
+    "contracts": 10,
+    "committed": 4624538,
+    "limitedCount": 3,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Infrastructure, Transport, Regional Development, Communications, Sport and the Arts",
+    "contracts": 1,
+    "committed": 3848362,
+    "limitedCount": 0,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Employment and Workplace Relations",
+    "contracts": 8,
+    "committed": 2616527,
+    "limitedCount": 0,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   },
+   {
+    "portfolio": "Industry, Science and Resources",
+    "contracts": 2,
+    "committed": 790000,
+    "limitedCount": 0,
+    "judged": {
+     "topics": null,
+     "clusters": null,
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "vaguestDescriptionCn": null
+    }
+   }
+  ],
+  "unplaced": {
+   "contracts": 20,
+   "committed": 2417653,
+   "exampleNames": [
+    "Austrade",
+    "Australian Centre for International Agricultural Research",
+    "Australian Criminal Intelligence Commission",
+    "Australian Research Council",
+    "Australian Transaction Reports and Analysis Centre"
+   ],
+   "note": "Value whose agency name matched no seeded agency \u2014 reported separately so the portfolio totals are never mistaken for the whole window."
+  },
+  "limits": [
+   "Descriptions are the agencies' own words; a portfolio that writes terse descriptions will look terse here.",
+   "A capped window fetch makes every figure a sample."
+  ],
+  "source": "AusTender OCDS API (CC BY 3.0 AU) + AGOR (CC BY 3.0 AU, seeded)"
  }
 }
