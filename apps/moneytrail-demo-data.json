@@ -12,7 +12,7 @@
      "role": "All published versions of the notice",
      "licence": "CC BY 3.0 AU, keyless",
      "ok": true,
-     "detail": "4 version(s)"
+     "detail": "4 versions"
     }
    ],
    "contract": {
@@ -94,7 +94,7 @@
      "role": "All published versions of the notice",
      "licence": "CC BY 3.0 AU, keyless",
      "ok": true,
-     "detail": "1 version(s)"
+     "detail": "1 version"
     }
    ],
    "contract": {
@@ -323,8 +323,12 @@
   "topSuppliers": [
    {
     "name": "DATA #3 LIMITED",
-    "count": 3,
-    "value": 20683583.98
+    "count": 4,
+    "value": 27858005.09,
+    "spellingsGrouped": [
+     "DATA #3 LIMITED",
+     "Data#3 Limited"
+    ]
    },
    {
     "name": "TETRA TECH INTERNATIONAL DEVELOPMENT PTY LTD",
@@ -335,11 +339,6 @@
     "name": "Eastern Property Services Pty Ltd",
     "count": 1,
     "value": 8191040.0
-   },
-   {
-    "name": "Data#3 Limited",
-    "count": 1,
-    "value": 7174421.11
    },
    {
     "name": "PALLADIUM INTERNATIONAL PTY LTD",
@@ -370,23 +369,28 @@
     "name": "JONES LANG LASALLE (ACT) AAT TRUST",
     "count": 1,
     "value": 1235542.0
+   },
+   {
+    "name": "TVN ON-COUNTRY PTY LTD",
+    "count": 1,
+    "value": 1099180.42
    }
   ],
   "topAgencies": [
    {
     "name": "Department of Foreign Affairs and Trade - Australian Aid Program",
     "count": 7,
-    "value": 23399909.200000003
+    "value": 23399909.2
    },
    {
     "name": "Administrative Review Tribunal",
     "count": 12,
-    "value": 23188336.61
+    "value": 23188336.610000003
    },
    {
     "name": "Department of Defence",
     "count": 138,
-    "value": 15905631.579999998
+    "value": 15905631.579999994
    },
    {
     "name": "Australian War Memorial",
@@ -411,7 +415,7 @@
    {
     "name": "Department of Employment and Workplace Relations",
     "count": 8,
-    "value": 2616526.88
+    "value": 2616526.8800000004
    },
    {
     "name": "Department of Industry, Science and Resources",
@@ -427,7 +431,8 @@
   "method": "Contract notices FIRST PUBLISHED in the window. Values are commitments as published, summed arithmetically.",
   "limits": [
    "The source filters by nothing but the window itself \u2014 supplier/agency cuts are computed after the fetch.",
-   "A capped fetch is a sample and is labelled PARTIAL \u2014 totals then cover the fetched releases, not the period."
+   "A capped fetch is a sample and is labelled PARTIAL \u2014 totals then cover the fetched releases, not the period.",
+   "Top-supplier/agency rows are grouped case-insensitively across the register's spelling variants; each grouped row lists the spellings it merged."
   ],
   "source": "AusTender OCDS API (CC BY 3.0 AU)"
  },

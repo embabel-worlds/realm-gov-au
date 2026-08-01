@@ -61,14 +61,22 @@ spec:
       byMethod[m] = byMethod[m] || { count: 0, value: 0 };
       byMethod[m].count++; byMethod[m].value += (x.amount || 0);
     }
+    // Grouping key strips case and punctuation: the register publishes the same supplier under
+    // varying spellings ("DATA #3 LIMITED" vs "Data#3 Limited"), and a top-suppliers ranking
+    // that splits an entity by casing is exactly the error this product exists to avoid. The
+    // DISPLAYED name is the variant carrying the most value; raw rows keep names as published.
     const groupTop = (field, n) => {
       const g = {};
       for (const x of rows) {
-        const k = x[field] || "(unstated)";
-        g[k] = g[k] || { name: k, count: 0, value: 0 };
-        g[k].count++; g[k].value += (x.amount || 0);
+        const raw = x[field] || "(unstated)";
+        const k = raw.toUpperCase().replace(/[^A-Z0-9]/g, "") || raw;
+        g[k] = g[k] || { name: raw, count: 0, value: 0, topVariantValue: -1, variants: new Set() };
+        g[k].count++; g[k].value += (x.amount || 0); g[k].variants.add(raw);
+        if ((x.amount || 0) > g[k].topVariantValue) { g[k].topVariantValue = x.amount || 0; g[k].name = raw; }
       }
-      return Object.values(g).sort((a, b) => b.value - a.value).slice(0, n);
+      return Object.values(g).sort((a, b) => b.value - a.value).slice(0, n)
+        .map(v => ({ name: v.name, count: v.count, value: v.value,
+                     spellingsGrouped: v.variants.size > 1 ? Array.from(v.variants) : undefined }));
     };
 
     await gateway.lens.present({ content: JSON.stringify({
@@ -107,6 +115,7 @@ spec:
         "The source filters by nothing but the window itself — supplier/agency cuts are computed after the fetch.",
         "A capped fetch is a sample and is labelled PARTIAL — totals then cover the fetched releases, not the period.",
         "Notices under $10,000 are not required to be published and are absent by design.",
+        "Top-supplier/agency rows are grouped case-insensitively across the register's spelling variants; each grouped row lists the spellings it merged.",
       ],
       source: "AusTender OCDS API (CC BY 3.0 AU)",
     }) });

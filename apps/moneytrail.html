@@ -16,6 +16,8 @@
   :root { --embabel-accent:#1f6f8b; --embabel-accent-strong:#155469; --mt-ink-soft:color-mix(in srgb, var(--embabel-text) 68%, transparent); }
   @media (prefers-color-scheme: dark) {
     :root { --embabel-accent:#6cc3d5; --embabel-accent-strong:#93d7e4; }
+    /* The shared button keeps white text; on the lifted dark accent that fails contrast. */
+    .embabel-button:not(.embabel-button--quiet) { color:#0c1116; }
   }
   /* Standalone (?demo=1 without a host): the runtime CSS/JS 404s, so the page re-declares the v1
      tokens and the few shared component styles it uses, scoped under .no-runtime so a HOSTED run
@@ -73,7 +75,8 @@
   .tile .lbl { font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--embabel-text-muted); }
   .tile .val { margin-top:.18rem; font-size:1.35rem; font-weight:750; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
   .tile .val.up { color:var(--embabel-warning); }
-  .tile .note { font-size:.72rem; color:var(--embabel-text-muted); margin-top:.15rem; }
+  .tile .note { font-size:.72rem; color:var(--embabel-text-muted); margin-top:.15rem; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .tile .lbl { min-height:1.9em; }
 
   /* Meta grid */
   .meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:.35rem 1.4rem; margin:.9rem 0 0; }
@@ -109,10 +112,10 @@
 
   /* Bars */
   .bars { margin-top:.6rem; display:grid; gap:6px; }
-  .bar-row { display:grid; grid-template-columns:minmax(120px, 220px) 1fr auto; gap:.6rem; align-items:center; font-size:.84rem; }
+  .bar-row { display:grid; grid-template-columns:minmax(140px, 250px) 1fr auto; gap:.6rem; align-items:center; font-size:.84rem; }
   .bar-row .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--embabel-text); }
-  .bar-track { height:14px; border-radius:4px; background:color-mix(in srgb, var(--embabel-border) 42%, transparent); overflow:hidden; }
-  .bar-fill { height:100%; border-radius:4px; background:var(--embabel-accent); min-width:2px; }
+  .bar-track { display:block; height:14px; border-radius:4px; background:color-mix(in srgb, var(--embabel-border) 42%, transparent); overflow:hidden; }
+  .bar-fill { display:block; height:100%; border-radius:4px; background:var(--embabel-accent); min-width:2px; }
   .bar-val { font-variant-numeric:tabular-nums; color:var(--embabel-text-muted); font-size:.8rem; white-space:nowrap; }
 
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--embabel-space-4); }
@@ -131,7 +134,7 @@
   <div class="wrap">
 
     <header class="hero">
-      <div class="kicker">Australian Government · open registers · live</div>
+      <div class="kicker" id="kicker">Australian Government · open registers</div>
       <h1>Money Trail</h1>
       <p>Open any Commonwealth contract's full amendment history, see what was signed in a period,
          and check suppliers against the federal lobbyist register — every figure carries its
@@ -154,7 +157,7 @@
       </div>
       <div class="samples" id="samples">
         <button class="sample" data-cn="CN3942784">CN3942784 — grew $402.5M → $736.3M through amendments</button>
-        <button class="sample" data-cn="CN4118426">CN4118426 — the repayment only the description records</button>
+        <button class="sample" data-cn="CN4118426">CN4118426 — a repayment only the description records</button>
       </div>
       <embabel-operation-state id="pp-state"></embabel-operation-state>
       <embabel-warning-panel id="pp-warnings" hidden></embabel-warning-panel>
@@ -201,6 +204,7 @@
   var DEMO = new URLSearchParams(location.search).has('demo');
   var demoData = null;
   if (!window.embabel) document.documentElement.classList.add('no-runtime');
+  if (DEMO) document.getElementById('kicker').textContent = 'Australian Government · open registers · baked demo data';
 
   // State updates go through one helper: the shared <embabel-operation-state> when the runtime
   // is present, a minimal text fallback when it isn't (standalone demo). Without this, a missing
@@ -307,52 +311,58 @@
   function hideTT() { tt.style.display = 'none'; }
 
   function curveSVG(versions) {
-    var W = 920, H = 260, L = 86, R = 30, T = 26, B = 40;
-    var pts = versions.map(function (v) { return { t: new Date(v.releaseDate).getTime(), a: Number(v.amount), v: v }; })
-                      .filter(function (p) { return isFinite(p.t) && isFinite(p.a); });
+    // X is the VERSION INDEX, not the date: AusTender can stamp several amendments with one
+    // re-publication date (CN3942784's three all carry 15 Jan 2026), and a date axis collapses
+    // them into an unreadable stack. Order is authoritative; each point carries its date label.
+    var W = 920, H = 280, L = 86, R = 30, T = 30, B = 56;
+    var pts = versions.map(function (v, i) { return { i: i, a: Number(v.amount), v: v }; })
+                      .filter(function (p) { return isFinite(p.a); });
     if (pts.length === 0) return { svg: '', pts: [] };
-    var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
-    if (t1 === t0) { t0 -= 1; t1 += 1; }
-    var span = t1 - t0; t0 -= span * 0.03; t1 += span * 0.05;
+    var n = pts.length;
+    var X = function (i) { return n === 1 ? (L + W - R) / 2 : L + i / (n - 1) * (W - L - R); };
     var aMax = Math.max.apply(null, pts.map(function (p) { return p.a; }));
-    var aMin = 0; // value curves anchor at zero: growth reads as area, not axis theatre
-    var X = function (t) { return L + (t - t0) / (t1 - t0) * (W - L - R); };
-    var Y = function (a) { return T + (1 - (a - aMin) / (aMax - aMin || 1)) * (H - T - B); };
+    var Y = function (a) { return T + (1 - a / (aMax || 1)) * (H - T - B); };
+
+    // Round y ticks including an explicit $0 baseline label.
+    var raw = aMax / 3, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+    var norm = raw / mag, step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    var ticks = []; for (var tv = 0; tv <= aMax * 1.001; tv += step) ticks.push(tv);
+    var grid = ticks.map(function (v) {
+      var line = v === 0
+        ? '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--embabel-border)" stroke-width="1"/>'
+        : '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--embabel-border)" stroke-dasharray="3 5" stroke-width="1"/>';
+      return line + '<text x="' + (L - 10) + '" y="' + (Y(v) + 4) + '" text-anchor="end" font-size="11" fill="var(--embabel-text-muted)">' + esc(v === 0 ? '$0' : aud(v, true)) + '</text>';
+    }).join('');
 
     // Step-after path + area to the zero baseline.
-    var d = 'M' + X(pts[0].t) + ' ' + Y(pts[0].a);
-    for (var i = 1; i < pts.length; i++) d += ' H' + X(pts[i].t) + ' V' + Y(pts[i].a);
-    d += ' H' + X(t1);
-    var area = d + ' V' + Y(0) + ' H' + X(pts[0].t) + ' Z';
+    var d = 'M' + X(0) + ' ' + Y(pts[0].a);
+    for (var i = 1; i < n; i++) d += ' H' + X(i) + ' V' + Y(pts[i].a);
+    var area = d + ' V' + Y(0) + ' H' + X(0) + ' Z';
 
-    // Three recessive y gridlines with compact labels.
-    var ticks = [0.5, 1].map(function (f) { return aMax * f; });
-    var grid = ticks.map(function (v) {
-      return '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--embabel-border)" stroke-dasharray="3 5" stroke-width="1"/>' +
-             '<text x="' + (L - 10) + '" y="' + (Y(v) + 4) + '" text-anchor="end" font-size="11" fill="var(--embabel-text-muted)">' + esc(aud(v, true)) + '</text>';
-    }).join('');
-    var base = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(0) + '" y2="' + Y(0) + '" stroke="var(--embabel-border)" stroke-width="1"/>';
-
+    var labelAll = n <= 5;
     var marks = pts.map(function (p, i) {
       var lbl = '';
-      if (i === 0 || i === pts.length - 1) {
-        var anchor = i === 0 ? 'start' : 'end';
-        lbl = '<text x="' + X(p.t) + '" y="' + (Y(p.a) - 12) + '" text-anchor="' + anchor + '" font-size="12" font-weight="700" fill="var(--embabel-text)">' + esc(aud(p.a, true)) + '</text>';
+      if (labelAll || i === 0 || i === n - 1) {
+        var anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+        var weight = (i === 0 || i === n - 1) ? 700 : 600;
+        lbl = '<text x="' + X(i) + '" y="' + (Y(p.a) - 12) + '" text-anchor="' + anchor + '" font-size="12" font-weight="' + weight + '" fill="var(--embabel-text)">' + esc(aud(p.a, true)) + '</text>';
       }
-      return lbl +
-        '<circle class="pt" data-i="' + i + '" cx="' + X(p.t) + '" cy="' + Y(p.a) + '" r="5" fill="var(--embabel-surface)" stroke="var(--embabel-accent)" stroke-width="2.5"/>' +
-        '<circle class="hit" data-i="' + i + '" cx="' + X(p.t) + '" cy="' + Y(p.a) + '" r="14" fill="transparent"/>';
-    }).join('');
-
-    var xlbls = [pts[0], pts[pts.length - 1]].map(function (p, i) {
-      return '<text x="' + X(p.t) + '" y="' + (H - 12) + '" text-anchor="' + (i === 0 ? 'start' : 'end') + '" font-size="11" fill="var(--embabel-text-muted)">' + esc(dateLbl(p.v.releaseDate)) + '</text>';
+      var vname = p.v.isAmendment
+        ? esc(((p.v.amendmentIds || [])[0] || 'A' + i).split('-').pop())
+        : 'Original';
+      var xanchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+      var under = '<text x="' + X(i) + '" y="' + (H - 26) + '" text-anchor="' + xanchor + '" font-size="11" font-weight="650" fill="var(--embabel-text-muted)">' + vname + '</text>' +
+                  '<text x="' + X(i) + '" y="' + (H - 11) + '" text-anchor="' + xanchor + '" font-size="10" fill="var(--embabel-text-muted)">' + esc(dateLbl(p.v.releaseDate)) + '</text>';
+      return lbl + under +
+        '<circle class="pt" data-i="' + i + '" cx="' + X(i) + '" cy="' + Y(p.a) + '" r="5" fill="var(--embabel-surface)" stroke="var(--embabel-accent)" stroke-width="2.5"/>' +
+        '<circle class="hit" data-i="' + i + '" cx="' + X(i) + '" cy="' + Y(p.a) + '" r="14" fill="transparent"/>';
     }).join('');
 
     var svg = '<svg class="curve" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Contract value by published version">' +
-      grid + base +
-      '<path d="' + area + '" fill="color-mix(in srgb, var(--embabel-accent) 13%, transparent)"/>' +
+      grid +
+      '<path d="' + area + '" fill="color-mix(in srgb, var(--embabel-accent) 9%, transparent)"/>' +
       '<path d="' + d + '" fill="none" stroke="var(--embabel-accent)" stroke-width="2.5" stroke-linejoin="round"/>' +
-      marks + xlbls + '</svg>';
+      marks + '</svg>';
     return { svg: svg, pts: pts };
   }
 
@@ -392,7 +402,7 @@
       '<div class="tiles">' +
       '<div class="tile"><div class="lbl">Original value</div><div class="val">' + esc(aud(vc.originalAmount, true)) + '</div></div>' +
       '<div class="tile"><div class="lbl">Current value</div><div class="val">' + esc(aud(vc.currentAmount, true)) + '</div></div>' +
-      '<div class="tile"><div class="lbl">Growth through amendments</div><div class="val' + (vc.growthPct > 0 ? ' up' : '') + '">' +
+      '<div class="tile"><div class="lbl">Growth</div><div class="val' + (vc.growthPct > 0 ? ' up' : '') + '">' +
         (vc.growthPct == null ? '—' : esc((vc.growthPct > 0 ? '+' : '') + vc.growthPct + '%')) + '</div>' +
         '<div class="note">' + vc.amendmentCount + ' amendment' + (vc.amendmentCount === 1 ? '' : 's') + '</div></div>' +
       '<div class="tile"><div class="lbl">Record</div><div class="val" style="font-size:1rem">' + statusBadge(d.status) + '</div>' +
@@ -423,7 +433,7 @@
 
     var curve = curveSVG(d.versions || []);
     var chart = curve.svg
-      ? '<div class="chart-box"><div class="chart-title">Contracted value by published version — steps hold until the next amendment</div>' + curve.svg + '</div>'
+      ? '<div class="chart-box"><div class="chart-title">Contracted value, version by version — each step is a published amendment</div>' + curve.svg + '</div>'
       : '';
 
     var vtable = '<table><thead><tr><th>Published</th><th>Version</th><th class="num">Value (AUD)</th></tr></thead><tbody>' +
@@ -460,6 +470,7 @@
       body = '<div class="needle"><div class="t">Unknown — the register could not be fetched</div><div class="why">' + esc(d.note || '') + '</div></div>';
     } else if (!d.found) {
       body = '<div class="fine" style="font-size:.95rem"><b>No client entry matched this name.</b> That is absence from the third-party register only — in-house lobbyists are exempt by design, so it never means “does not lobby”.</div>';
+      d = Object.assign({}, d, { limits: [] }); // the paragraph above already says it — once is credible, three times is noise
     } else {
       body = (d.firms || []).map(function (f) {
         var r = f.registerRecord;
@@ -509,14 +520,16 @@
       (d.topContracts || []).map(function (x) {
         return '<tr class="click" data-cn="' + esc(x.cnId) + '"><td class="cn">' + esc(x.cnId) + '</td>' +
           '<td>' + esc(x.supplierName || '—') + '</td><td>' + esc(x.agencyName || '—') + '</td>' +
-          '<td>' + esc(x.procurementMethod || '—') + '</td><td class="num">' + esc(aud(x.amount)) + '</td></tr>';
+          '<td><span class="badge ' + (x.procurementMethod === 'limited' ? 'limited' : 'open') + '">' + esc(x.procurementMethod || 'unstated') + '</span></td>' +
+          '<td class="num">' + esc(aud(x.amount)) + '</td></tr>';
       }).join('') + '</tbody></table><div class="fine">Click a CN to open its passport — amendments and all.</div>';
 
     var g2 = '<div class="grid2" style="margin-top:1rem">' +
       '<div><div class="chart-title">Top suppliers by committed value</div>' +
       barsHTML(d.topSuppliers || [], function (x) { return x.value; }, function (x) { return x.name; }) + '</div>' +
       '<div><div class="chart-title">Top agencies by committed value</div>' +
-      barsHTML(d.topAgencies || [], function (x) { return x.value; }, function (x) { return x.name; }) + '</div></div>';
+      barsHTML(d.topAgencies || [], function (x) { return x.value; }, function (x) { return x.name; }) + '</div></div>' +
+      '<div class="fine">Supplier and agency rows are grouped case-insensitively — the register’s spellings vary (e.g. “DATA #3” and “Data#3” are one supplier). The contracts table shows names exactly as published.</div>';
 
     var fine = '<div class="fine"><b>Limits, from the source itself:</b><ul>' +
       (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
