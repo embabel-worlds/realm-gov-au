@@ -107,3 +107,21 @@ curl -XPOST "http://localhost:8042/api/v1/admin/reference/seed?username=<user>"
 Everything anchored purely on the live feeds (the contract passport, window scans, the amendment
 league, lobbying) works with or without seeding; the portfolio and reason-code joins need it, and
 return *nothing* rather than something wrong until it happens.
+
+## The grants hop — blocked on a producer kind, not on data
+
+GrantConnect is the highest-value unbuilt hop, because a grant record carries **DELIVERY postcode
+and state** — where money is actually spent — which a contract notice never does. Measured on the
+July 2026 export: delivery differs from the recipient's own address in **99.4%** of 7,067 grants.
+That is the only basis on which this realm could make a geographic or electoral claim honestly, and
+`reference/electorates.yml` (150 divisions, AEC 2025 margins and members) is seeded ready for it.
+
+**What blocks it:** GrantConnect publishes no API. Its only machine-readable surface is an XLSX
+report download, and no producer kind can consume tabular data — the twelve kinds are all JSON-,
+SQL-, file- or model-shaped. The gap is a **tabular producer** (CSV/XLSX → records), not missing
+data or missing licence.
+
+**What we will NOT do:** bake a snapshot into `reference/`. Reference data is for small static
+catalogues; a live feed seeded as reference goes stale immediately, bloats the pack, and bypasses
+the TTL-cache and mirror machinery built for exactly this. (A 5.7MB attempt also proved SnakeYAML
+rejects a document over ~3MB, dropping the whole file with one terse loading problem.)

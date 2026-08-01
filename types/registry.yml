@@ -83,3 +83,67 @@
       description: "8-digit UNSPSC code as published. Identity key."
     title: "The government's own title for the code."
     kind: "Goods | Services, where the codeset states it."
+
+- name: Electorate
+  userAnchor: false
+  description: |
+    A federal electoral division with its sitting member, the party holding it, and the
+    two-party-preferred margin from the AEC's official 2025 final results. `postcodes` carries the
+    postcodes whose centroid falls inside the division, so a grant's DELIVERY postcode can be
+    placed in a seat with one hop.
+
+    `heldByParty` (who won the seat) can differ from `tppLeader` (which side led the two-party
+    count) where an independent or minor party won — both are published so nothing has to guess.
+
+    THE RULE: joining this to grant DELIVERY locations answers a fair public question about where
+    money lands. It establishes NOTHING about why, and any surface using it says so. The
+    postcode→division correspondence is centroid-based and approximate where a postcode straddles
+    a boundary.
+  properties:
+    division:
+      identity: true
+      description: "Division name as the AEC records it. Identity key."
+    state: "State/territory abbreviation."
+    member: "The member elected in 2025."
+    heldByParty: "Full party name of the member who won the seat."
+    heldByAbbrev: "Party abbreviation, e.g. ALP, LP, IND."
+    tppLeader: "Which side led the two-party-preferred count — ALP or LNP."
+    tppLeaderPct: "That side's two-party-preferred percentage."
+    marginPct: "|TPP% - 50| for the leading side. Under 6% is conventionally 'marginal'."
+    marginBand: "very marginal (<3%) | marginal (3-6%) | fairly safe (6-10%) | safe (10%+)."
+    swing: "Two-party-preferred swing at the 2025 election."
+    postcodes: "Postcodes whose centroid falls in this division (approximate on boundaries)."
+
+- name: Grant
+  userAnchor: false
+  description: |
+    A Commonwealth grant award from GrantConnect — a DATED SNAPSHOT seeded with the pack, because
+    GrantConnect publishes no API (only an XLSX report the gateway cannot consume). Every surface
+    using it must say "as at" and must never imply it is the live register.
+
+    Why grants earn a geographic claim that contracts cannot: a grant record carries DELIVERY
+    postcode and state — where the money is actually spent — as distinct from the recipient's own
+    address. On the seeded export the two differ in 99.4% of grants.
+
+    `deliveryState` is often 'National' or a multi-state list; those grants CANNOT be placed in a
+    division and must be reported separately rather than dropped.
+  properties:
+    gaId:
+      identity: true
+      description: "GrantConnect award id. Identity key."
+    agency: "The granting agency."
+    recipient: "Recipient name as published."
+    recipientAbn: "Recipient ABN — the join to companies, charities and contracts."
+    program: "Grant program name."
+    pbsProgram: "Portfolio Budget Statement program — the bridge to budget line items."
+    purpose: "The agency's own description of what the grant is for."
+    value: "Grant value in AUD."
+    approvalDate: "When approved."
+    startDate: "Activity start."
+    endDate: "Activity end."
+    selectionProcess: "How the recipient was selected (open, targeted, one-off/ad hoc…)."
+    category: "Grant category."
+    recipientPostcode: "The recipient's own postcode."
+    recipientState: "The recipient's own state."
+    deliveryPostcode: "WHERE THE MONEY IS SPENT — the join to an electorate."
+    deliveryState: "Delivery state, or 'National'/multi-state where it cannot be localised."

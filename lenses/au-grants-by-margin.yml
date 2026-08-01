@@ -1,0 +1,160 @@
+id: au-grants-by-margin
+name: Where grant money lands, by electoral margin
+description: >-
+  Grants placed in the federal division where they are DELIVERED — not where the recipient's office
+  is — and grouped by that seat's two-party-preferred margin and the party holding it. This is the
+  one geographic claim in this realm that the data supports, because a grant record states its
+  delivery location and a contract never does. It reports a distribution and nothing more: seats are
+  marginal for reasons that can also attract funding, and no arrangement of these numbers
+  establishes why any grant was made.
+params:
+  - name: minValue
+    type: INT
+    label: Ignore grants below (AUD)
+    required: false
+    default: 0
+  - name: party
+    type: STRING
+    label: Only seats held by (ALP / LP / LNP / NP / IND / blank for all)
+    required: false
+    default: ""
+spec:
+  kind: cypherscript
+  script: |
+    const minValue = Number(lensArgs.minValue || 0) || 0;
+    const party = String(lensArgs.party || "").trim().toUpperCase();
+
+    // Both sides are SEEDED reference data, so this is a persisted-graph join with no fetch:
+    // grants (a dated GrantConnect snapshot) and electorates (AEC 2025 final results).
+    const g = await gateway.kg.query({
+      cypher: `
+        MATCH (g:Grant) WHERE toFloat(g.value) >= $minValue
+        RETURN g.gaId AS gaId, toFloat(g.value) AS value, g.agency AS agency,
+               g.recipient AS recipient, g.recipientAbn AS recipientAbn,
+               g.program AS program, g.purpose AS purpose,
+               g.deliveryPostcode AS deliveryPostcode, g.deliveryState AS deliveryState,
+               g.recipientPostcode AS recipientPostcode, g.recipientState AS recipientState
+      `,
+      params: JSON.stringify({ minValue }),
+    });
+    const grants = ((g && g.rows) ? g.rows : (g || []));
+    const warnings = [...((g && g.warnings) || [])];
+
+    const e = await gateway.kg.query({
+      cypher: `
+        MATCH (e:Electorate)
+        RETURN e.division AS division, e.state AS state, e.member AS member,
+               e.heldByAbbrev AS heldByAbbrev, e.heldByParty AS heldByParty,
+               toFloat(e.marginPct) AS marginPct, e.marginBand AS marginBand,
+               e.postcodes AS postcodes
+      `,
+      params: JSON.stringify({}),
+    });
+    const seats = ((e && e.rows) ? e.rows : (e || []));
+    warnings.push(...((e && e.warnings) || []));
+
+    if (!grants.length || !seats.length) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-grants-by-margin",
+        status: "FAILED",
+        note: (!grants.length ? "No seeded grants found. " : "") + (!seats.length ? "No seeded electorates found. " : "") +
+              "Both are pack reference data — reload the world so they seed.",
+        warnings,
+      }) });
+    } else {
+
+    // postcode -> seat, from the seeded lists.
+    const seatOf = {};
+    for (const s of seats) for (const pc of (s.postcodes || [])) seatOf[String(pc)] = s;
+
+    const bands = {}, byParty = {}, bySeat = {};
+    let placed = 0, placedValue = 0, unplaced = 0, unplacedValue = 0;
+    const unplacedReasons = {};
+    for (const x of grants) {
+      const pc = String(x.deliveryPostcode || "").trim();
+      const seat = /^\d{4}$/.test(pc) ? seatOf[pc] : null;
+      if (!seat) {
+        unplaced++; unplacedValue += (x.value || 0);
+        const why = !pc ? (x.deliveryState || "no delivery postcode") : "postcode not in any division";
+        unplacedReasons[why] = (unplacedReasons[why] || 0) + 1;
+        continue;
+      }
+      if (party && String(seat.heldByAbbrev || "").toUpperCase() !== party) continue;
+      placed++; placedValue += (x.value || 0);
+      const b = seat.marginBand || "(unbanded)";
+      bands[b] = bands[b] || { band: b, grants: 0, value: 0, seats: new Set() };
+      bands[b].grants++; bands[b].value += (x.value || 0); bands[b].seats.add(seat.division);
+      const p = seat.heldByAbbrev || "(unstated)";
+      byParty[p] = byParty[p] || { party: p, partyName: seat.heldByParty, grants: 0, value: 0, seats: new Set() };
+      byParty[p].grants++; byParty[p].value += (x.value || 0); byParty[p].seats.add(seat.division);
+      const d = seat.division;
+      bySeat[d] = bySeat[d] || { division: d, state: seat.state, member: seat.member,
+                                 heldByAbbrev: seat.heldByAbbrev, marginPct: seat.marginPct,
+                                 marginBand: seat.marginBand, grants: 0, value: 0 };
+      bySeat[d].grants++; bySeat[d].value += (x.value || 0);
+    }
+
+    // PER-SEAT AVERAGES are the only fair comparison: there are far more safe seats than marginal
+    // ones, so raw totals by band say more about how many seats are in each band than about how
+    // money is distributed.
+    const seatCounts = {};
+    for (const s of seats) {
+      if (party && String(s.heldByAbbrev || "").toUpperCase() !== party) continue;
+      const b = s.marginBand || "(unbanded)";
+      seatCounts[b] = (seatCounts[b] || 0) + 1;
+    }
+    const bandRows = Object.values(bands).map(b => ({
+      band: b.band, grants: b.grants, value: Math.round(b.value),
+      seatsReceiving: b.seats.size, seatsInBand: seatCounts[b.band] || null,
+      valuePerSeatInBand: seatCounts[b.band] ? Math.round(b.value / seatCounts[b.band]) : null,
+      shareOfPlacedValuePct: placedValue > 0 ? Math.round((b.value / placedValue) * 1000) / 10 : null,
+    })).sort((a, b) => (b.valuePerSeatInBand || 0) - (a.valuePerSeatInBand || 0));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grants-by-margin",
+      minValue, party: party || null,
+      status: warnings.length ? "PARTIAL" : "COMPLETE",
+      warnings,
+      queries: [{
+        title: "Grants placed in the division where they are delivered",
+        note: "Both sides are seeded reference data — a persisted-graph join, no live fetch.",
+        cypher: "MATCH (g:Grant) WHERE toFloat(g.value) >= $minValue\n" +
+                "MATCH (e:Electorate) WHERE g.deliveryPostcode IN e.postcodes\n" +
+                "RETURN e.marginBand, e.heldByAbbrev, count(g), sum(toFloat(g.value))",
+      }],
+      joins: [
+        { source: "GrantConnect (seeded snapshot)", role: "Grant awards with DELIVERY location",
+          licence: "CC BY 3.0 AU", ok: true, detail: `${grants.length} grants in the snapshot` },
+        { source: "AEC 2025 final results (seeded)", role: "Division, member, party and TPP margin",
+          licence: "CC BY", ok: true, detail: `${seats.length} divisions` },
+      ],
+      coverage: {
+        placed, placedValue: Math.round(placedValue),
+        unplaced, unplacedValue: Math.round(unplacedValue),
+        unplacedReasons,
+        note: "A grant delivered 'National' or across several states CANNOT be put in one seat. " +
+              "That value is reported here, never spread across seats and never quietly dropped — " +
+              "on the seeded snapshot it is the single largest category.",
+      },
+      byMarginBand: bandRows,
+      byParty: Object.values(byParty).map(p => ({ party: p.party, partyName: p.partyName,
+        grants: p.grants, value: Math.round(p.value), seatsReceiving: p.seats.size }))
+        .sort((a, b) => b.value - a.value),
+      topSeats: Object.values(bySeat).map(s => ({ ...s, value: Math.round(s.value) }))
+        .sort((a, b) => b.value - a.value).slice(0, 20),
+      method: "Each grant is placed by its DELIVERY postcode into the division containing that " +
+              "postcode's centroid, then grouped by the seat's margin band and holding party. " +
+              "Counts and sums are arithmetic; no model is involved.",
+      limits: [
+        "THIS IS A DISTRIBUTION, NOT A FINDING. Marginal seats differ from safe ones in population growth, service need and urban density — all of which independently attract funding. Nothing here establishes why any grant was made, and it must never be presented as evidence that one was made for political reasons.",
+        "Grants delivered nationally or across several states cannot be placed and are reported separately; on this snapshot they are the largest single category by value.",
+        "Compare VALUE PER SEAT IN BAND, not band totals: there are far more safe seats than marginal ones, so raw totals mostly measure how many seats are in each band.",
+        "The postcode→division correspondence is centroid-based and approximate where a postcode straddles a boundary.",
+        "Margins are as at the 2025 election; a grant published later may sit in a seat whose margin has since changed by by-election or redistribution.",
+        "The grants themselves are a DATED SNAPSHOT of GrantConnect, not the live register.",
+      ],
+      source: "GrantConnect (CC BY 3.0 AU, seeded snapshot) + AEC 2025 final results (CC BY, seeded)",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html
