@@ -57,6 +57,13 @@
   .chip { font-size:.74rem; font-weight:650; color:var(--embabel-text-muted); background:var(--embabel-surface); border:1px solid var(--embabel-border); border-radius:999px; padding:.28rem .7rem; }
   .chip b { color:var(--embabel-text); font-weight:700; }
 
+  /* Tabs */
+  .tabs { display:flex; gap:.4rem; margin-top:1.1rem; border-bottom:1px solid var(--embabel-border); }
+  .tab { appearance:none; background:none; border:none; cursor:pointer; font:700 .92rem/1 var(--embabel-font);
+    color:var(--embabel-text-muted); padding:.65rem .9rem; border-bottom:2.5px solid transparent; margin-bottom:-1px; }
+  .tab:hover { color:var(--embabel-text); }
+  .tab[aria-selected="true"] { color:var(--embabel-accent); border-bottom-color:var(--embabel-accent); }
+
   /* Cards & sections */
   section { margin-top:var(--embabel-space-4); }
   .card { background:var(--embabel-surface); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius); box-shadow:var(--embabel-shadow); padding:var(--embabel-space-4); }
@@ -127,6 +134,23 @@
   embabel-operation-state { margin-top:.9rem; }
   embabel-warning-panel { margin-top:.6rem; display:grid; gap:.4rem; }
   [hidden] { display:none !important; }
+
+  /* How-it-works tab */
+  .how h3 { margin:1.4rem 0 .3rem; font-size:1.02rem; letter-spacing:-.01em; }
+  .how h3:first-of-type { margin-top:0; }
+  .how p { margin:.35rem 0; color:var(--mt-ink-soft); font-size:.94rem; line-height:1.55; }
+  .how b { color:var(--embabel-text); }
+  pre.cy { margin:.7rem 0; padding:1rem 1.1rem; overflow-x:auto; background:var(--embabel-surface-subtle);
+    border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm);
+    font:.84rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--embabel-text); }
+  pre.cy .kw { color:var(--embabel-accent); font-weight:700; }
+  pre.cy .cm { color:var(--embabel-text-muted); }
+  .hop-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:.7rem; margin-top:.7rem; }
+  .hop { background:var(--embabel-surface-subtle); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); padding:.8rem .9rem; }
+  .hop .h { font-weight:750; font-size:.88rem; }
+  .hop .d { font-size:.8rem; color:var(--embabel-text-muted); margin-top:.25rem; line-height:1.45; }
+  .hop .tag { display:inline-block; margin-top:.45rem; font:700 .68rem/1.3 var(--embabel-font); letter-spacing:.05em;
+    text-transform:uppercase; color:var(--embabel-accent); }
 </style>
 </head>
 <body>
@@ -144,7 +168,13 @@
         <span class="chip"><b>Register of Lobbyists</b> · AGD · keyless</span>
         <span class="chip">Commitments as published — never expenditure</span>
       </div>
+      <nav class="tabs" role="tablist" aria-label="App sections">
+        <button class="tab" id="tab-explore" role="tab" aria-selected="true" aria-controls="pane-explore">Explore</button>
+        <button class="tab" id="tab-how" role="tab" aria-selected="false" aria-controls="pane-how">How this works</button>
+      </nav>
     </header>
+
+    <div id="pane-explore" role="tabpanel" aria-labelledby="tab-explore">
 
     <!-- ============ CONTRACT PASSPORT ============ -->
     <section class="card" id="passport-card">
@@ -185,6 +215,84 @@
       <embabel-warning-panel id="w-warnings" hidden></embabel-warning-panel>
       <div id="w-result" hidden></div>
     </section>
+
+    </div><!-- /pane-explore -->
+
+    <div id="pane-how" role="tabpanel" aria-labelledby="tab-how" hidden>
+      <section class="card how">
+        <h2>How this works</h2>
+        <p class="sub">One governed graph query per surface — no warehouse, no pipeline, no model making up numbers.</p>
+
+        <h3>The graph is virtual</h3>
+        <p>Nothing you see here was mirrored into a database. When a surface needs an answer, it
+           invokes a named <b>Lens</b> — a governed query over a graph whose nodes are fetched from
+           the government's own APIs at question time, cached briefly, and rolled back after. Pin a
+           contract notice by its id and the traversal below <b>is</b> the passport page:</p>
+        <pre class="cy"><span class="kw">MATCH</span> (n:ContractNotice {cnId:<span class="cm">'CN3942784'</span>})-[:HAS_VERSION]-&gt;(v:ContractVersion)
+<span class="kw">RETURN</span> v.releaseDate, v.amount, v.tags, v.supplierName, v.agencyName
+<span class="kw">ORDER BY</span> v.releaseDate
+<span class="cm">// The anchor seeds a live fetch from api.tenders.gov.au — one call, every published
+// version of the notice, values as amended. No AusTender export was harmed.</span></pre>
+        <p>The engine plans the external work before doing it: calls are budgeted against each
+           source's declared rate, a fetch that would exceed the budget is <b>deferred and
+           labelled</b> rather than silently truncated, and an observed rate-limit backs the
+           source off adaptively. That is why the period scan says <b>PARTIAL</b> when it means
+           partial — the honesty is enforced in the engine, not requested in a prompt.</p>
+
+        <h3>The sources joined here</h3>
+        <div class="hop-grid">
+          <div class="hop"><div class="h">AusTender OCDS API</div>
+            <div class="d">Every Commonwealth contract notice of $10,000+ since 2013, with <b>amendments as
+              first-class versions</b> — the value curve is the register's own time series. Keyless.</div>
+            <span class="tag">CC BY 3.0 AU · verified live 1 Aug 2026</span></div>
+          <div class="hop"><div class="h">Register of Lobbyists</div>
+            <div class="d">385 lobbying firms, 728 lobbyists, 2,500+ client entries, with each firm's own
+              <b>former-government-representative declarations</b>. Joined to suppliers by conservative
+              name match — and reported as a name match, because the register publishes no client ABNs.</div>
+            <span class="tag">AGD · verified live 1 Aug 2026</span></div>
+          <div class="hop"><div class="h">Structured × text, one query</div>
+            <div class="d">CN4118426's $97,587 repayment exists <b>only in its description text</b> — the
+              contract value was never amended. A value-delta query misses it; a governed query that
+              reads both catches it and cites the field it came from.</div>
+            <span class="tag">The needle</span></div>
+        </div>
+
+        <h3>Why this is hard without a graph engine</h3>
+        <p>The AusTender API filters by <b>nothing but id and date</b> — no agency, supplier, ABN or
+           text search exists. A dashboard over it either mirrors the whole register (and goes
+           stale) or can't answer supplier-shaped questions at all. Virtual Cypher fetches the
+           slice each question needs, joins it to other registers <b>at query time</b>, and stamps
+           every hop with its source, licence and as-at date. When a fetch fails, the answer says
+           <i>unknown</i> — a failed lookup and a genuine zero never render the same way anywhere
+           in this app.</p>
+
+        <h3>Extending it is configuration, not a build</h3>
+        <p>Each source is a <b>producer</b> — a few lines of YAML binding an API operation to graph
+           edges. Adding a hop to the same graph, with the same governance, looks like this
+           roadmap (all open, all verified accessible):</p>
+        <div class="hop-grid">
+          <div class="hop"><div class="h">GrantConnect</div><div class="d">Grant awards with recipient ABNs —
+            "which suppliers also receive grants, from which programs" becomes one traversal.</div><span class="tag">next hop</span></div>
+          <div class="hop"><div class="h">ABR / ASIC registers</div><div class="d">Entity spine: historic company
+            names and ABN↔ACN — the variant dictionary that turns name-only records into resolved entities,
+            with match confidence carried as provenance.</div><span class="tag">next hop</span></div>
+          <div class="hop"><div class="h">AEC donation returns</div><div class="d">Deliberately name-only data —
+            the entity-resolution showcase: every fuzzy edge shows its evidence and drops out of
+            aggregates below threshold.</div><span class="tag">next hop</span></div>
+          <div class="hop"><div class="h">Federal Register of Legislation</div><div class="d">Point-in-time law:
+            "the provision in force on the date this decision applied it" — the decision-provenance
+            layer, from a keyless government API.</div><span class="tag">next hop</span></div>
+          <div class="hop"><div class="h">ANAO recommendations</div><div class="d">Recommendation → agency response →
+            follow-up verdict → remediation contracts: the accountability chain nobody joins today.</div><span class="tag">next hop</span></div>
+          <div class="hop"><div class="h">Non-public data, governed</div><div class="d">The same engine enforces
+            entitlements per hop: a custodian approves a query shape once, refusals carry reasons and a
+            review path, and every answer records what authorised it.</div><span class="tag">the platform story</span></div>
+        </div>
+        <p style="margin-top:1rem">The proof it generalises: this realm's sibling runs the identical
+           machinery over the <b>NSW planning estate</b> — different registers, same engine, same
+           honesty rules. Point the pack at another jurisdiction's sources and only the bindings change.</p>
+      </section>
+    </div><!-- /pane-how -->
 
     <footer class="provenance">
       Sources: <b>AusTender OCDS API</b> (contract notices $10,000+ since 2013, CC BY 3.0 AU) ·
@@ -562,6 +670,17 @@
       if (d) renderWindow(d);
     } catch (e) { /* state component shows it */ }
   }
+
+  // Tabs: Explore ↔ How this works.
+  function selectTab(which) {
+    var explore = which === 'explore';
+    $('tab-explore').setAttribute('aria-selected', String(explore));
+    $('tab-how').setAttribute('aria-selected', String(!explore));
+    $('pane-explore').hidden = !explore;
+    $('pane-how').hidden = explore;
+  }
+  $('tab-explore').addEventListener('click', function () { selectTab('explore'); });
+  $('tab-how').addEventListener('click', function () { selectTab('how'); });
 
   $('cn-go').addEventListener('click', function () { loadPassport($('cn-input').value); });
   $('cn-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadPassport($('cn-input').value); });
