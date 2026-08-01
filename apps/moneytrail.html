@@ -2179,63 +2179,30 @@
   // Forms come from the runtime's <embabel-lens-form>, which reads each lens's DECLARED params
   // from /apps-runtime/v1/contracts. Hand-writing them would drift from the realm the moment a
   // lens gains a parameter.
-  // PROGRESS. A window walk is a dozen paged fetches against a government API and can take a
-  // minute; with no signal a user reasonably concludes it has died. The engine already streams
-  // per-producer events on /api/v1/virtual-cypher/events — this surfaces them globally, for every
-  // panel, not just the lens runner.
-  //
-  // Deliberately a FIXED banner rather than per-card text: whichever panel you are looking at, the
-  // answer to "is it still working" is in the same place.
-  var vcStream = null, busyCount = 0, lastTick = 0, tickTimer = null;
-  function ensureProgressStream() {
-    if (DEMO || !window.EventSource || vcStream) return;
-    try {
-      vcStream = new EventSource('/api/v1/virtual-cypher/events');
-      vcStream.addEventListener('producer.progress', function (e) {
-        try {
-          var d = JSON.parse(e.data);
-          progressTick('Fetching ' + sourceLabel(d.producer) + ' — ' + (d.unit || 'page') + ' ' +
-            d.current + ' of ' + d.total, d.unit, d.current, d.total);
-        } catch (x) { /* a malformed frame must never break the page */ }
-      });
-      vcStream.addEventListener('producer.fetch', function (e) {
-        try { var d = JSON.parse(e.data); progressTick('Fetching ' + sourceLabel(d.producer) + '…'); } catch (x) {}
-      });
-    } catch (e) { /* progress is a nicety, never a dependency */ }
+  // PROGRESS. The runtime owns the engine event stream, the determinate bar, the elapsed clock
+  // and the stall notice — every `invoke` that gets a `state` element renders the full strip.
+  // What remains here is the app's own concern: a FIXED banner, so whichever panel you are
+  // looking at, the answer to "is it still working" is always in the same place.
+  var busyCount = 0, tickTimer = null, unsubscribeProgress = null;
+
+  // Producer ids are internal; this realm knows better names for its own sources.
+  if (E && E.progress) {
+    E.progress.label(function (name) {
+      var n = String(name || '');
+      return /releases(Published|Modified)InWindow/.test(n) ? 'AusTender (window)'
+        : /versionsById/.test(n) ? 'AusTender (contract history)'
+        : /grants/i.test(n) ? 'GrantConnect'
+        : /ndis|slavery|tax/i.test(n) ? 'the integrity registers'
+        : /hansard|committee|estimates|parliament/i.test(n) ? 'the parliamentary record'
+        : /firm|lobby/i.test(n) ? 'the lobbyist register'
+        : /news|brave/i.test(n) ? 'press coverage'
+        : n;
+    });
   }
-  /** Producer names are internal; show the register a human recognises. */
-  function sourceLabel(p) {
-    var n = String(p || '');
-    return /releases(Published|Modified)InWindow/.test(n) ? 'AusTender (window)'
-      : /versionsById/.test(n) ? 'AusTender (contract history)'
-      : /firm|lobby/i.test(n) ? 'the lobbyist register'
-      : /news|brave/i.test(n) ? 'press coverage'
-      : n;
-  }
-  // Which unit owns the progress BAR this operation: a partitioned scan interleaves day events
-  // ("day 18 of 61") with each day's page events ("page 2 of 12") — letting both drive the fill
-  // makes it jitter between unrelated scales, so once a partition unit appears, page ticks keep
-  // updating the TEXT but not the bar.
-  var barUnit = null;
-  function progressTick(text, unit, current, total) {
-    lastTick = Date.now();
-    var el = $('busy-detail');
-    if (el) el.textContent = text;
-    var n = Number(current), d = Number(total);
-    if (!isFinite(n) || !isFinite(d) || d <= 0) return;
-    var partitionUnit = /^(hour|day|week|month)$/.test(String(unit || ''));
-    if (partitionUnit) barUnit = unit;
-    if (barUnit && !partitionUnit) return;
-    var fill = $('busy-fill');
-    if (fill) {
-      fill.classList.add('determinate');
-      fill.style.width = Math.max(0, Math.min(100, (n / d) * 100)) + '%';
-    }
-  }
+
   /** Wrap any slow call so the banner shows while it runs — and clears even if it throws.
    *  [expectation] is shown up-front so a slow scan reads as PREDICTED, not stuck. */
   async function withBusy(what, fn, expectation) {
-    ensureProgressStream();
     busyCount++;
     var bar = $('busy'), label = $('busy-label'), detail = $('busy-detail'),
         fill = $('busy-fill'), expect = $('busy-expect'), clock = $('busy-elapsed');
@@ -2244,16 +2211,27 @@
     if (expect) expect.textContent = expectation || 'This may take a moment.';
     if (clock) clock.textContent = '0s';
     if (fill) { fill.classList.remove('determinate'); fill.style.width = ''; }
-    barUnit = null;
     if (bar) bar.hidden = false;
-    var started = Date.now();
-    lastTick = started;
+    var started = Date.now(), lastTick = started, barUnit = null;
+
+    // The runtime's shared stream — no second EventSource, no reconnect logic here.
+    if (E && E.progress && !unsubscribeProgress) {
+      unsubscribeProgress = E.progress.subscribe(function (d, kind) {
+        lastTick = Date.now();
+        if (detail) detail.textContent = E.progress.text(d, kind);
+        var n = Number(d && d.current), t = Number(d && d.total);
+        if (!isFinite(n) || !isFinite(t) || t <= 0) return;
+        // A partitioned scan interleaves day and page frames; the first partition-shaped unit
+        // owns the bar so it can't jitter between unrelated scales.
+        var partitionUnit = /^(hour|day|week|month|file|search)$/.test(String((d && d.unit) || ''));
+        if (partitionUnit) barUnit = d.unit;
+        if (barUnit && !partitionUnit) return;
+        if (fill) { fill.classList.add('determinate'); fill.style.width = Math.max(0, Math.min(100, (n / t) * 100)) + '%'; }
+      });
+    }
     if (tickTimer) clearInterval(tickTimer);
     tickTimer = setInterval(function () {
-      // The clock always moves — a number that ticks is the cheapest proof of life there is.
       if (clock) clock.textContent = Math.round((Date.now() - started) / 1000) + 's';
-      // And if the ENGINE has gone quiet, say so rather than leaving a spinner implying
-      // progress the app cannot actually see.
       if (Date.now() - lastTick > 12000 && detail) {
         detail.textContent = 'Still working — government feeds are paged, and wide windows fetch day by day.';
       }
@@ -2265,6 +2243,7 @@
       if (busyCount <= 0) {
         busyCount = 0;
         if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+        if (unsubscribeProgress) { unsubscribeProgress(); unsubscribeProgress = null; }
         if (bar) bar.hidden = true;
       }
     }
@@ -2321,7 +2300,6 @@
       '<b>' + esc(JSON.stringify(d.args || {})) + '</b>';
     $('lens-out').textContent = '';
     $('lens-render').innerHTML = '';
-    ensureProgressStream();
     setState($('lens-out-state'), 'loading', {});
     try {
       var env = await withBusy('Running ' + d.lens, function () {
