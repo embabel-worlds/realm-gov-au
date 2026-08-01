@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes","au-supplier-profile","au-agency-profile"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   :root {
@@ -101,6 +101,10 @@
   .money { font-weight:900; font-size:.92rem; white-space:nowrap; }
   .source-link { color:#28766e; text-decoration:none; font-weight:800; }
   .source-link:hover { text-decoration:underline; }
+  .inline-action { appearance:none; border:0; padding:0; color:#28766e; background:none; font:inherit; font-weight:760; cursor:pointer; text-align:left; }
+  .inline-action:hover { text-decoration:underline; }
+  .profile-panel { margin-top:18px; }
+  .profile-close { appearance:none; border:1px solid var(--sr-line); background:transparent; border-radius:999px; color:var(--sr-muted); padding:6px 10px; font-size:.72rem; font-weight:800; cursor:pointer; }
   .readout { display:grid; gap:12px; }
   .readout-row { border-top:1px solid var(--sr-line); padding-top:12px; }
   .readout-row:first-child { border-top:0; padding-top:0; }
@@ -206,6 +210,7 @@
         <article class="panel"><div class="panel-head"><div><h3>Largest commitments</h3><div class="panel-sub">Shortlist from the selected publication window</div></div></div><div id="commitments"></div></article>
         <aside class="panel"><div class="panel-head"><div><h3>Read the result correctly</h3><div class="panel-sub">Coverage and interpretation</div></div></div><div class="readout" id="readout"></div></aside>
       </div>
+      <div class="profile-panel" id="profile-panel" hidden></div>
     </section>
 
     <section class="desk" aria-labelledby="desk-heading">
@@ -281,6 +286,8 @@
       if (id === 'au-grounds') return d.grounds;
       if (id === 'au-money-by') return d.moneyBy;
       if (id === 'au-portfolio-themes') return d.themes;
+      if (id === 'au-supplier-profile') return demoProfile('supplier', lensArgs, d.windowRows || []);
+      if (id === 'au-agency-profile') return demoProfile('agency', lensArgs, d.windowRows || []);
       return null;
     }
     if (!E) throw new Error('The Embabel app runtime is unavailable. Add ?demo=1 to use the baked data.');
@@ -292,6 +299,26 @@
     $('status-text').innerHTML = esc(message || '');
     var old = box.querySelector('.pill'); if (old) old.remove();
     if (extra) { var p = document.createElement('span'); p.className = 'pill'; p.textContent = extra; box.appendChild(p); }
+  }
+  function demoProfile(kind, lensArgs, rows) {
+    var term = String(lensArgs[kind] || '').toLowerCase();
+    var field = kind === 'supplier' ? 'supplierName' : 'agencyName';
+    var hits = rows.filter(function (x) { return String(x[field] || '').toLowerCase().includes(term); });
+    var total = hits.reduce(function (n,x) { return n + Number(x.amount || 0); },0);
+    function grouped(groupField) {
+      var groups = {};
+      hits.forEach(function (x) { var name=x[groupField] || '(unstated)'; groups[name]=groups[name] || {name:name,contracts:0,value:0}; groups[name].contracts++; groups[name].value+=Number(x.amount||0); });
+      return Object.values(groups).sort(function (a,b) { return b.value-a.value; });
+    }
+    return {
+      kind:'au-' + kind + '-profile', status:'PARTIAL', source:'AusTender OCDS API (baked demo slice)',
+      totals:{contracts:hits.length,value:Math.round(total),coverage:'the baked fetched releases only'},
+      byAgency:kind === 'supplier' ? grouped('agencyName') : undefined,
+      topSuppliers:kind === 'agency' ? grouped('supplierName') : undefined,
+      contracts:hits.sort(function(a,b){return Number(b.amount||0)-Number(a.amount||0);}).slice(0,8),
+      topContracts:hits.sort(function(a,b){return Number(b.amount||0)-Number(a.amount||0);}).slice(0,8),
+      limits:['This is a name-contains slice of the selected publication window, not the entity\'s complete history.'],
+    };
   }
   function resetDeepViews() {
     loaded = {};
@@ -337,7 +364,9 @@
     $('commitments').innerHTML = contracts.slice(0,6).map(function (x,i) {
       var url = x.austenderUrl || ('https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(x.cnId || ''));
       return '<div class="commitment"><div class="rank">' + (i+1) + '</div><div><div class="desc">' + esc(x.description || x.title || x.cnId) + '</div>' +
-        '<div class="meta"><a class="source-link" target="_blank" rel="noopener" href="' + esc(url) + '">' + esc(x.cnId) + ' ↗</a> · ' + esc(x.supplierName || 'supplier unstated') + ' · ' + esc(x.agencyName || 'agency unstated') + '</div></div>' +
+        '<div class="meta"><a class="source-link" target="_blank" rel="noopener" href="' + esc(url) + '">' + esc(x.cnId) + ' ↗</a> · ' +
+        '<button class="inline-action" data-profile="supplier" data-name="' + esc(x.supplierName || '') + '">' + esc(x.supplierName || 'supplier unstated') + '</button> · ' +
+        '<button class="inline-action" data-profile="agency" data-name="' + esc(x.agencyName || '') + '">' + esc(x.agencyName || 'agency unstated') + '</button></div></div>' +
         '<div class="money">' + esc(aud(x.amount,true)) + '</div></div>';
     }).join('') || '<div class="panel-sub">No commitments matched this window.</div>';
 
@@ -360,7 +389,7 @@
     }
     $('scan').disabled = true; setStatus('','Scanning the publication window…','au-window-signed');
     $('signals').innerHTML = '<div class="placeholder">Fetching and shaping notices from the governed window lens…</div>';
-    $('evidence').hidden = true; resetDeepViews();
+    $('evidence').hidden = true; $('profile-panel').hidden = true; resetDeepViews();
     try {
       activeWindow = controlArgs();
       var data = await invoke('au-window-signed', Object.assign({},activeWindow,{minAmount:'0'}));
@@ -448,11 +477,34 @@
       loaded[name]=true;
     } catch(e) { pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
   }
+  async function loadProfile(kind,name) {
+    if (!name) return;
+    var pane=$('profile-panel'); pane.hidden=false;
+    pane.innerHTML='<div class="lazy"><div class="lazy-inner"><h3>Reading this ' + esc(kind) + ' slice…</h3><p>Same publication window, narrowed by the register\'s name.</p></div></div>';
+    try {
+      var lensId=kind==='supplier'?'au-supplier-profile':'au-agency-profile';
+      var lensArgs=Object.assign({},activeWindow || controlArgs()); lensArgs[kind]=name;
+      if(kind==='supplier') lensArgs.checkLobbying=false;
+      var d=await invoke(lensId,lensArgs); if(!d) throw new Error('The profile lens returned no readable result.');
+      var peers=kind==='supplier'?(d.byAgency||[]):(d.topSuppliers||[]);
+      var peerTotal=peers.reduce(function(n,x){return n+Number(x.value||0);},0);
+      peers=peers.map(function(x){return Object.assign({},x,{shareOfValuePct:x.shareOfValuePct!=null?x.shareOfValuePct:(peerTotal?Number(x.value||0)/peerTotal*100:null)});});
+      var contracts=(d.contracts||d.topContracts||[]).slice(0,6);
+      pane.innerHTML='<div class="deep-result">' +
+        '<div class="result-head"><div><div class="section-kicker">Window profile · ' + esc(kind) + '</div><h3>' + esc(name) + '</h3><div class="panel-sub">' + esc(currentWindowLabel()) + ' · name match inside the fetched window</div></div><button class="profile-close" data-close-profile>Close</button></div>' +
+        '<div class="split"><div><div class="signal-value" style="font-size:2.2rem;margin:4px 0 6px">' + esc(aud(d.totals&&d.totals.value,true)) + '</div><div class="panel-sub">' + Number(d.totals&&d.totals.contracts||0) + ' matching notice(s) · ' + esc(d.totals&&d.totals.coverage||d.status||'') + '</div>' +
+        '<div class="panel-sub" style="margin-top:18px">Largest matching notices</div>' + contracts.map(function(x){return '<div class="ground"><a class="source-link" target="_blank" rel="noopener" href="' + esc(x.austenderUrl||('https://www.tenders.gov.au/Search/KeywordSearch?keyword='+encodeURIComponent(x.cnId||''))) + '">' + esc(x.cnId) + ' ↗</a><strong style="float:right">' + esc(aud(x.amount,true)) + '</strong><div class="ground-meta">' + esc(x.description||'') + '</div></div>';}).join('') + '</div>' +
+        '<div><div class="panel-sub">' + (kind==='supplier'?'Agencies in this slice':'Suppliers in this slice') + '</div>' + bars(peers.slice(0,8),'name') + '<div class="judgment">This profile fetches the selected date window and narrows by name. It is not the entity\'s complete procurement history.</div></div></div>' + notes(d) + '</div>';
+      pane.scrollIntoView({behavior:'smooth',block:'start'});
+    } catch(e) { pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
+  }
 
   document.addEventListener('click',function(e){
     var tab=e.target.closest('.desk-tab');
     if(tab){ var name=tab.dataset.tab; document.querySelectorAll('.desk-tab').forEach(function(x){x.setAttribute('aria-selected',String(x===tab));}); document.querySelectorAll('.desk-pane').forEach(function(x){x.hidden=x.id!=='pane-'+name;}); return; }
     var load=e.target.closest('[data-load]'); if(load) loadDeep(load.dataset.load);
+    var profile=e.target.closest('[data-profile]'); if(profile) loadProfile(profile.dataset.profile,profile.dataset.name);
+    if(e.target.closest('[data-close-profile]')) $('profile-panel').hidden=true;
   });
   $('scan').addEventListener('click',scan);
 
