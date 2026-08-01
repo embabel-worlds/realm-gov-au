@@ -117,6 +117,8 @@ function check(name, cond, detail) {
   check('real baked estimates hits render', /Economics Legislation Committee/.test(plText));
   check('mentions fenced as never-evidence', /never evidence about a contract/i.test(plText));
   check('QoN gap keeps the conclusion qualified', /cannot be concluded/i.test(plText));
+  check('a verbatim transcript excerpt renders quoted, with speakers', /“Senator ROBERTS/.test(plText) && /Dr Mayfield/.test(plText));
+  check('the model reading is never faked in demo', !/judgment, not transcript/i.test(plText));
 
   console.log('\n== progress banner (idle structure) ==');
   // The banner only SHOWS during live scans (demo mode never fetches), but its structure is

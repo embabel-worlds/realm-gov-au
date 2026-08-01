@@ -44,6 +44,10 @@
   maxItems: 8
   userAgent: browser
   minIntervalMs: 1000
+  # FOLLOW the top transcripts and keep phrase-anchored excerpts — the actual exchanges, with
+  # ParlInfo's speaker attribution intact ("Senator ROBERTS: …"). This is what lets a summarize
+  # over m.content honestly say WHAT was discussed and BY WHOM, instead of reading titles.
+  follow: { maxPages: 3, match: "{key}", excerptChars: 4000 }
   cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
 
 # Composite key `phrase|fromIso|toIso`; the date parts render in ParlInfo's own dd/MM/yyyy.
@@ -55,4 +59,6 @@
   maxItems: 8
   userAgent: browser
   minIntervalMs: 1000
+  # match {key1}: excerpts anchor on the PHRASE part of the composite key, never its dates.
+  follow: { maxPages: 3, match: "{key1}", excerptChars: 4000 }
   cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }

@@ -44,7 +44,8 @@ spec:
         const pq = await gateway.kg.query({
           cypher: `
             MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'${via}'}]->(m:ParliamentMention)
-            RETURN m.title AS title, m.url AS url, m.summary AS summary, m.publishedAt AS publishedAt
+            RETURN m.title AS title, m.url AS url, m.summary AS summary, m.publishedAt AS publishedAt,
+                 m.content AS content
             ORDER BY m.publishedAt DESC
             LIMIT 8
           `,
@@ -54,6 +55,7 @@ spec:
         const rows = ((pq && pq.rows) ? pq.rows : (pq || [])).map(x => ({
           title: x.title, url: x.url, summary: x.summary || null,
           date: String(x.publishedAt || "").slice(0, 10) || null,
+          excerpt: x.content || null,
         }));
         return { record, via, searched: key, results: rows };
       } catch (e) {
@@ -70,6 +72,42 @@ spec:
     const period = (from && to)
       ? await searchClass("estimates-period", "Estimates within the window", phrase + "|" + from + "|" + to)
       : null;
+
+    // ---- THE JUDGED LAYER: what was discussed, and by whom -------------------------------
+    // The Estimates producers FOLLOW the top transcripts and keep phrase-anchored excerpts with
+    // ParlInfo's speaker attribution intact — so these fan-IN aggregations reduce ACTUAL
+    // exchanges, not titles. The criterion is inlined (the rewriter matches it textually), and
+    // everything under `judged` is labelled a model's reading of the quoted excerpts.
+    let judged = null;
+    const anyExcerpts = [...estimates.results, ...((period && period.results) || [])].some(r => r.excerpt);
+    if (anyExcerpts) {
+      try {
+        const crit = phrase.replace(/['"\\]/g, " ").replace(/\s+/g, " ").trim();
+        const sub = await gateway.kg.query({
+          cypher: `
+            MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'estimates'}]->(m:ParliamentMention)
+            WHERE m.content IS NOT NULL
+            RETURN summarize(m.content, 'what was discussed concerning ${crit} in these hearing excerpts, and BY WHOM — name the senators and officials speaking') AS discussion,
+                   themes(m.content, 5) AS topics,
+                   argmax(m.url, m.content, 'the exchange most substantive about ${crit}') AS startHere
+          `,
+          params: JSON.stringify({ phrase }),
+        });
+        warnings.push(...((sub && sub.warnings) || []));
+        const row = (((sub && sub.rows) ? sub.rows : (sub || []))[0]) || null;
+        if (row) {
+          judged = {
+            discussion: row.discussion || null,
+            topics: row.topics || null,
+            startHere: row.startHere || null,
+            basis: "A model's reading of the QUOTED excerpts below — the followed transcript passages, " +
+                   "not the whole hearings. Orientation, never an account of the full proceedings.",
+          };
+        }
+      } catch (e) {
+        warnings.push("judged layer unavailable: " + String((e && e.message) || e));
+      }
+    }
 
     const groups = [chamber, committees, estimates, ...(period ? [period] : [])];
     const total = groups.reduce((n, g) => n + g.results.length, 0);
@@ -89,6 +127,7 @@ spec:
         cypher: "MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'estimates'}]->(m:ParliamentMention)\n" +
                 "RETURN m.title, m.url, m.publishedAt ORDER BY m.publishedAt DESC",
       }],
+      judged,
       groups: groups.map(g => ({
         record: g.record,
         searched: g.searched,
@@ -99,10 +138,16 @@ spec:
       })),
       method: "The phrase searched per record class through ParlInfo's keyless feeds — chamber debates, " +
               "committee evidence, Estimates transcripts, and Estimates date-filtered to the window.",
+      interpretation: {
+        factual: ["titles", "dates", "links", "excerpt (verbatim transcript passages, speakers as published)"],
+        judged: ["discussion", "topics", "startHere"],
+        note: "Excerpts are ParlInfo's own transcript text, quoted. The discussion summary and topics are a model's reduction of those excerpts — check them against the quotes beside them.",
+      },
       limits: [
         "A match is a page where the phrase appears — it may concern anything about the entity, and it is never evidence about any contract.",
         "Questions on Notice are not yet a searchable class, so 'never raised in Parliament' cannot be concluded from empty results here — only 'not found in these records'.",
         "Each class returns at most 8 most-recent matches; a busy entity has more history than one page.",
+        "Excerpts cover the top 3 followed transcripts per Estimates search, phrase-anchored windows only — the summary reads THOSE passages, never the full hearings.",
       ],
       source: "ParlInfo search feeds (aph.gov.au, keyless)",
     }) });

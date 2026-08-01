@@ -26,6 +26,11 @@
     title: "The record's title as ParlInfo reports it (committee, date, and subject line)."
     summary: "ParlInfo's snippet where present. Render as text; never summarise it into a claim about a contract."
     publishedAt: "The record's date, ISO-normalized where it parses; the feed's raw string where it does not."
+    content: >-
+      Phrase-anchored EXCERPTS of the followed transcript page (Estimates classes only) — the
+      actual exchanges, verbatim, with ParlInfo's speaker attribution intact. Bounded windows,
+      never the whole page; absent when the page never mentions the phrase, and absent-with-a-
+      warning when the page could not be read (UNKNOWN, not 'no mention').
     searchPhrase: "The phrase this result answered — stamped from the anchor, the honest scope of the match."
   virtualJoins:
     # One anchor, one relationship, four record classes — the query's `via` picks the dataset:

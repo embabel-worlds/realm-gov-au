@@ -1463,18 +1463,31 @@
   }
   function renderParliament(d) {
     var box = $('pl-result');
+    // THE JUDGED LAYER first: what was discussed and by whom — a model's reading of the quoted
+    // excerpts, rendered under an explicit judgment heading so it can never pass as transcript.
+    var judged = '';
+    if (d.judged && (d.judged.discussion || d.judged.topics)) {
+      judged = '<div style="border-left:3px solid var(--embabel-accent); padding:.5rem .8rem; margin:.6rem 0; background:var(--embabel-surface-subtle)">' +
+        '<div class="fine" style="text-transform:uppercase; letter-spacing:.04em"><b>Model reading \u2014 judgment, not transcript</b></div>' +
+        (d.judged.discussion ? '<p style="margin:.4rem 0">' + esc(d.judged.discussion) + '</p>' : '') +
+        (d.judged.topics ? '<div class="fine">Recurring topics: ' + esc(Array.isArray(d.judged.topics) ? d.judged.topics.join(' \u00b7 ') : String(d.judged.topics)) + '</div>' : '') +
+        (d.judged.startHere ? '<div class="fine"><a href="' + esc(d.judged.startHere) + '" target="_blank" rel="noopener">Start with the most substantive exchange \u2197</a></div>' : '') +
+        '<div class="fine">' + esc(d.judged.basis || '') + '</div></div>';
+    }
     var groups = (d.groups || []).map(function (g) {
       var body = (g.results || []).length
         ? g.results.map(function (r) {
             return '<div class="cov"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title) + ' \u2197</a>' +
               '<div class="cmeta">' + esc(r.date || 'undated') + ' \u00b7 ParlInfo</div>' +
-              (r.summary ? '<div class="cmeta">' + esc(String(r.summary).replace(/<[^>]*>/g, '')) + '</div>' : '') + '</div>';
+              (r.summary ? '<div class="cmeta">' + esc(String(r.summary).replace(/<[^>]*>/g, '')) + '</div>' : '') +
+              (r.excerpt ? '<blockquote class="fine" style="margin:.35rem 0 0 .6rem; border-left:2px solid var(--embabel-border); padding-left:.6rem">\u201c' + esc(r.excerpt) + '\u201d</blockquote>' : '') +
+              '</div>';
           }).join('')
         : '<div class="fine">' + esc(g.note || 'Nothing matched in this class.') + '</div>';
       return '<div style="margin-top:.9rem"><b>' + esc(g.record) + '</b> <span class="fine">(' + (g.results || []).length + ')</span>' + body + '</div>';
     }).join('');
     box.innerHTML = '<p class="fine">' + (d.totals && d.totals.mentions || 0) + ' mention(s) across the record classes. ' +
-      'A match is a page where the phrase appears \u2014 mentions, never evidence about a contract.</p>' + groups +
+      'A match is a page where the phrase appears \u2014 mentions, never evidence about a contract.</p>' + judged + groups +
       '<p class="fine">' + (d.limits || []).map(esc).join(' ') + '</p>';
     box.hidden = false;
   }
@@ -1484,7 +1497,8 @@
     var canonical = /snowy/i.test(phrase);
     var baked = [
       { title: 'Economics Legislation Committee : 02/06/2026 : Estimates : INDUSTRY, SCIENCE AND RESOURCES PORTFOLIO : Commonwealth Scientific and Industrial Research Organisation',
-        url: 'https://parlinfo.aph.gov.au:443/parlInfo/search/display/display.w3p;query=Id%3A%22committees%2Festimate%2F29622%2F0004%22', date: '2026-06-02', summary: null },
+        url: 'https://parlinfo.aph.gov.au:443/parlInfo/search/display/display.w3p;query=Id%3A%22committees%2Festimate%2F29622%2F0004%22', date: '2026-06-02', summary: null,
+        excerpt: 'Senator ROBERTS: Wind and solar reinvestment\u2014you\u2019re absolutely right\u2014is after about 20 years; let\u2019s go with 25. Coal is after 50 to 60 years, nuclear is after 60 years and hydro is after 100 years. Snowy Hydro has been going how many years\u201480-odd? Dr Mayfield: You\u2019ll have to reinvest in turbines during that time. Senator ROBERTS: Turbines. Snowy. Senator Ayres: All these technologies require reinvestment.' },
       { title: 'Finance and Public Administration Legislation Committee : 27/05/2026 : Estimates : FINANCE PORTFOLIO : Department of Finance',
         url: 'https://parlinfo.aph.gov.au:443/parlInfo/search/display/display.w3p;query=Id%3A%22committees%2Festimate%2F29599%2F0006%22', date: '2026-05-27', summary: null },
       { title: 'Environment and Communications Legislation Committee : 26/05/2026 : Estimates : CLIMATE CHANGE, ENERGY, THE ENVIRONMENT AND WATER PORTFOLIO',
@@ -1502,7 +1516,9 @@
         { record: 'Committee evidence (Senate + joint)', searched: phrase, results: [],
           note: 'Live search needs a running world.' },
       ],
+      judged: null, // the model reading needs a running world — the demo never fakes a judgment
       limits: ['A match is a page where the phrase appears \u2014 it may concern anything about the entity, and it is never evidence about any contract.',
+               'The quoted excerpt is ParlInfo\u2019s own transcript text (captured 2026-08-01); the model reading of excerpts needs a running world.',
                "Questions on Notice are not yet a searchable class, so 'never raised in Parliament' cannot be concluded from empty results here.",
                'Baked demo slice: real ParlInfo results fetched 2026-08-01.'],
       source: 'ParlInfo search feeds (baked demo slice)',
