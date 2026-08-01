@@ -121,6 +121,8 @@
   .lazy-inner { max-width:540px; }
   .lazy h3 { font-size:1.35rem; margin:0 0 8px; }
   .lazy p { color:var(--sr-muted); line-height:1.55; margin:0 0 18px; font-size:.88rem; }
+  .slow-note { display:inline-flex; align-items:flex-start; gap:7px; margin:0 0 18px; padding:8px 10px; border-radius:9px; background:color-mix(in srgb,var(--sr-gold) 15%,transparent); color:var(--sr-muted); font-size:.74rem; line-height:1.4; text-align:left; }
+  .slow-note::before { content:"◷"; color:#a97800; font-weight:900; }
   .secondary { border:1px solid var(--sr-night); background:var(--sr-night); color:white; border-radius:10px; padding:10px 15px; font-weight:830; cursor:pointer; }
   .secondary:hover { background:var(--sr-night-2); }
   .secondary:disabled { opacity:.55; cursor:wait; }
@@ -151,6 +153,17 @@
   details.notes summary { cursor:pointer; color:var(--sr-ink); font-weight:800; }
   details.notes ul { margin-bottom:0; padding-left:18px; }
   .error-box { color:var(--sr-danger); border:1px solid color-mix(in srgb,var(--sr-danger) 35%,var(--sr-line)); background:color-mix(in srgb,var(--sr-danger) 7%,var(--sr-card)); border-radius:12px; padding:14px; font-size:.83rem; }
+  .operation { grid-column:1/-1; min-height:220px; display:grid; align-content:center; background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:28px; box-shadow:var(--sr-shadow); text-align:left; }
+  .op-head { display:flex; gap:12px; align-items:center; }
+  .op-spinner { width:18px; height:18px; flex:0 0 auto; border:2px solid var(--sr-line); border-top-color:var(--sr-coral); border-radius:50%; animation:spin .8s linear infinite; }
+  .op-title { font-weight:900; font-size:1.05rem; }
+  .op-detail { color:var(--sr-muted); font-size:.8rem; line-height:1.45; margin:9px 0 0 30px; min-height:1.2em; }
+  .op-track { height:6px; background:var(--sr-soft); border-radius:999px; overflow:hidden; margin:17px 0 0 30px; }
+  .op-fill { width:34%; height:100%; background:linear-gradient(90deg,var(--sr-coral),var(--sr-gold)); border-radius:999px; animation:sweep 1.45s ease-in-out infinite alternate; }
+  .op-fill.determinate { animation:none; transition:width .25s ease; }
+  .op-meta { display:flex; justify-content:space-between; gap:14px; color:var(--sr-muted); font-size:.7rem; margin:8px 0 0 30px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes sweep { from { transform:translateX(-75%); } to { transform:translateX(195%); } }
   .foot { margin-top:60px; padding-top:18px; border-top:1px solid var(--sr-line); display:flex; justify-content:space-between; gap:20px; color:var(--sr-muted); font-size:.73rem; line-height:1.5; }
 
   @media (max-width:880px) {
@@ -166,7 +179,7 @@
     .commitment { grid-template-columns:36px minmax(0,1fr); } .commitment .money { grid-column:2; }
     .bar { grid-template-columns:110px 1fr 52px; } .foot { flex-direction:column; }
   }
-  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .primary:hover { transform:none; } }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .primary:hover { transform:none; } .op-spinner,.op-fill { animation:none; } }
 </style>
 </head>
 <body>
@@ -196,7 +209,7 @@
       <div class="field"><label for="from">From</label><input id="from" type="date"></div>
       <div class="field"><label for="to">To (exclusive)</label><input id="to" type="date"></div>
       <button class="primary" id="scan">Scan this window</button>
-      <div class="control-note">Keep live scans to a few business days. The source pages at 100 notices and the governed lens labels capped results as a sample.</div>
+      <div class="control-note">A one-day scan is usually quick. Wider windows are cursor-paged and can take up to a minute; capped results are labelled as a sample.</div>
     </div>
     <div class="status" id="status" role="status" aria-live="polite"><span class="status-dot"></span><span id="status-text">Choose a window to begin.</span></div>
 
@@ -207,7 +220,7 @@
       </div>
       <div class="signals" id="signals"><div class="placeholder">Run a scan to turn the register into a short briefing.</div></div>
       <div class="evidence-grid" id="evidence" hidden>
-        <article class="panel"><div class="panel-head"><div><h3>Largest commitments</h3><div class="panel-sub">Shortlist from the selected publication window</div></div></div><div id="commitments"></div></article>
+        <article class="panel"><div class="panel-head"><div><h3>Largest commitments</h3><div class="panel-sub">Click a supplier or agency name for its window profile. Profiles can take up to a minute.</div></div></div><div id="commitments"></div></article>
         <aside class="panel"><div class="panel-head"><div><h3>Read the result correctly</h3><div class="panel-sub">Coverage and interpretation</div></div></div><div class="readout" id="readout"></div></aside>
       </div>
       <div class="profile-panel" id="profile-panel" hidden></div>
