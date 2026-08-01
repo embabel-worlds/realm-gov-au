@@ -1,0 +1,182 @@
+id: au-opaque-spend
+name: Big money, thin disclosure
+description: >-
+  Large commitments whose PUBLISHED description does not say what the money buys — the $1bn
+  notice whose entire description is the word 'Launchers'. Two layers, never blended: a
+  deterministic screen (description missing, absurdly short, or a verbatim echo of the title or
+  the UNSPSC category name — zero added information by construction), then an LLM reading of the
+  survivors for prose that is long but content-free. A finding about DISCLOSURE, never about the
+  spending itself: legitimate confidentiality exists, and the output is a prompt to go read the
+  record, not a characterisation of any agency.
+params:
+  - name: from
+    type: DATE
+    label: From
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: To (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: minAmount
+    type: STRING
+    label: Only contracts at or above (AUD)
+    required: false
+    default: "10000000"
+spec:
+  kind: cypherscript
+  script: |
+    // Params are DATEs (the generated form gives a date picker); the feed wants ISO instants.
+    const isoAt = (d, endOfDay) => {
+      const v = String(d || '').trim();
+      if (!v) return v;
+      return /T/.test(v) ? v : v + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z');
+    };
+    const from = isoAt(lensArgs.from);
+    const to = isoAt(lensArgs.to);
+    const minAmount = Number(lensArgs.minAmount || 0) || 10000000;
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    // ---- FACTUAL LAYER: every contract at or over the threshold, verbatim ------------------
+    const factual = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE toFloat(r.amount) >= $minAmount
+        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+               toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+               r.agencyName AS agencyName, r.procurementMethod AS procurementMethod,
+               r.limitedTenderReason AS limitedTenderReason,
+               r.exemptionCode AS exemptionCode, r.unspscCodes AS unspscCodes,
+               r.releaseDate AS releaseDate
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, minAmount }),
+    });
+    const rows = ((factual && factual.rows) ? factual.rows : (factual || []));
+    const warnings = [...((factual && factual.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+
+    // The seeded UNSPSC codeset: a description that just repeats a CATEGORY NAME ('Launchers')
+    // adds ZERO information beyond the code the notice already carries — that is the sharpest
+    // deterministic signal there is, and it needs no model to see.
+    const cat = await gateway.kg.query({
+      cypher: `MATCH (c:ProcurementCategory) RETURN c.title AS title`,
+      params: JSON.stringify({}),
+    });
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+    const categoryTitles = new Set(((cat && cat.rows) ? cat.rows : (cat || [])).map(x => norm(x.title)).filter(Boolean));
+
+    // ---- DETERMINISTIC SCREEN: signals that are TRUE BY CONSTRUCTION, no judgment ----------
+    const screened = rows.map(r => {
+      const desc = String(r.description || "").trim();
+      const signals = [];
+      if (!desc) signals.push("no description");
+      else {
+        if (categoryTitles.has(norm(desc))) signals.push("description is just the UNSPSC category name");
+        if (norm(desc) && norm(desc) === norm(r.title)) signals.push("description merely repeats the title");
+        if (desc.length < 60 && !signals.length) signals.push("description under 60 characters");
+      }
+      return Object.assign({}, r, { descriptionChars: desc.length, signals });
+    });
+    const flagged = screened.filter(r => r.signals.length);
+
+    // ---- SUBJECTIVE LAYER: the LLM reads what survived the screen -------------------------
+    // ai.score judges EACH fetched row 0..1 against the criterion; low = the description tells a
+    // reader nothing. The window is already warm from the factual query, so this re-fetches
+    // nothing. The criterion is an INLINED literal — the rewriter matches it textually and a
+    // $param silently never matches. Failure here degrades to the deterministic screen alone.
+    let judged = {};
+    let judgeError = null;
+    try {
+      const sub = await gateway.kg.query({
+        cypher: `
+          MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+          WHERE toFloat(r.amount) >= $minAmount
+          RETURN r.cnId AS cnId,
+                 ai.score(r, 'the description discloses concretely what is being bought, in what quantity or scope, and for what purpose') AS disclosure
+          ORDER BY disclosure ASC
+          LIMIT 40
+        `,
+        params: JSON.stringify({ window, minAmount }),
+      });
+      warnings.push(...((sub && sub.warnings) || []));
+      (((sub && sub.rows) ? sub.rows : (sub || []))).forEach(x => {
+        if (x && x.cnId != null && x.disclosure != null) judged[x.cnId] = Number(x.disclosure);
+      });
+    } catch (e) {
+      judgeError = String((e && e.message) || e);
+      warnings.push("LLM disclosure reading unavailable — deterministic signals only: " + judgeError);
+    }
+
+    // ---- COMPOSE: worst first — deterministic hits, then lowest judged disclosure ----------
+    const JUDGE_FLOOR = 0.4; // below this the model judged the prose essentially uninformative
+    const out = screened.map(r => {
+      const score = judged[r.cnId];
+      return Object.assign({}, r, {
+        disclosureScore: score != null ? Math.round(score * 100) / 100 : null,
+        judgedThin: score != null ? score < JUDGE_FLOOR : null,
+      });
+    }).sort((a, b) =>
+      (b.signals.length - a.signals.length) ||
+      ((a.disclosureScore == null ? 2 : a.disclosureScore) - (b.disclosureScore == null ? 2 : b.disclosureScore)) ||
+      (b.amount - a.amount));
+    const judgedThin = out.filter(r => !r.signals.length && r.judgedThin);
+    const sum = (xs) => Math.round(xs.reduce((n, x) => n + (x.amount || 0), 0));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-opaque-spend",
+      window: { from, to }, minAmount,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        contractsOverThreshold: rows.length,
+        valueOverThreshold: sum(rows),
+        flaggedCount: flagged.length,
+        flaggedValue: sum(flagged),
+        judgedThinCount: judgedThin.length,
+        judgedThinValue: sum(judgedThin),
+        note: rows.length
+          ? `${flagged.length} of ${rows.length} contracts at or over the threshold carry a description that adds nothing by construction; the model read ${Object.keys(judged).length} and judged ${judgedThin.length} more essentially uninformative.`
+          : "No contracts at or over the threshold in this window.",
+      },
+      queries: [
+        { title: "Contracts at or over the threshold (arithmetic)",
+          cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                  "WHERE toFloat(r.amount) >= $minAmount RETURN r ORDER BY toFloat(r.amount) DESC" },
+        { title: "Disclosure reading (LLM judgment, per row)",
+          note: "ai.score judges each description 0..1 against an inlined criterion; low = uninformative. A judgment, never a fact.",
+          cypher: "RETURN r.cnId, ai.score(r, 'the description discloses concretely what is being bought…') AS disclosure\n" +
+                  "ORDER BY disclosure ASC LIMIT 40" },
+      ],
+      // Descriptions are VERBATIM — the reader must see the vacuum, not our paraphrase of it.
+      contracts: out.slice(0, 40).map(r => ({
+        cnId: r.cnId, amount: r.amount, supplierName: r.supplierName, agencyName: r.agencyName,
+        title: r.title, description: r.description, descriptionChars: r.descriptionChars,
+        procurementMethod: r.procurementMethod, limitedTenderReason: r.limitedTenderReason || null,
+        signals: r.signals, disclosureScore: r.disclosureScore, judgedThin: r.judgedThin,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(r.cnId),
+      })),
+      truncatedList: out.length > 40,
+      interpretation: {
+        factual: ["amount", "description (verbatim)", "descriptionChars", "signals"],
+        judged: ["disclosureScore", "judgedThin"],
+        note: "The signals are true by construction (an echo of the category name adds zero information). " +
+              "The disclosure score is a model's reading of the prose — useful for ranking, never evidence.",
+      },
+      limits: [
+        "This measures what was PUBLISHED, not what was procured — thin disclosure is a fact about the notice, not about the contract behind it.",
+        "Legitimate confidentiality exists (national security among others); a low score is a reason to read the record, never a finding of wrongdoing.",
+        "The model reads at most 40 rows per run; deterministic signals cover every row over the threshold.",
+        "A capped window fetch makes every figure a sample; the status says so.",
+      ],
+      method: "Contracts at or over the threshold in the window; a deterministic screen for descriptions that " +
+              "add nothing by construction, then a per-row LLM reading of the rest. Ranked worst-disclosed first.",
+      source: "AusTender OCDS API (CC BY 3.0 AU); UNSPSC titles from the seeded government codeset (CC BY)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

@@ -1,0 +1,45 @@
+# Parliamentary mentions — Hansard, Questions on Notice, committee and Estimates pages on
+# aph.gov.au, reached through a WEB INDEX scoped to that domain.
+#
+# WHY AN INDEX AND NOT PARLINFO DIRECTLY (verified live 2026-08-01): ParlInfo has a genuinely
+# consumable keyless search feed — RSS at
+#   https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:hansardr,hansards Content:"<phrase>"
+# returning title/link/pubDate per match (15 items for a live supplier phrase). Two blockers keep
+# it out of THIS producer for now:
+#   1. A ZERO-RESULT search does not return an empty feed — it 301s to an unexpectedError page,
+#      so "no mentions" and "broken query" are the same response unless the client special-cases
+#      the redirect.
+#   2. The gateway's learned-API client parses JSON only (no XML/RSS mapper) — an engine gap.
+# When the XML gap closes, swap this producer's source for the direct feed and recall improves;
+# the type, the joins and every lens stay untouched. See docs/PARLIAMENT.md.
+#
+# The same anti-fabrication rule as press coverage: a search index cannot invent a Hansard page;
+# it can only return what it indexed. Weaker recall than ParlInfo's own search — stated in the
+# type's limits, never papered over.
+
+- name: parliamentMentions
+  kind: remote
+  operation: webSearch
+  records: "$.web.results[*]"
+  args:
+    q: "{keys}"
+    count: 8
+    country: au
+  # The domain scope is part of the TEMPLATE, not the caller's phrase — every query this producer
+  # makes is fenced to the parliamentary record by construction.
+  keyTemplate: "site:aph.gov.au \"{key}\""
+  # The index does not echo the query; stamp the caller's phrase back for the join to match,
+  # and as the honest scope shown beside every result.
+  echoKeyAs: searchPhrase
+  project:
+    url: url
+    title: title
+    snippet: description
+    age: age
+  # Mentions accumulate on a parliamentary timescale; an hour is fresh. negativeTtl because
+  # "nothing indexed for this phrase" is a real answer worth keeping.
+  cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
+  cost:
+    bucket: "brave"
+    rate: "1/sec"
+    yield: medium

@@ -102,6 +102,39 @@ spec:
       }
     }
 
+    // The parliamentary record: has this supplier come up in Hansard / QoNs / Estimates? A
+    // web-index search scoped to aph.gov.au — real accountability material when present, and a
+    // DOUBLY-qualified silence (this index, this phrase) when absent. Skipped when the window
+    // found no contracts: a mention list with no procurement context invites over-reading.
+    let parliament = null;
+    if (rows.length) {
+      try {
+        const pq = await gateway.kg.query({
+          cypher: `
+            MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN]->(m:ParliamentMention)
+            RETURN m.title AS title, m.url AS url, m.snippet AS snippet, m.age AS age
+            LIMIT 8
+          `,
+          params: JSON.stringify({ phrase: supplier }),
+        });
+        const pRows = ((pq && pq.rows) ? pq.rows : (pq || []));
+        const pw = (pq && pq.warnings) || [];
+        const unavailable = pw.some(w => { const t = asText(w);
+          return t.includes("BRAVE") || t.includes("NAMESPACE") || t.includes("NOT A WORLD TOOL") ||
+                 t.includes("AUTH") || t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+        parliament = unavailable
+          ? { status: "UNAVAILABLE", results: [],
+              note: "The parliamentary search could not run — whether this supplier was raised is UNKNOWN, not 'no'." }
+          : { status: "COMPLETE",
+              results: pRows.map(x => ({ title: x.title, url: x.url, snippet: x.snippet, age: x.age || null })),
+              basis: "The supplier's name searched across aph.gov.au (Hansard, Questions on Notice, committees). A match may concern anything about this supplier.",
+              note: pRows.length ? null
+                : "No indexed parliamentary page matched this name. This index holds less than ParlInfo's own search — 'never raised in Parliament' cannot be concluded from this." };
+      } catch (e) {
+        parliament = { status: "UNAVAILABLE", results: [], note: "The parliamentary search failed — whether this supplier was raised is UNKNOWN." };
+      }
+    }
+
     await gateway.lens.present({ content: JSON.stringify({
       kind: "au-supplier-profile",
       supplier, window: { from, to },
@@ -127,6 +160,7 @@ spec:
         groundText: x.groundText || null, startDate: x.startDate, endDate: x.endDate,
         austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId) })),
       lobbying,
+      parliament,
       allContractsUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(supplier),
       method: "One window fetched, narrowed by supplier name, aggregated arithmetically; the lobbying " +
               "check is a conservative name match against the federal register.",
@@ -134,8 +168,9 @@ spec:
         "Name matching, not identity: a supplier trading under several names, or sharing a name with another entity, is the register's ambiguity and shows in the entities list.",
         "This is ONE WINDOW, never a supplier's whole history — the register cannot be searched by supplier, only by id and date.",
         "A lobbying relationship is a disclosure, never a finding about a contract.",
+        "Parliamentary mentions come from a web index scoped to aph.gov.au; a match may concern anything about the supplier, and an empty result never supports 'not raised in Parliament'.",
       ],
-      source: "AusTender OCDS API (CC BY 3.0 AU) + Register of Lobbyists",
+      source: "AusTender OCDS API (CC BY 3.0 AU) + Register of Lobbyists + aph.gov.au-scoped search (Brave, keyed)",
     }) });
 presentation:
   href: /apps/moneytrail.html

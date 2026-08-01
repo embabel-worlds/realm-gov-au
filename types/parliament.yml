@@ -1,0 +1,38 @@
+# Parliamentary mentions — Hansard debates, Questions on Notice, committee and Estimates pages.
+# Like press coverage (types/coverage.yml) this is NOT a register record, and it is fenced the
+# same way — but the SOURCE is the parliamentary record itself, which changes what a match and
+# a silence mean:
+#
+#   - A match is a page of Hansard / a QoN / a committee record where the searched phrase
+#     appears. That is a real accountability artefact — but the phrase appearing does not make
+#     the page ABOUT the contract; a large supplier is discussed in Parliament for many reasons.
+#   - A silence is DOUBLY qualified: nothing was found by THIS web index, for THIS phrase — and
+#     the index does not hold everything ParlInfo does. "Never raised in Parliament" cannot be
+#     concluded from an empty result here, and no surface may render it that way.
+
+- name: ParliamentMention
+  visibility: internal
+  description: >-
+    A page of the parliamentary record (aph.gov.au — Hansard, Questions on Notice, committee and
+    Estimates material) matching a search phrase. NOT a government procurement record and NOT
+    evidence about any contract: a page where the searched terms appear, carrying its own link so
+    a reader can judge it. Questions on Notice sometimes cite contract notice ids verbatim, which
+    makes a CN-id phrase the sharpest search this type supports.
+  properties:
+    url:
+      metadata: { identity: "true" }
+    title: "The page's title as the search index reports it."
+    snippet: "The index's snippet. Render as text; never summarise it into a claim about a contract."
+    age: "Human-readable freshness label from the index; absent on undated results."
+    searchPhrase: "The phrase this result answered — stamped from the anchor, the honest scope of the match."
+  virtualJoins:
+    - anchorLabel: ParliamentQuery
+      relationship: MENTIONED_IN
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: parliamentMentions
+      description: >-
+        Parliamentary-record pages matching a pinned phrase:
+        `MATCH (q:ParliamentQuery {phrase:'CN3942784'})-[:MENTIONED_IN]->(m:ParliamentMention)`.
+        Requires BRAVE_API_KEY in the world; without it the traversal yields nothing, which every
+        lens reports as UNAVAILABLE rather than as "no mentions".

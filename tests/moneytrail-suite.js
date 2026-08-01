@@ -24,7 +24,7 @@ function check(name, cond, detail) {
   await page.waitForTimeout(800);
   check('Ask tab is the landing', await page.locator('#pane-ask').isVisible());
   check('Browse hidden until asked for', await page.locator('#pane-explore').isHidden());
-  check('six question cards', (await page.locator('.qcard').count()) === 6);
+  check('seven question cards', (await page.locator('.qcard').count()) === 7);
   check('no fake chat log', (await page.locator('.chat-log').count()) === 0);
 
   console.log('\n== tabs ==');
@@ -83,12 +83,28 @@ function check(name, cond, detail) {
   const dd = await page.locator('#dd-result').innerText();
   check('press tier is fenced as not-evidence', /NOT evidence about this contract/i.test(dd));
   check('search phrase basis disclosed', /JUDGMENT by this lens/i.test(dd));
+  check('parliament tier renders', /parliamentary record/i.test(dd));
+  check('parliament mentions fenced as not-evidence', /mentions, not evidence/i.test(dd));
+  check('parliament silence doubly qualified', /cannot be concluded from an empty result/i.test(dd));
+  check('parliament CN-id search phrase disclosed', /CN4118426/.test(dd));
 
   console.log('\n== out of scope ==');
   await page.fill('#chat-input', 'what is the weather in sydney'); await page.click('#chat-send');
   await page.waitForTimeout(900);
   const oos = await page.locator('#ask-stamp').innerText();
   check('refuses rather than guessing', /no built-in panel matches|contract registers only/i.test(oos));
+
+  console.log('\n== big money, thin disclosure ==');
+  await page.click('#tab-ask'); await page.waitForTimeout(300);
+  await page.fill('#chat-input', 'which big contracts tell the public almost nothing about what is being bought');
+  await page.click('#chat-send'); await page.waitForTimeout(1200);
+  check('opaque panel appears inline', await page.locator('#opaque-card').isVisible());
+  const opText = await page.locator('#op-result').innerText();
+  check('description shown verbatim in quotes', /\u201c.+\u201d|“.+”/.test(opText));
+  check('deterministic signal named', /adds nothing by construction|under 60 characters|repeats the title|no description/i.test(opText));
+  check('fenced as disclosure, not wrongdoing', /never a finding of wrongdoing/i.test(opText));
+  check('model layer honestly absent in demo', /needs a running world|unavailable in the standalone demo/i.test(opText));
+
 
   console.log('\n== progress banner (idle structure) ==');
   // The banner only SHOWS during live scans (demo mode never fetches), but its structure is

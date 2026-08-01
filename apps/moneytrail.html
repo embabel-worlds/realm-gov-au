@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers","au-opaque-spend"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -319,6 +319,8 @@
           <b>Is a supplier a lobbying client?</b><span>The federal register's own declarations</span></button>
         <button class="qcard" data-q="Show me contracts where the agency recorded that it did not comply with the procurement rules">
           <b>Where did an agency record non-compliance?</b><span>A code the register publishes and nobody surfaces</span></button>
+        <button class="qcard" data-q="Which big contracts tell the public almost nothing about what is being bought?">
+          <b>Big money, thin disclosure</b><span>$1bn against the single word “Launchers” — found by construction, then read by a model</span></button>
       </div>
       <div class="chat-row">
         <input id="chat-input" type="text" placeholder="e.g. which contracts grew the most, or CN3942784, or where does the money go" aria-label="Ask a question">
@@ -448,6 +450,20 @@
       <div class="qstamp" id="k-stamp" hidden></div>
       <embabel-operation-state id="k-state-el"></embabel-operation-state>
       <div id="k-result" hidden></div>
+    </section>
+
+    <!-- ============ BIG MONEY, THIN DISCLOSURE ============ -->
+    <section class="card" id="opaque-card">
+      <h2>Big money, thin disclosure</h2>
+      <p class="sub">Large commitments whose published description says almost nothing — the description shown verbatim, a deterministic screen for text that adds nothing by construction, and a model's reading of the rest, labelled as a judgment. About DISCLOSURE, never about the spending.</p>
+      <div class="filterbar">
+        <label class="fine" for="op-min">At or above (AUD)</label>
+        <input id="op-min" type="text" value="10000000" size="12" aria-label="Minimum amount">
+        <button class="embabel-button" id="op-go">Find thin disclosure</button>
+      </div>
+      <div class="qstamp" id="op-stamp" hidden></div>
+      <embabel-operation-state id="op-state-el"></embabel-operation-state>
+      <div id="op-result" hidden></div>
     </section>
 
     <!-- ============ HOW CONTRACTS AVOIDED OPEN TENDER ============ -->
@@ -704,6 +720,7 @@
       source: 'AusTender OCDS API (CC BY 3.0 AU)'
     };
     if (id === 'au-window-signed') out = demoData.window;
+    if (id === 'au-opaque-spend') out = demoOpaque(10000000);
     if (id === 'au-current-members') out = {
       kind: 'au-current-members', status: 'COMPLETE', warnings: [],
       members: Object.entries(window.OZ_MEMBERS || {}).map(function (kv) {
@@ -1235,6 +1252,9 @@
     { id: 'newcomers', test: /\b(new suppl|first.?time|newcomer|never (won|had))\b/i,
       label: 'suppliers appearing for the first time',
       run: function () { return runNewSuppliers(); }, focus: 'newsup-card' },
+    { id: 'opaque', test: /\b(thin disclosure|insufficient (information|detail)|no (information|details?|description)|little information|opaque|vague(ly)? describ|poorly described|bugger all|tell(s|ing)? (the public|us) (almost )?nothing|launchers)\b/i,
+      label: 'large contracts with thin disclosure',
+      run: function () { return runOpaque(); }, focus: 'opaque-card' },
     { id: 'grounds', test: /\b(ground|open tender|limited tender|exempt|sole.?source|comply|complian|non.?compliance|skip)/i,
       label: 'how contracts avoided open tender',
       run: function () { return runGrounds(); }, focus: 'grounds-card' },
@@ -1328,6 +1348,10 @@
         var v = document.querySelectorAll('#pp-result .tile .val');
         return v.length > 2 ? 'Original ' + v[0].innerText.trim() + ' → now ' + v[1].innerText.trim() + '.' : '';
       }
+      if (cardId === 'opaque-card') {
+        var opn = document.querySelectorAll('#op-result .result').length;
+        return opn ? opn + ' thinly-described contract(s), worst first.' : 'Nothing over the threshold was thinly described.';
+      }
       if (cardId === 'lobby-card') {
         var txt = (document.querySelector('#lb-result') || {}).innerText || '';
         return txt.indexOf('No client entry matched') >= 0 ? 'No client entry matched that name.' : 'Register entries found.';
@@ -1391,6 +1415,87 @@
       'Not a conversation — each question is answered on its own, and questions the registers cannot answer are refused rather than guessed.';
   })();
 
+  /** Demo: the SAME deterministic screen the lens runs, over the baked window rows — the model
+   *  layer is honestly absent (it needs a running world), never faked. */
+  function demoOpaque(minAmount) {
+    var rows = (demoData.windowRows || []).filter(function (x) { return Number(x.amount || 0) >= (minAmount || 10000000); });
+    var screened = rows.map(function (r) {
+      var desc = String(r.description || '').trim();
+      var signals = [];
+      if (!desc) signals.push('no description');
+      else {
+        if (desc.toLowerCase() === String(r.title || '').trim().toLowerCase()) signals.push('description merely repeats the title');
+        if (desc.length < 60 && !signals.length) signals.push('description under 60 characters');
+      }
+      return Object.assign({}, r, { descriptionChars: desc.length, signals: signals,
+        disclosureScore: null, judgedThin: null,
+        austenderUrl: 'https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(r.cnId) });
+    }).sort(function (a, b) { return (b.signals.length - a.signals.length) || (b.amount - a.amount); });
+    var flagged = screened.filter(function (r) { return r.signals.length; });
+    var sum = function (xs) { return Math.round(xs.reduce(function (n, x) { return n + Number(x.amount || 0); }, 0)); };
+    return {
+      kind: 'au-opaque-spend', status: 'PARTIAL', warnings: [],
+      headline: { contractsOverThreshold: rows.length, valueOverThreshold: sum(rows),
+        flaggedCount: flagged.length, flaggedValue: sum(flagged), judgedThinCount: 0, judgedThinValue: 0,
+        note: flagged.length + ' of ' + rows.length + ' baked contracts over the threshold carry a description that adds nothing by construction. The model reading needs a running world.' },
+      contracts: screened.slice(0, 40),
+      truncatedList: screened.length > 40,
+      interpretation: { note: 'The signals are true by construction. The disclosure score is a model judgment and is unavailable in the standalone demo.' },
+      limits: ['This measures what was PUBLISHED, not what was procured — thin disclosure is a fact about the notice, not about the contract behind it.',
+               'Legitimate confidentiality exists; a flag is a reason to read the record, never a finding of wrongdoing.',
+               'Baked demo slice: one window, deterministic signals only.'],
+      source: 'AusTender OCDS API (baked demo slice)',
+    };
+  }
+
+  // ---- Big money, thin disclosure: verbatim text, screened then read ----------
+  var opRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  async function runOpaque() {
+    var args = { from: $('w-from').value, to: $('w-to').value,
+                 minAmount: String($('op-min').value || '10000000').replace(/[^0-9]/g, '') || '10000000' };
+    $('op-result').hidden = true;
+    stamp('op-stamp', 'Contracts ≥ <b>' + esc(aud(Number(args.minAmount), true)) + '</b> over <b>' + windowText() +
+      '</b> · lens <b>au-opaque-spend</b>');
+    try {
+      var d;
+      if (DEMO) { setState($('op-state-el'), 'loading', {}); await ensureDemo(); d = demoOpaque(Number(args.minAmount)); setState($('op-state-el'), d ? 'ready' : 'empty', {}); }
+      else {
+        var env = await withBusy(labelFor('au-opaque-spend'), function () {
+          return opRunner.lens('au-opaque-spend', args, { state: $('op-state-el'), waitSeconds: 15 });
+        }, expectationFor({ from: args.from, to: args.to }));
+        d = env ? lensData(env) : null;
+      }
+      if (d) renderOpaque(d);
+    } catch (e) { /* the state element shows it */ }
+  }
+  function renderOpaque(d) {
+    var box = $('op-result');
+    var h = d.headline || {};
+    var tiles =
+      '<div class="tiles">' +
+      '<div class="tile"><div class="lbl">Over threshold</div><div class="val">' + esc(aud(h.valueOverThreshold, true)) + '</div><div class="note">' + (h.contractsOverThreshold || 0) + ' contracts</div></div>' +
+      '<div class="tile"><div class="lbl">Adds nothing by construction</div><div class="val">' + esc(aud(h.flaggedValue, true)) + '</div><div class="note">' + (h.flaggedCount || 0) + ' contracts — echo of title or category, or near-empty</div></div>' +
+      '<div class="tile"><div class="lbl">Model read as uninformative</div><div class="val">' + esc(aud(h.judgedThinValue, true)) + '</div><div class="note">' + (h.judgedThinCount || 0) + ' more — a JUDGMENT, labelled</div></div>' +
+      '</div>' + (h.note ? '<p class="fine">' + esc(h.note) + '</p>' : '');
+    var rows = (d.contracts || []).map(function (r) {
+      var badge = (r.signals || []).length
+        ? '<span class="pill" style="background:color-mix(in srgb, var(--embabel-accent) 18%, transparent)">' + esc(r.signals.join(' · ')) + '</span>'
+        : (r.disclosureScore != null ? '<span class="pill">model disclosure ' + esc(String(r.disclosureScore)) + '</span>' : '');
+      return '<div class="result"><div class="rhead"><b>' + esc(aud(r.amount)) + '</b> — ' + esc(r.supplierName || '(supplier unstated)') +
+        ' → ' + esc(r.agencyName || '(agency unstated)') + ' ' + badge + '</div>' +
+        '<div class="fine">The register\u2019s ENTIRE description (' + (r.descriptionChars || 0) + ' chars): ' +
+        '<b>\u201c' + esc(r.description || '(none)') + '\u201d</b></div>' +
+        '<div class="fine">' + esc(r.cnId) + (r.limitedTenderReason ? ' · stated ground: ' + esc(r.limitedTenderReason) : '') +
+        ' · <a href="' + esc(r.austenderUrl) + '" target="_blank" rel="noopener">the notice \u2197</a></div></div>';
+    }).join('');
+    var interp = d.interpretation || {};
+    box.innerHTML = tiles + (rows || '<p class="fine">Nothing at or over the threshold in this window.</p>') +
+      (d.truncatedList ? '<p class="fine">Showing the worst-disclosed 40.</p>' : '') +
+      '<p class="fine">' + esc(interp.note || '') + '</p>' +
+      '<p class="fine">' + (d.limits || []).map(esc).join(' ') + '</p>';
+    box.hidden = false;
+  }
+
   // ---- Deep dive: three tiers that never blend -------------------------------
   var ddRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
   async function runDeepDive(cnId) {
@@ -1438,7 +1543,32 @@
       '<div class="tdesc">' + esc((d.tiers && d.tiers.coverage) || '') + '</div>' + covBody +
       '<div class="fine">Searched: <b>' + esc(cov.searchPhrase || '') + '</b>. ' + esc(cov.phraseBasis || '') + '</div></div>';
 
-    box.innerHTML = context + coverage;
+    // TIER 4: the parliamentary record. Same fencing as press, plus the doubly-qualified silence:
+    // an empty result is about THIS index and THESE phrases, never proof it was not raised.
+    var par = d.parliament || null;
+    var parliament = '';
+    if (par) {
+      var parGroup = function (g, heading) {
+        if (!g || !g.searchPhrase) return '';
+        var body = (g.results || []).length
+          ? g.results.map(function (r) {
+              return '<div class="cov"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title) + ' \u2197</a>' +
+                '<div class="cmeta">' + esc(r.age || 'undated') + ' \u00b7 aph.gov.au</div>' +
+                (r.snippet ? '<div class="cmeta">' + esc(String(r.snippet).replace(/<[^>]*>/g, '')) + '</div>' : '') + '</div>';
+            }).join('')
+          : '<div class="fine" style="font-size:.9rem"><b>No indexed match.</b></div>';
+        return '<div style="margin-top:.5rem"><div class="fine"><b>' + esc(heading) + '</b> \u2014 searched <b>\u201c' +
+          esc(g.searchPhrase) + '\u201d</b>. ' + esc(g.basis || '') + '</div>' + body + '</div>';
+      };
+      var parBody = (par.status === 'UNAVAILABLE')
+        ? '<div class="fine" style="font-size:.9rem"><b>Not looked at.</b> ' + esc(par.note || '') + '</div>'
+        : parGroup(par.byContractId, 'By contract id') + parGroup(par.byNames, 'By party names') +
+          (par.note ? '<div class="fine">' + esc(par.note) + '</div>' : '');
+      parliament = '<div class="tier t-coverage"><div class="tlabel">The parliamentary record — mentions, not evidence</div>' +
+        '<div class="tdesc">' + esc((d.tiers && d.tiers.parliament) || '') + '</div>' + parBody + '</div>';
+    }
+
+    box.innerHTML = context + coverage + parliament;
   }
 
   // ---- Portfolio themes: facts and judgments, visibly separated ---------------
@@ -1580,7 +1710,7 @@
       'au-contract-passport': 'Opening the contract', 'au-supplier-lobbying': 'Checking the lobbyist register',
       'au-agency-profile': 'Profiling the agency', 'au-supplier-profile': 'Profiling the supplier',
       'au-short-dated': 'Finding contracts near their end', 'au-new-suppliers': 'Comparing two windows',
-      'au-ask': 'Writing and running a query' })[id] || 'Working';
+      'au-ask': 'Writing and running a query', 'au-opaque-spend': 'Reading disclosure quality' })[id] || 'Working';
   }
   async function runLensInto(runner, id, args, stampId, stampHtml, stateId, resultId, render) {
     $(resultId).hidden = true;
@@ -1936,6 +2066,7 @@
         'au-supplier-profile': { card: 'supplier-card', render: null },
         'au-short-dated': { card: 'short-card', render: null },
         'au-new-suppliers': { card: 'newsup-card', render: null },
+        'au-opaque-spend': { card: 'opaque-card', render: renderOpaque },
       };
       var panel = data && KIND_PANEL[data.kind];
       if (panel) {
@@ -2024,6 +2155,7 @@
   $('l-go').addEventListener('click', runLeague);
   $('t-go').addEventListener('click', runThemes);
   $('g-go').addEventListener('click', runGrounds);
+  $('op-go').addEventListener('click', runOpaque);
   $('m-go').addEventListener('click', runMoneyBy);
   $('k-go').addEventListener('click', function () { runAskKg(); });
   $('ap-go').addEventListener('click', runAgencyProfile);

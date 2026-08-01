@@ -123,6 +123,48 @@ spec:
       }
     }
 
+    // ---- TIER 4: the parliamentary record (fenced, doubly-qualified silence) --------------
+    // Two searches, sharpest first: the CN id itself (Questions on Notice cite notice ids
+    // verbatim — a hit is close to a direct reference), then the supplier+agency phrase (broad:
+    // a large supplier is discussed in Parliament for many reasons). Both go through a web index
+    // scoped to aph.gov.au, so a silence here is about the INDEX, never about Hansard.
+    const parliamentSearch = async (searchPhrase) => {
+      const pq = await gateway.kg.query({
+        cypher: `
+          MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN]->(m:ParliamentMention)
+          RETURN m.title AS title, m.url AS url, m.snippet AS snippet, m.age AS age
+          LIMIT 8
+        `,
+        params: JSON.stringify({ phrase: searchPhrase }),
+      });
+      return { rows: ((pq && pq.rows) ? pq.rows : (pq || [])), warns: (pq && pq.warnings) || [] };
+    };
+    let parliament = { status: "COMPLETE", byCn: [], byNames: [], note: null };
+    {
+      const cnHits = await parliamentSearch(cnId);
+      const nameHits = phrase ? await parliamentSearch(phrase) : { rows: [], warns: [] };
+      const pw = [...cnHits.warns, ...nameHits.warns];
+      const unavailable = pw.some(w => {
+        const t = asText(w);
+        return t.includes("BRAVE") || t.includes("NAMESPACE") || t.includes("NOT A WORLD TOOL") ||
+               t.includes("AUTH") || isFetchFailure(w);
+      });
+      if (unavailable) {
+        parliament.status = "UNAVAILABLE";
+        parliament.note = "The parliamentary search could not run (no search key configured, or the " +
+          "search failed). This is NOT a finding of 'never raised' — nothing was looked at.";
+        warnings.push(...pw);
+      } else {
+        parliament.byCn = cnHits.rows;
+        parliament.byNames = nameHits.rows;
+        if (!cnHits.rows.length && !nameHits.rows.length) {
+          parliament.note = "No indexed page of the parliamentary record matched either phrase. That is " +
+            "a fact about this web index and these phrases — ParlInfo's own search holds more, and " +
+            "'never raised in Parliament' cannot be concluded from an empty result here.";
+        }
+      }
+    }
+
     await gateway.lens.present({ content: JSON.stringify({
       kind: "au-contract-deepdive",
       cnId, found: true,
@@ -132,6 +174,7 @@ spec:
         register: "What the Commonwealth published. Facts.",
         context: "Other GOVERNMENT registers joined to it. Facts, from a different register.",
         coverage: "Third-party press matching a search phrase. NOT evidence about this contract.",
+        parliament: "Pages of the parliamentary record (Hansard, Questions on Notice, committees) matching a search phrase. A real accountability artefact when present — still not evidence about this contract.",
       },
       register: {
         title: head.title, description: head.description,
@@ -178,15 +221,31 @@ spec:
         note: coverageNote,
         results: coverage.map(x => ({ title: x.title, url: x.url, snippet: x.snippet, age: x.age || null })),
       },
-      method: "Three tiers fetched separately and never merged: the register's own versions; other " +
-              "government registers joined by name and code; and a press search whose scope is stated.",
+      parliament: {
+        status: parliament.status,
+        note: parliament.note,
+        byContractId: {
+          searchPhrase: cnId,
+          basis: "The notice id itself — Questions on Notice cite CN ids verbatim, so a hit here is close to a direct reference.",
+          results: parliament.byCn.map(x => ({ title: x.title, url: x.url, snippet: x.snippet, age: x.age || null })),
+        },
+        byNames: {
+          searchPhrase: phrase || null,
+          basis: "Supplier + agency names — broad by construction; a match may concern anything about either party.",
+          results: parliament.byNames.map(x => ({ title: x.title, url: x.url, snippet: x.snippet, age: x.age || null })),
+        },
+      },
+      method: "Four tiers fetched separately and never merged: the register's own versions; other " +
+              "government registers joined by name and code; a press search whose scope is stated; and " +
+              "an aph.gov.au-scoped search of the parliamentary record, sharpest phrase first.",
       limits: [
         "Press results match a phrase, not a contract. Presence of an article is not evidence about this procurement, and absence is not evidence of anything.",
+        "Parliamentary results come from a web index scoped to aph.gov.au, which holds less than ParlInfo's own search — an empty result never supports 'this was not raised in Parliament'.",
         "AusTender records commitments, not expenditure; an amended value is a recorded change to an agreement.",
         "A stated ground or exemption is the agency's own words, reported verbatim and never assessed.",
         "Agency context depends on seeded reference data; an unresolved name says so rather than guessing.",
       ],
-      source: "AusTender OCDS API (CC BY 3.0 AU) · AGOR (CC BY 3.0 AU, seeded) · Brave Search (third-party, keyed)",
+      source: "AusTender OCDS API (CC BY 3.0 AU) · AGOR (CC BY 3.0 AU, seeded) · Brave Search (third-party, keyed; press + aph.gov.au-scoped parliamentary search)",
     }) });
     }
 presentation:

@@ -75,11 +75,11 @@
     "amendmentCount": 3
    },
    "descriptionNote": null,
-   "method": "Every row is a version AusTender published; growth is last over first. The description scan is lexical and quoted \u2014 no model produces any figure or claim here.",
+   "method": "Every row is a version AusTender published; growth is last over first. The description scan is lexical and quoted — no model produces any figure or claim here.",
    "limits": [
     "AusTender records contract COMMITMENTS: an amount is the value as agreed, not expenditure.",
     "The consultancy and confidentiality flags shown on the AusTender website are not in this API.",
-    "A limited-tender reason is the agency's stated ground, reported verbatim \u2014 a recorded reason, not a finding."
+    "A limited-tender reason is the agency's stated ground, reported verbatim — a recorded reason, not a finding."
    ],
    "source": "AusTender OCDS API (CC BY 3.0 AU)",
    "austenderUrl": "https://www.tenders.gov.au/Search/KeywordSearch?keyword=CN3942784"
@@ -140,13 +140,13 @@
     ],
     "sentence": "Final Instalment of $97,587.11 (GST inclusive) repaid to department.",
     "structuredValueEverChanged": false,
-    "note": "The register's description text mentions a money movement. Where the recorded value never changed, the description is the ONLY place the register carries it \u2014 quoted verbatim above; this lens adds no interpretation."
+    "note": "The register's description text mentions a money movement. Where the recorded value never changed, the description is the ONLY place the register carries it — quoted verbatim above; this lens adds no interpretation."
    },
-   "method": "Every row is a version AusTender published; growth is last over first. The description scan is lexical and quoted \u2014 no model produces any figure or claim here.",
+   "method": "Every row is a version AusTender published; growth is last over first. The description scan is lexical and quoted — no model produces any figure or claim here.",
    "limits": [
     "AusTender records contract COMMITMENTS: an amount is the value as agreed, not expenditure.",
     "The consultancy and confidentiality flags shown on the AusTender website are not in this API.",
-    "A limited-tender reason is the agency's stated ground, reported verbatim \u2014 a recorded reason, not a finding."
+    "A limited-tender reason is the agency's stated ground, reported verbatim — a recorded reason, not a finding."
    ],
    "source": "AusTender OCDS API (CC BY 3.0 AU)",
    "austenderUrl": "https://www.tenders.gov.au/Search/KeywordSearch?keyword=CN4118426"
@@ -161,7 +161,7 @@
   "minAmount": 0,
   "status": "PARTIAL",
   "warnings": [
-   "Fetch capped at 200 of the day's releases in this baked demo \u2014 a sample, not the period."
+   "Fetch capped at 200 of the day's releases in this baked demo — a sample, not the period."
   ],
   "joins": [
    {
@@ -169,13 +169,13 @@
     "role": "Contract notices first published in the window",
     "licence": "CC BY 3.0 AU, keyless",
     "ok": true,
-    "detail": "200 release(s) fetched (CAPPED \u2014 sample, not the period)"
+    "detail": "200 release(s) fetched (CAPPED — sample, not the period)"
    }
   ],
   "totals": {
    "fetchedCount": 200,
    "fetchedValue": 92156418,
-   "coverage": "the fetched releases only \u2014 the window has more; narrow it or split it"
+   "coverage": "the fetched releases only — the window has more; narrow it or split it"
   },
   "byMethod": {
    "open": {
@@ -524,8 +524,8 @@
   ],
   "method": "Contract notices FIRST PUBLISHED in the window. Values are commitments as published, summed arithmetically.",
   "limits": [
-   "The source filters by nothing but the window itself \u2014 supplier/agency cuts are computed after the fetch.",
-   "A capped fetch is a sample and is labelled PARTIAL \u2014 totals then cover the fetched releases, not the period.",
+   "The source filters by nothing but the window itself — supplier/agency cuts are computed after the fetch.",
+   "A capped fetch is a sample and is labelled PARTIAL — totals then cover the fetched releases, not the period.",
    "Top-supplier/agency rows are grouped case-insensitively across the register's spelling variants; each grouped row lists the spellings it merged."
   ],
   "source": "AusTender OCDS API (CC BY 3.0 AU)",
@@ -1349,7 +1349,7 @@
     }
    ],
    "withoutPostcode": 12,
-   "basis": "supplier's registered postcode \u2014 not where the work is delivered"
+   "basis": "supplier's registered postcode — not where the work is delivered"
   }
  },
  "lobbying": {
@@ -1359,7 +1359,7 @@
    "status": "COMPLETE",
    "warnings": [],
    "matchBasis": {
-    "kind": "NAME MATCH \u2014 the register publishes no client ABNs",
+    "kind": "NAME MATCH — the register publishes no client ABNs",
     "suppliedName": "IBM Australia Ltd",
     "normalisedTo": "ibm",
     "matchedEntries": [],
@@ -1378,7 +1378,7 @@
    ],
    "method": "Client rows from the register index matched by conservative name normalisation.",
    "limits": [
-    "The register covers THIRD-PARTY lobbyists only \u2014 in-house lobbyists are exempt by design, so 'no match' never means 'does not lobby'."
+    "The register covers THIRD-PARTY lobbyists only — in-house lobbyists are exempt by design, so 'no match' never means 'does not lobby'."
    ],
    "source": "Australian Government Register of Lobbyists (lobbyists.ag.gov.au)"
   }
@@ -5591,7 +5591,7 @@
    "from": "2026-07-28T00:00:00Z",
    "to": "2026-07-29T00:00:00Z"
   },
-  "coverage": "Ranked over the 20 largest amended contracts (by current value) of 21 that amended in the baked day \u2014 real register data, fetched 2026-08-01.",
+  "coverage": "Ranked over the 20 largest amended contracts (by current value) of 21 that amended in the baked day — real register data, fetched 2026-08-01.",
   "entries": [
    {
     "cnId": "CN4228545",
@@ -5905,7 +5905,8 @@
    "tiers": {
     "register": "What the Commonwealth published. Facts.",
     "context": "Other GOVERNMENT registers joined to it. Facts, from a different register.",
-    "coverage": "Third-party press matching a search phrase. NOT evidence about this contract."
+    "coverage": "Third-party press matching a search phrase. NOT evidence about this contract.",
+    "parliament": "Pages of the parliamentary record (Hansard, Questions on Notice, committees) matching a search phrase. A real accountability artefact when present — still not evidence about this contract."
    },
    "register": {
     "title": "4400074032",
@@ -5932,7 +5933,7 @@
    "coverage": {
     "status": "COMPLETE",
     "searchPhrase": "Deloitte Department of Employment and Workplace Relations",
-    "phraseBasis": "Composed from the supplier and agency names. A JUDGMENT by this lens, not a register field \u2014 and a broad one: a large supplier's name surfaces stories that have nothing to do with this contract.",
+    "phraseBasis": "Composed from the supplier and agency names. A JUDGMENT by this lens, not a register field — and a broad one: a large supplier's name surfaces stories that have nothing to do with this contract.",
     "note": null,
     "results": [
      {
@@ -5950,7 +5951,7 @@
      {
       "title": "Deloitte report suspected of containing AI invented quote",
       "url": "https://www.afr.com/companies/professional-services/deloitte-report-suspected-of-ai-invented-quote-from-robo-debt-case-20250825-p5mpjj",
-      "snippet": "On Friday The Australian Financial Review revealed that Deloitte\u2019s report for the Department of Employment and Workplace Relations on welfare compliance systems, which cost taxpayers $439,000, contained at least half a d",
+      "snippet": "On Friday The Australian Financial Review revealed that Deloitte’s report for the Department of Employment and Workplace Relations on welfare compliance systems, which cost taxpayers $439,000, contained at least half a d",
       "age": "August 27, 2025"
      },
      {
@@ -5968,7 +5969,7 @@
      {
       "title": "AI not yet driving large-scale job loss in Australia, department says",
       "url": "https://www.themandarin.com.au/315927-ai-not-yet-driving-large-scale-job-loss-in-australia-department-says/",
-      "snippet": "A new Department of Employment and Workplace Relations report has found no evidence that AI has caused broad disruption to Australia\u2019s labour market.",
+      "snippet": "A new Department of Employment and Workplace Relations report has found no evidence that AI has caused broad disruption to Australia’s labour market.",
       "age": "3 weeks ago"
      }
     ]
@@ -5976,9 +5977,24 @@
    "limits": [
     "Press results match a phrase, not a contract. Presence of an article is not evidence about this procurement, and absence is not evidence of anything.",
     "AusTender records commitments, not expenditure.",
-    "Agency context depends on seeded reference data; an unresolved name says so rather than guessing."
+    "Agency context depends on seeded reference data; an unresolved name says so rather than guessing.",
+    "Parliamentary results come from a web index scoped to aph.gov.au, which holds less than ParlInfo's own search — an empty result never supports 'this was not raised in Parliament'."
    ],
-   "source": "AusTender OCDS API (CC BY 3.0 AU) \u00b7 AGOR (CC BY 3.0 AU, seeded) \u00b7 Brave Search (third-party, keyed)"
+   "source": "AusTender OCDS API (CC BY 3.0 AU) · AGOR (CC BY 3.0 AU, seeded) · Brave Search (third-party, keyed)",
+   "parliament": {
+    "status": "COMPLETE",
+    "note": "No indexed page of the parliamentary record matched either phrase. That is a fact about this web index and these phrases — ParlInfo's own search holds more, and 'never raised in Parliament' cannot be concluded from an empty result here.",
+    "byContractId": {
+     "searchPhrase": "CN4118426",
+     "basis": "The notice id itself — Questions on Notice cite CN ids verbatim, so a hit here is close to a direct reference.",
+     "results": []
+    },
+    "byNames": {
+     "searchPhrase": "DELOITTE TOUCHE TOHMATSU Department of Employment and Workplace Relations",
+     "basis": "Supplier + agency names — broad by construction; a match may concern anything about either party.",
+     "results": []
+    }
+   }
   }
  },
  "themes": {
@@ -5996,7 +6012,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6008,7 +6024,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6020,7 +6036,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6032,7 +6048,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6044,7 +6060,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6056,7 +6072,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6068,7 +6084,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6080,7 +6096,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    },
@@ -6092,7 +6108,7 @@
     "judged": {
      "topics": null,
      "clusters": null,
-     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world \u2014 this standalone demo shows the arithmetic tier only.",
+     "digest": "Model reductions (themes, clusters, digest, vaguest-description) run in the engine's LLM aggregations and need a live world — this standalone demo shows the arithmetic tier only.",
      "vaguestDescriptionCn": null
     }
    }
@@ -6107,7 +6123,7 @@
     "Australian Research Council",
     "Australian Transaction Reports and Analysis Centre"
    ],
-   "note": "Value whose agency name matched no seeded agency \u2014 reported separately so the portfolio totals are never mistaken for the whole window."
+   "note": "Value whose agency name matched no seeded agency — reported separately so the portfolio totals are never mistaken for the whole window."
   },
   "limits": [
    "Descriptions are the agencies' own words; a portfolio that writes terse descriptions will look terse here.",
@@ -6123,7 +6139,7 @@
   },
   "status": "PARTIAL",
   "warnings": [
-   "Baked demo over 200 releases \u2014 a sample, not the period."
+   "Baked demo over 200 releases — a sample, not the period."
   ],
   "totals": {
    "contracts": 200,
@@ -6221,7 +6237,7 @@
    }
   ],
   "limits": [
-   "A ground or exemption is the AGENCY'S STATED REASON as published \u2014 this counts use and cost, and asserts nothing about appropriateness.",
+   "A ground or exemption is the AGENCY'S STATED REASON as published — this counts use and cost, and asserts nothing about appropriateness.",
    "Shares are of the fetched window's value.",
    "A capped fetch is a sample and is labelled PARTIAL."
   ],
@@ -6248,19 +6264,19 @@
     "shareOfValuePct": 4.0
    },
    {
-    "band": "$100k \u2013 $1M",
+    "band": "$100k – $1M",
     "contracts": 47,
     "value": 14600575,
     "shareOfValuePct": 15.8
    },
    {
-    "band": "$1M \u2013 $10M",
+    "band": "$1M – $10M",
     "contracts": 15,
     "value": 41739610,
     "shareOfValuePct": 45.3
    },
    {
-    "band": "$10M \u2013 $100M",
+    "band": "$10M – $100M",
     "contracts": 2,
     "value": 32144363,
     "shareOfValuePct": 34.9
@@ -6464,7 +6480,7 @@
     "shareOfValuePct": 0.0
    }
   ],
-  "sectorNote": "ILLUSTRATIVE in this standalone demo \u2014 assigned by keyword so the chart has shape offline. In a live world this cut is ai.classify() reading each description, and is labelled as a model judgment there too.",
+  "sectorNote": "ILLUSTRATIVE in this standalone demo — assigned by keyword so the chart has shape offline. In a live world this cut is ai.classify() reading each description, and is labelled as a model judgment there too.",
   "limits": [
    "Category titles are the government's own; the match level (exact/family/segment) is stated per row.",
    "Values are commitments as published, not expenditure."
