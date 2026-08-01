@@ -1,0 +1,55 @@
+# RemoteRepositories over the federal Register of Lobbyists.
+#
+# The register INDEX (/statistics/register — every firm, lobbyist and client row in one ~720KB
+# response) is deliberately NOT wired as a producer: its rows carry no usable identity property
+# (client names repeat across firms), so materialising them would merge distinct rows. Lenses
+# reach it directly as gateway.agLobbyists.registerIndex() and match names in script, where the
+# match basis can be reported honestly. The two producers below serve the graph-shaped half:
+# firm detail and the register's former-representative declarations, keyed by the firm GUID the
+# index supplies.
+
+- name: firmSummaryById
+  kind: remote
+  operation: organisationProfile
+  records: "$.summary"
+  keyArgs: [id]
+  echoKeyAs: firmId
+  project:
+    name: displayName
+    tradingName: tradingName
+    abn: abn
+    registeredOn: registeredOn
+    modifiedOn: modifiedOn
+    deregistered: isDeregistered
+    dateDeregistered: dateDeregistered
+  # The register changes on registration events, not by the hour.
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+  cost:
+    bucket: "ag-lobbyists"
+    rate: "5/sec"
+    yield: high
+
+- name: firmLobbyistsById
+  kind: remote
+  operation: organisationProfile
+  records: "$.lobbyists[*]"
+  keyArgs: [id]
+  echoKeyAs: firmId
+  # lobbyistKey doubles the person's registered name because the profile rows carry no id of
+  # their own (id is literally null in the payload). Two people with the same name at DIFFERENT
+  # firms therefore merge into one node — a real, small name-collision risk that a lens
+  # aggregating per-firm counts must count via the REGISTERS edge (firmId), never by node.
+  project:
+    lobbyistKey: displayName
+    name: displayName
+    position: position
+    isFormerRepresentative: isFormerRepresentative
+    previousPosition: previousPosition
+    previousPositionOther: previousPositionOther
+    cessationDate: cessationDate
+    datePublished: datePublished
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+  cost:
+    bucket: "ag-lobbyists"
+    rate: "5/sec"
+    yield: high

@@ -1,0 +1,109 @@
+# Virtual types over the AusTender OCDS feed. Nothing is mirrored — a traversal from a pinned
+# anchor fetches the slice the query needs and rolls it back afterwards. Two anchors, because the
+# source serves exactly two access paths (by id, by date window) and nothing else: any agency- or
+# supplier-shaped question anchors a window and narrows AFTER the fetch.
+
+- name: ContractVersion
+  visibility: internal
+  description: >-
+    One published version of a Commonwealth contract notice — the original release or one
+    amendment — fetched on demand from the AusTender OCDS feed by anchoring a ContractNotice by
+    CN id. The sequence of versions IS the contract's value history: each carries the value as of
+    that version and the date it was published. CN3942784 has four ($402.5M → $736.3M).
+
+    Three things this type records and must never be made to imply. First, `amount` is the
+    contracted value AS AMENDED, not expenditure — AusTender records commitments, and an amended
+    value is a recorded fact about the agreement, never evidence of anything beyond itself.
+    Second, `limitedTenderReason` is the agency's STATED ground under the Commonwealth
+    Procurement Rules, reported verbatim — a recorded reason, not an assessment of it. Third,
+    `description` is free text that sometimes records what the structured fields never carry
+    (repayments, variations, scope notes): CN4118426's value was never amended while its
+    description states a $97,587.11 repayment. An answer about how a contract changed must read
+    both, and must attribute the description's words to the description.
+  properties:
+    releaseId:
+      metadata: { identity: "true" }
+    cnId: "The base CN id on every version, amendments included — how versions join their notice."
+    releaseDate: "When this version was published (ISO). The x-axis of the value curve."
+    tags: "contract for the original notice; contractAmendment for later versions."
+    amendmentIds: "The amendment's own id (e.g. CN3942784-A3) on amendment versions; absent on the original."
+    title: "The register's title field — usually an internal reference, not a human title."
+    description: "Free text as published. Sometimes records repayments/variations the structured fields never carry."
+    amount: "Contracted value in AUD as of this version. A commitment, not expenditure."
+    currency: "Currency code, AUD in practice."
+    dateSigned: "When the contract was signed (ISO)."
+    startDate: "Contract period start (ISO)."
+    endDate: "Contract period end (ISO)."
+    supplierName: "Supplier legal name, from the award record."
+    supplierAbn: "Supplier ABN (digits only) where the register carries one — absent is a register fact, not a fetch failure."
+    agencyName: "The procuring Commonwealth entity."
+    agencyAbn: "The procuring entity's ABN where carried."
+    supplierLocality: "Supplier suburb/locality as registered."
+    supplierRegion: "Supplier state/region as registered."
+    procurementMethod: "open | selective | limited — how the procurement was conducted."
+    procurementMethodDetails: "The register's label for the method."
+    limitedTenderReason: "Verbatim stated CPR ground when the method was limited tender; absent otherwise."
+    unspscCodes: "UNSPSC category codes on the contract items."
+  virtualJoins:
+    - anchorLabel: ContractNotice
+      relationship: HAS_VERSION
+      keyField: cnId
+      recordKeyField: cnId
+      producer: versionsById
+      description: >-
+        Every published version of one contract notice, keyed by the base CN id (CN3942784 —
+        never the -A1 amendment form, which returns nothing). ORDER BY releaseDate gives the
+        value curve; the last version's amount over the first's is the growth through amendments.
+
+- name: ContractRelease
+  visibility: internal
+  description: >-
+    One release row from a date-window scan of the AusTender feed — same record shape as
+    ContractVersion, reached by window instead of by id. Two windows exist and they answer
+    different questions: a PublicationWindow holds contracts FIRST PUBLISHED in the period ("what
+    was signed"); a ChangeWindow holds releases LAST MODIFIED in the period, which is where
+    amendment releases surface ("what changed"). The feed cannot filter by agency, supplier, ABN
+    or text — those narrows happen after the fetch, and a capped walk is reported as PARTIAL,
+    never passed off as the whole period.
+  properties:
+    releaseId:
+      metadata: { identity: "true" }
+    cnId: "The base CN id — pin a ContractNotice with it to pull the full version chain."
+    releaseDate: "When this release was published (ISO)."
+    tags: "contract | contractAmendment — in a ChangeWindow, the amendment marker."
+    title: "The register's title field."
+    description: "Free text as published."
+    amount: "Contracted value in AUD as of this release."
+    currency: "Currency code."
+    dateSigned: "When signed (ISO)."
+    startDate: "Contract period start (ISO)."
+    endDate: "Contract period end (ISO)."
+    supplierName: "Supplier legal name, from the award record."
+    supplierAbn: "Supplier ABN where carried."
+    agencyName: "The procuring Commonwealth entity."
+    agencyAbn: "The procuring entity's ABN where carried."
+    supplierLocality: "Supplier suburb/locality."
+    supplierRegion: "Supplier state/region."
+    procurementMethod: "open | selective | limited."
+    procurementMethodDetails: "The register's label for the method."
+    limitedTenderReason: "Verbatim stated CPR ground when limited; absent otherwise."
+    unspscCodes: "UNSPSC category codes."
+  virtualJoins:
+    - anchorLabel: PublicationWindow
+      relationship: PUBLISHED
+      keyField: window
+      recordKeyField: publishedWindow
+      producer: releasesPublishedInWindow
+      description: >-
+        Contract notices first published in an ISO window, keyed as 'from/to' — e.g.
+        '2026-07-01T00:00:00Z/2026-07-28T00:00:00Z'. New contracts only; amendments to older
+        contracts never appear here. ~100-400 releases per business day feed-wide, 100 per page.
+    - anchorLabel: ChangeWindow
+      relationship: CHANGED
+      keyField: window
+      recordKeyField: changedWindow
+      producer: releasesModifiedInWindow
+      description: >-
+        Releases last modified in an ISO window, keyed as 'from/to'. This is the amendment feed:
+        WHERE 'contractAmendment' IN r.tags isolates the contracts whose value or terms changed
+        in the period; pin each cnId as a ContractNotice to get its before/after curve.

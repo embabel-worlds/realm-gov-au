@@ -1,0 +1,466 @@
+{
+ "passports": {
+  "CN3942784": {
+   "kind": "au-contract-passport",
+   "cnId": "CN3942784",
+   "found": true,
+   "status": "COMPLETE",
+   "warnings": [],
+   "joins": [
+    {
+     "source": "AusTender OCDS API",
+     "role": "All published versions of the notice",
+     "licence": "CC BY 3.0 AU, keyless",
+     "ok": true,
+     "detail": "4 version(s)"
+    }
+   ],
+   "contract": {
+    "title": "D427036550",
+    "description": "Provision of IBM Software, Hardware and Services",
+    "supplierName": "IBM Australia Ltd",
+    "supplierAbn": "79000024733",
+    "supplierLocality": "Pennant Hills",
+    "supplierRegion": "NSW",
+    "agencyName": "Services Australia",
+    "agencyAbn": "90794605008",
+    "dateSigned": "2023-01-27T05:50:25Z",
+    "startDate": "2022-12-22T13:00:00Z",
+    "endDate": "2030-06-29T14:00:00Z",
+    "procurementMethod": "limited",
+    "procurementMethodDetails": "Limited tender",
+    "limitedTenderReason": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
+    "currency": "AUD",
+    "unspscCodes": [
+     "81110000"
+    ]
+   },
+   "versions": [
+    {
+     "releaseDate": "2023-01-27T05:50:25Z",
+     "amount": 402526031.59,
+     "isAmendment": false,
+     "amendmentIds": []
+    },
+    {
+     "releaseDate": "2026-01-15T02:48:37Z",
+     "amount": 430026031.62,
+     "isAmendment": true,
+     "amendmentIds": [
+      "CN3942784-A1"
+     ]
+    },
+    {
+     "releaseDate": "2026-01-15T02:48:37Z",
+     "amount": 524154321.92,
+     "isAmendment": true,
+     "amendmentIds": [
+      "CN3942784-A2"
+     ]
+    },
+    {
+     "releaseDate": "2026-01-15T02:48:37Z",
+     "amount": 736309011.9,
+     "isAmendment": true,
+     "amendmentIds": [
+      "CN3942784-A3"
+     ]
+    }
+   ],
+   "valueCurve": {
+    "originalAmount": 402526031.59,
+    "currentAmount": 736309011.9,
+    "growthPct": 82.9,
+    "amendmentCount": 3
+   },
+   "descriptionNote": null,
+   "method": "Every row is a version AusTender published; growth is last over first. The description scan is lexical and quoted \u2014 no model produces any figure or claim here.",
+   "limits": [
+    "AusTender records contract COMMITMENTS: an amount is the value as agreed, not expenditure.",
+    "The consultancy and confidentiality flags shown on the AusTender website are not in this API.",
+    "A limited-tender reason is the agency's stated ground, reported verbatim \u2014 a recorded reason, not a finding."
+   ],
+   "source": "AusTender OCDS API (CC BY 3.0 AU)"
+  },
+  "CN4118426": {
+   "kind": "au-contract-passport",
+   "cnId": "CN4118426",
+   "found": true,
+   "status": "COMPLETE",
+   "warnings": [],
+   "joins": [
+    {
+     "source": "AusTender OCDS API",
+     "role": "All published versions of the notice",
+     "licence": "CC BY 3.0 AU, keyless",
+     "ok": true,
+     "detail": "1 version(s)"
+    }
+   ],
+   "contract": {
+    "title": "4400074032",
+    "description": "Assurance Review to support the Targeted Compliance Framework. Final Instalment of $97,587.11 (GST inclusive) repaid to department.",
+    "supplierName": "DELOITTE TOUCHE TOHMATSU",
+    "supplierAbn": "74490121060",
+    "supplierLocality": "MELBOURNE",
+    "supplierRegion": "VIC",
+    "agencyName": "Department of Employment and Workplace Relations",
+    "agencyAbn": "96584957427",
+    "dateSigned": "2024-12-20T05:16:42Z",
+    "startDate": "2024-12-22T13:00:00Z",
+    "endDate": "2025-07-03T14:00:00Z",
+    "procurementMethod": "open",
+    "procurementMethodDetails": "Open tender",
+    "limitedTenderReason": null,
+    "currency": "AUD",
+    "unspscCodes": [
+     "80100000"
+    ]
+   },
+   "versions": [
+    {
+     "releaseDate": "2024-12-20T05:16:42Z",
+     "amount": 439142.0,
+     "isAmendment": false,
+     "amendmentIds": []
+    }
+   ],
+   "valueCurve": {
+    "originalAmount": 439142.0,
+    "currentAmount": 439142.0,
+    "growthPct": null,
+    "amendmentCount": 0
+   },
+   "descriptionNote": {
+    "matchedWords": [
+     "repaid"
+    ],
+    "sentence": "Final Instalment of $97,587.11 (GST inclusive) repaid to department.",
+    "structuredValueEverChanged": false,
+    "note": "The register's description text mentions a money movement. Where the recorded value never changed, the description is the ONLY place the register carries it \u2014 quoted verbatim above; this lens adds no interpretation."
+   },
+   "method": "Every row is a version AusTender published; growth is last over first. The description scan is lexical and quoted \u2014 no model produces any figure or claim here.",
+   "limits": [
+    "AusTender records contract COMMITMENTS: an amount is the value as agreed, not expenditure.",
+    "The consultancy and confidentiality flags shown on the AusTender website are not in this API.",
+    "A limited-tender reason is the agency's stated ground, reported verbatim \u2014 a recorded reason, not a finding."
+   ],
+   "source": "AusTender OCDS API (CC BY 3.0 AU)"
+  }
+ },
+ "window": {
+  "kind": "au-window-signed",
+  "window": {
+   "from": "2026-07-28T00:00:00Z",
+   "to": "2026-07-29T00:00:00Z"
+  },
+  "minAmount": 0,
+  "status": "PARTIAL",
+  "warnings": [
+   "Fetch capped at 200 of the day's releases in this baked demo \u2014 a sample, not the period."
+  ],
+  "joins": [
+   {
+    "source": "AusTender OCDS API",
+    "role": "Contract notices first published in the window",
+    "licence": "CC BY 3.0 AU, keyless",
+    "ok": true,
+    "detail": "200 release(s) fetched (CAPPED \u2014 sample, not the period)"
+   }
+  ],
+  "totals": {
+   "fetchedCount": 200,
+   "fetchedValue": 92156418,
+   "coverage": "the fetched releases only \u2014 the window has more; narrow it or split it"
+  },
+  "byMethod": {
+   "open": {
+    "count": 68,
+    "value": 83871096.01000002
+   },
+   "limited": {
+    "count": 132,
+    "value": 8285322.120000001
+   }
+  },
+  "topContracts": [
+   {
+    "cnId": "CN4264791",
+    "amount": 16304362.98,
+    "supplierName": "DATA #3 LIMITED",
+    "agencyName": "Administrative Review Tribunal",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Microsoft Agency Enterprise Enrolment (AEE)"
+   },
+   {
+    "cnId": "CN4264777",
+    "amount": 15840000.0,
+    "supplierName": "TETRA TECH INTERNATIONAL DEVELOPMENT PTY LTD",
+    "agencyName": "Department of Foreign Affairs and Trade - Australian Aid Program",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Australia Awards Philippines (Philippines)"
+   },
+   {
+    "cnId": "CN4264800",
+    "amount": 8191040.0,
+    "supplierName": "Eastern Property Services Pty Ltd",
+    "agencyName": "Australian War Memorial",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Main Building Completion Contract"
+   },
+   {
+    "cnId": "CN4264811",
+    "amount": 7174421.11,
+    "supplierName": "Data#3 Limited",
+    "agencyName": "Australian Pesticides and Veterinary Medicines Authority",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Microsoft Volume Sourcing Agreement 6 - Enterprise enrolment"
+   },
+   {
+    "cnId": "CN4264799",
+    "amount": 6600000.0,
+    "supplierName": "PALLADIUM INTERNATIONAL PTY LTD",
+    "agencyName": "Department of Foreign Affairs and Trade - Australian Aid Program",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Quad Infrastructure Fellowships  (Asia Pacific)"
+   },
+   {
+    "cnId": "CN4264830",
+    "amount": 3848362.26,
+    "supplierName": "Svitzer Australia Pty Ltd",
+    "agencyName": "Australian Maritime Safety Authority",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "NSW ETC 2 - Towage"
+   },
+   {
+    "cnId": "CN4264792",
+    "amount": 3300000.0,
+    "supplierName": "DATA #3 LIMITED",
+    "agencyName": "Administrative Review Tribunal",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Expenditure for Azure Services FY26/27"
+   },
+   {
+    "cnId": "CN4264539",
+    "amount": 2289513.6,
+    "supplierName": "AURIZN DEFENCE PTY LTD",
+    "agencyName": "Department of Defence",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "ICT Services"
+   },
+   {
+    "cnId": "CN4264668",
+    "amount": 1473162.55,
+    "supplierName": "WILSONS SECURITY PTY LTD",
+    "agencyName": "Department of Finance",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Security Guarding and Concierge Services"
+   },
+   {
+    "cnId": "CN4264488",
+    "amount": 1235542.0,
+    "supplierName": "JONES LANG LASALLE (ACT) AAT TRUST",
+    "agencyName": "Administrative Review Tribunal",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "JLL PoE FY26-27"
+   },
+   {
+    "cnId": "CN4264569",
+    "amount": 1203000.0,
+    "supplierName": "BABCOCK PTY LTD",
+    "agencyName": "Department of Defence",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Security Equipment"
+   },
+   {
+    "cnId": "CN4264523",
+    "amount": 1099180.42,
+    "supplierName": "TVN ON-COUNTRY PTY LTD",
+    "agencyName": "Department of Defence",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Project Management"
+   },
+   {
+    "cnId": "CN4264661",
+    "amount": 1090784.0,
+    "supplierName": "Cbus Property 171 Collins Street Pty Ltd",
+    "agencyName": "Department of Finance",
+    "procurementMethod": "limited",
+    "limitedTenderReason": null,
+    "description": "Electorate Office Lease"
+   },
+   {
+    "cnId": "CN4264796",
+    "amount": 1079221.0,
+    "supplierName": "DATA #3 LIMITED",
+    "agencyName": "Administrative Review Tribunal",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "VSA6 Server and Cloud Enrolment (SCE)"
+   },
+   {
+    "cnId": "CN4264521",
+    "amount": 1078511.32,
+    "supplierName": "JACOBS GROUP (AUSTRALIA) PTY LTD",
+    "agencyName": "Department of Defence",
+    "procurementMethod": "open",
+    "limitedTenderReason": null,
+    "description": "Specialist Communications Support"
+   }
+  ],
+  "topSuppliers": [
+   {
+    "name": "DATA #3 LIMITED",
+    "count": 3,
+    "value": 20683583.98
+   },
+   {
+    "name": "TETRA TECH INTERNATIONAL DEVELOPMENT PTY LTD",
+    "count": 1,
+    "value": 15840000.0
+   },
+   {
+    "name": "Eastern Property Services Pty Ltd",
+    "count": 1,
+    "value": 8191040.0
+   },
+   {
+    "name": "Data#3 Limited",
+    "count": 1,
+    "value": 7174421.11
+   },
+   {
+    "name": "PALLADIUM INTERNATIONAL PTY LTD",
+    "count": 1,
+    "value": 6600000.0
+   },
+   {
+    "name": "Svitzer Australia Pty Ltd",
+    "count": 1,
+    "value": 3848362.26
+   },
+   {
+    "name": "AURIZN DEFENCE PTY LTD",
+    "count": 1,
+    "value": 2289513.6
+   },
+   {
+    "name": "BABCOCK PTY LTD",
+    "count": 2,
+    "value": 1583000.01
+   },
+   {
+    "name": "WILSONS SECURITY PTY LTD",
+    "count": 1,
+    "value": 1473162.55
+   },
+   {
+    "name": "JONES LANG LASALLE (ACT) AAT TRUST",
+    "count": 1,
+    "value": 1235542.0
+   }
+  ],
+  "topAgencies": [
+   {
+    "name": "Department of Foreign Affairs and Trade - Australian Aid Program",
+    "count": 7,
+    "value": 23399909.200000003
+   },
+   {
+    "name": "Administrative Review Tribunal",
+    "count": 12,
+    "value": 23188336.61
+   },
+   {
+    "name": "Department of Defence",
+    "count": 138,
+    "value": 15905631.579999998
+   },
+   {
+    "name": "Australian War Memorial",
+    "count": 1,
+    "value": 8191040.0
+   },
+   {
+    "name": "Australian Pesticides and Veterinary Medicines Authority",
+    "count": 1,
+    "value": 7174421.11
+   },
+   {
+    "name": "Department of Finance",
+    "count": 10,
+    "value": 4624537.77
+   },
+   {
+    "name": "Australian Maritime Safety Authority",
+    "count": 1,
+    "value": 3848362.26
+   },
+   {
+    "name": "Department of Employment and Workplace Relations",
+    "count": 8,
+    "value": 2616526.88
+   },
+   {
+    "name": "Department of Industry, Science and Resources",
+    "count": 2,
+    "value": 790000.0
+   },
+   {
+    "name": "Australian Transaction Reports and Analysis Centre",
+    "count": 1,
+    "value": 524460.0
+   }
+  ],
+  "method": "Contract notices FIRST PUBLISHED in the window. Values are commitments as published, summed arithmetically.",
+  "limits": [
+   "The source filters by nothing but the window itself \u2014 supplier/agency cuts are computed after the fetch.",
+   "A capped fetch is a sample and is labelled PARTIAL \u2014 totals then cover the fetched releases, not the period."
+  ],
+  "source": "AusTender OCDS API (CC BY 3.0 AU)"
+ },
+ "lobbying": {
+  "IBM AUSTRALIA LTD": {
+   "kind": "au-supplier-lobbying",
+   "supplierName": "IBM Australia Ltd",
+   "status": "COMPLETE",
+   "warnings": [],
+   "matchBasis": {
+    "kind": "NAME MATCH \u2014 the register publishes no client ABNs",
+    "suppliedName": "IBM Australia Ltd",
+    "normalisedTo": "ibm",
+    "matchedEntries": [],
+    "note": "A client row matched by name is a name coincidence until a human confirms the entity. Absence of a match is absence FROM THE THIRD-PARTY REGISTER only."
+   },
+   "found": false,
+   "firms": [],
+   "joins": [
+    {
+     "source": "Register of Lobbyists index",
+     "role": "Client-name rows and their owning firms",
+     "licence": "AGD; API subdomain terms unverified",
+     "ok": true,
+     "detail": "2,522 client rows scanned, 0 matched"
+    }
+   ],
+   "method": "Client rows from the register index matched by conservative name normalisation.",
+   "limits": [
+    "The register covers THIRD-PARTY lobbyists only \u2014 in-house lobbyists are exempt by design, so 'no match' never means 'does not lobby'."
+   ],
+   "source": "Australian Government Register of Lobbyists (lobbyists.ag.gov.au)"
+  }
+ },
+ "bakedOn": "2026-08-01"
+}

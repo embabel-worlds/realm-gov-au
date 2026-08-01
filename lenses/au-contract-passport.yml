@@ -1,0 +1,135 @@
+id: au-contract-passport
+name: The life of one Commonwealth contract
+description: >-
+  Every published version of one AusTender contract notice — the value curve through its
+  amendments, who signed it, how it was procured (with the stated reason wherever the method was
+  limited tender), and anything the description text records that the structured fields never
+  carried. Every figure is the register's own; no model produces any number here.
+params:
+  - name: cnId
+    type: STRING
+    label: Contract notice id (e.g. CN3942784)
+    required: true
+    default: CN3942784
+spec:
+  kind: cypherscript
+  script: |
+    const cnId = String(lensArgs.cnId || "").trim().toUpperCase();
+
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
+        RETURN v.releaseId AS releaseId, v.releaseDate AS releaseDate, v.tags AS tags,
+               v.amendmentIds AS amendmentIds, v.amount AS amount, v.currency AS currency,
+               v.title AS title, v.description AS description, v.dateSigned AS dateSigned,
+               v.startDate AS startDate, v.endDate AS endDate,
+               v.supplierName AS supplierName, v.supplierAbn AS supplierAbn,
+               v.agencyName AS agencyName, v.agencyAbn AS agencyAbn,
+               v.supplierLocality AS supplierLocality, v.supplierRegion AS supplierRegion,
+               v.procurementMethod AS procurementMethod,
+               v.procurementMethodDetails AS procurementMethodDetails,
+               v.limitedTenderReason AS limitedTenderReason,
+               v.unspscCodes AS unspscCodes
+        ORDER BY v.releaseDate ASC
+      `,
+      params: JSON.stringify({ cnId }),
+    });
+    const versions = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = (r && r.warnings) || [];
+    const isFetchFailure = (w) => {
+      const t = (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED");
+    };
+    const failed = warnings.some(isFetchFailure);
+
+    // ZERO VERSIONS is two different answers and must render as two. A clean fetch with no
+    // releases means the register has no such notice (findById returns an empty list for an
+    // unknown id). A failed fetch means we do not know. Conflating them turns an outage into
+    // "this contract does not exist".
+    if (!versions.length) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-contract-passport",
+        cnId,
+        status: failed ? "FAILED" : "COMPLETE",
+        found: false,
+        note: failed
+          ? "The AusTender fetch did not complete — whether this notice exists is UNKNOWN."
+          : "AusTender's OCDS register has no notice with this id (coverage: contract notices of $10,000+ since 1 January 2013; ask with the base CN id, not the -A1 amendment form).",
+        warnings,
+        source: "AusTender OCDS API (CC BY 3.0 AU)",
+      }) });
+    } else {
+
+    // Arithmetic over the register's own versions. Values are serialized as strings.
+    const nums = versions.map(v => Number(v.amount)).filter(a => Number.isFinite(a));
+    const first = nums[0], last = nums[nums.length - 1];
+    const growthPct = (nums.length > 1 && first > 0)
+      ? Math.round(((last - first) / first) * 1000) / 10 : null;
+
+    // The description sometimes records money movements the structured value never shows —
+    // CN4118426's $97,587.11 repayment lives ONLY in its description while the recorded value
+    // never changed. This scan is LEXICAL and is presented as exactly that: "the description
+    // says X" with the sentence quoted, never a derived figure. No model, no interpretation —
+    // the reader reads the register's own words.
+    const MONEY_WORDS = ["repaid", "repayment", "refund", "reduced by", "returned to the department"];
+    const lastDesc = String(versions[versions.length - 1].description || "");
+    const flagged = MONEY_WORDS.filter(wd => lastDesc.toLowerCase().includes(wd));
+    const descriptionNote = flagged.length ? {
+      matchedWords: flagged,
+      sentence: (lastDesc.split(/(?<=\.)\s+/).find(s => flagged.some(wd => s.toLowerCase().includes(wd))) || lastDesc).trim(),
+      structuredValueEverChanged: nums.length > 1 && new Set(nums).size > 1,
+      note: "The register's description text mentions a money movement. Where the recorded value " +
+            "never changed, the description is the ONLY place the register carries it — quoted " +
+            "verbatim above; this lens adds no interpretation.",
+    } : null;
+
+    const head = versions[versions.length - 1];
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-contract-passport",
+      cnId,
+      found: true,
+      status: failed ? "PARTIAL" : "COMPLETE",
+      warnings,
+      queries: [{
+        title: "Version chain for one contract notice",
+        note: "One row per published version — the original and each amendment, value as amended.",
+        cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)\n" +
+                "RETURN v.releaseDate, v.amount, v.tags, v.amendmentIds ORDER BY v.releaseDate",
+      }],
+      joins: [{ source: "AusTender OCDS API", role: "All published versions of the notice",
+                licence: "CC BY 3.0 AU, keyless", ok: true,
+                detail: `${versions.length} version(s)` }],
+      contract: {
+        title: head.title, description: head.description,
+        supplierName: head.supplierName, supplierAbn: head.supplierAbn || null,
+        supplierLocality: head.supplierLocality, supplierRegion: head.supplierRegion,
+        agencyName: head.agencyName, agencyAbn: head.agencyAbn || null,
+        dateSigned: head.dateSigned, startDate: head.startDate, endDate: head.endDate,
+        procurementMethod: head.procurementMethod,
+        procurementMethodDetails: head.procurementMethodDetails,
+        limitedTenderReason: head.limitedTenderReason || null,
+        unspscCodes: head.unspscCodes || [],
+        currency: head.currency,
+      },
+      versions: versions.map(v => ({
+        releaseDate: v.releaseDate, amount: Number(v.amount),
+        isAmendment: (v.tags || []).includes("contractAmendment"),
+        amendmentIds: v.amendmentIds || [],
+      })),
+      valueCurve: { originalAmount: first, currentAmount: last, growthPct,
+                    amendmentCount: versions.length - 1 },
+      descriptionNote,
+      method: "Every row is a version AusTender published; growth is last over first. The " +
+              "description scan is lexical and quoted — no model produces any figure or claim here.",
+      limits: [
+        "AusTender records contract COMMITMENTS: an amount is the value as agreed, not expenditure.",
+        "The consultancy and confidentiality flags shown on the AusTender website are not in this API.",
+        "An absent supplier ABN is a register fact — some parties are published without one.",
+        "A limited-tender reason is the agency's stated ground, reported verbatim — a recorded reason, not a finding.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU)",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html

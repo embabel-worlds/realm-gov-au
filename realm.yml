@@ -1,0 +1,40 @@
+name: gov-au
+description: >-
+  Australian Government procurement realm — where the money went, from the Commonwealth's own
+  open registers, with no API key and no customer feed. Anchor a contract notice by its CN id
+  (`MATCH (n:ContractNotice {cnId:'CN3942784'})-[:HAS_VERSION]->(v:ContractVersion)`) and
+  traverse its full amendment history — every version's value, date and publisher record — or
+  anchor a publication window (`MATCH (w:PublicationWindow
+  {window:'2026-07-01T00:00:00Z/2026-07-28T00:00:00Z'})-[:PUBLISHED]->(r:ContractRelease)`) and
+  scan what the Commonwealth signed in that period: supplier and agency with ABNs, value,
+  procurement method, and the stated reason wherever a limited tender was used. The federal
+  Register of Lobbyists joins in by supplier name — which lobbying firms list a supplier as a
+  client, and which of their lobbyists are former government representatives. Sources are the
+  AusTender OCDS API (CC BY 3.0 AU) and the Attorney-General's Department lobbyist register API,
+  both open and unauthenticated. This realm reports what the registers record and never
+  characterises it: a limited tender, an amendment, or a lobbying relationship is a sourced fact,
+  not a finding.
+version: "0.1.0"
+author: "Embabel"
+url: https://github.com/embabel/realm-gov-au
+tags:
+  - government
+  - procurement
+  - australia
+  - open-data
+  - transparency
+
+# Retry, measured against both upstreams 2026-08-01. api.tenders.gov.au answered every probe in
+# 1-3s including two-page cursor walks; api.lobbyists.ag.gov.au served the full register index
+# (720KB) and profiles without a wobble. Neither showed the NSW hosts' transient-failure habit,
+# so this policy is insurance, not a workaround: two extra attempts on the transport failures
+# that mean "ask again", never on HTTP errors, and no single call may spend more than a fifth of
+# the remaining budget. (The key is retryOn: a bare `on` is boolean true in YAML 1.1.)
+retry:
+  attempts: 3
+  baseBackoff: 300ms
+  multiplier: 2.0
+  jitter: 0.25
+  maxBackoff: 2s
+  retryOn: [timeout, gateway, connection]
+  deadlineShare: 0.2

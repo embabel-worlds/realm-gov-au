@@ -1,0 +1,135 @@
+id: au-supplier-lobbying
+name: Is this supplier a registered lobbying client
+description: >-
+  Whether a name appears as a CLIENT on the federal Register of Lobbyists, which lobbying firms
+  list it, and the register's own former-government-representative declarations for those firms'
+  people. The register carries no client ABNs, so the supplier↔client join is a NAME match and is
+  reported as one, with the matched strings shown. Facts from the register, verbatim — a lobbying
+  relationship is a disclosure, never a finding.
+params:
+  - name: supplierName
+    type: STRING
+    label: Supplier / company name as it appears on contracts
+    required: true
+    default: IBM Australia Ltd
+spec:
+  kind: cypherscript
+  script: |
+    const supplierName = String(lensArgs.supplierName || "").trim();
+    // Normalisation for the name match: case, punctuation and the corporate suffixes that vary
+    // between registers (an AusTender "Pty Ltd" vs a register "Pty. Limited"). DELIBERATELY
+    // conservative — a normalised-exact or whole-word-prefix match only. Fuzzy scoring invents
+    // relationships; a missed variant is reported as "no entry matched", which the matchBasis
+    // field makes checkable by a human.
+    const norm = (s) => String(s || "").toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ")
+      .replace(/\b(pty|ltd|limited|proprietary|the|co|inc|plc|group|holdings|australia|australian)\b/g, " ")
+      .replace(/\s+/g, " ").trim();
+    const target = norm(supplierName);
+
+    let index, indexError = null;
+    try {
+      index = await gateway.agLobbyists.registerIndex({});
+    } catch (e) { indexError = String(e && e.message || e); }
+    const data = (index && index.data) || [];
+
+    if (indexError || !data.length) {
+      // NO REGISTER is not NO LOBBYING: an unreachable register means UNKNOWN, and an honest
+      // surface says so instead of rendering an all-clear.
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-supplier-lobbying", supplierName,
+        status: "FAILED",
+        note: "The Register of Lobbyists could not be fetched — whether this name appears as a client is UNKNOWN.",
+        warnings: indexError ? [indexError] : ["register index returned no rows"],
+        source: "Australian Government Register of Lobbyists",
+      }) });
+    } else {
+
+    const clientRows = data.filter(x => x.category === "Clients");
+    const matches = clientRows.filter(x => {
+      const n = norm(x.displayName);
+      return n === target || (target.length > 3 && (n === target || n.startsWith(target + " ") || target.startsWith(n + " ")));
+    });
+    // One firm can list the same client under several spellings; dedupe to firms.
+    const firms = {};
+    for (const m of matches) {
+      firms[m.organisationId] = firms[m.organisationId] ||
+        { firmId: m.organisationId, firmName: m.description, clientEntries: [] };
+      firms[m.organisationId].clientEntries.push(m.displayName);
+    }
+    const firmList = Object.values(firms).slice(0, 8);
+
+    const warnings = [];
+    const firmDetails = [];
+    for (const f of firmList) {
+      const r = await gateway.kg.query({
+        cypher: `
+          MATCH (o:LobbyistOrg {firmId:$firmId})-[:HAS_RECORD]->(fm:LobbyistFirm)
+          OPTIONAL MATCH (o)-[:REGISTERS]->(p:RegisteredLobbyist)
+          RETURN fm.name AS name, fm.abn AS abn, fm.registeredOn AS registeredOn,
+                 fm.deregistered AS deregistered,
+                 count(p) AS lobbyists,
+                 count(CASE WHEN p.isFormerRepresentative THEN 1 END) AS formerReps,
+                 collect(CASE WHEN p.isFormerRepresentative
+                              THEN {name: p.name, position: p.position,
+                                    previousPosition: coalesce(p.previousPosition, p.previousPositionOther),
+                                    cessationDate: p.cessationDate} END) AS formerRepPeople
+        `,
+        params: JSON.stringify({ firmId: f.firmId }),
+      });
+      const row = ((r && r.rows) ? r.rows : (r || []))[0] || {};
+      const w = (r && r.warnings) || [];
+      if (w.length) warnings.push({ firm: f.firmName, warnings: w });
+      firmDetails.push({
+        ...f,
+        registerRecord: row.name ? {
+          name: row.name, abn: row.abn || null, registeredOn: row.registeredOn,
+          deregistered: row.deregistered === true || row.deregistered === "true",
+          lobbyists: Number(row.lobbyists || 0),
+          formerReps: Number(row.formerReps || 0),
+          formerRepPeople: (row.formerRepPeople || []).filter(Boolean),
+        } : null,
+        profileFetched: !!row.name,
+      });
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-supplier-lobbying",
+      supplierName,
+      status: warnings.length ? "PARTIAL" : "COMPLETE",
+      warnings,
+      queries: [{
+        title: "Firm record and former-representative declarations",
+        note: "Counts are over the REGISTERS edges of each matched firm — the register's own declarations.",
+        cypher: "MATCH (o:LobbyistOrg {firmId:$firmId})-[:HAS_RECORD]->(fm:LobbyistFirm)\n" +
+                "OPTIONAL MATCH (o)-[:REGISTERS]->(p:RegisteredLobbyist)\n" +
+                "RETURN fm.name, fm.abn, count(p), count(CASE WHEN p.isFormerRepresentative THEN 1 END)",
+      }],
+      joins: [
+        { source: "Register of Lobbyists index", role: "Client-name rows and their owning firms",
+          licence: "AGD; API subdomain terms unverified", ok: true,
+          detail: `${clientRows.length} client rows scanned, ${matches.length} matched` },
+      ],
+      matchBasis: {
+        kind: "NAME MATCH — the register publishes no client ABNs",
+        suppliedName: supplierName,
+        normalisedTo: target,
+        matchedEntries: matches.map(m => m.displayName),
+        note: "A client row matched by name is a name coincidence until a human confirms the " +
+              "entity. Absence of a match is absence FROM THE THIRD-PARTY REGISTER only.",
+      },
+      found: firmDetails.length > 0,
+      firms: firmDetails,
+      method: "Client rows from the register index matched by conservative name normalisation; " +
+              "each matched firm's record and former-representative declarations fetched from " +
+              "its register profile. Everything reported is the register's own statement.",
+      limits: [
+        "The register covers THIRD-PARTY lobbyists only — in-house lobbyists are exempt by design, so 'no match' never means 'does not lobby'.",
+        "Client names are free text registered by the firms; the conservative matcher misses creative variants and says so rather than guessing.",
+        "isFormerRepresentative and previous positions are the firms' declarations to the register, reported verbatim.",
+      ],
+      source: "Australian Government Register of Lobbyists (lobbyists.ag.gov.au)",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html

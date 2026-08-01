@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money Trail — where the Commonwealth's money went</title>
+<meta name="description" content="Open any AusTender contract's full amendment history as a value curve, scan what the Commonwealth signed in a period, and check suppliers against the federal lobbyist register — every figure sourced, nothing characterised.">
+<link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
+<script src="/api/v1/apps-runtime/v1/embabel.js"></script>
+<script type="application/embabel-app+json">
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+</script>
+<style>
+  /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
+     navy-teal in light, lifted in dark — so shared components stay coherent with the app. */
+  :root { --embabel-accent:#1f6f8b; --embabel-accent-strong:#155469; --mt-ink-soft:color-mix(in srgb, var(--embabel-text) 68%, transparent); }
+  @media (prefers-color-scheme: dark) {
+    :root { --embabel-accent:#6cc3d5; --embabel-accent-strong:#93d7e4; }
+  }
+  /* Standalone (?demo=1 without a host): the runtime CSS/JS 404s, so the page re-declares the v1
+     tokens and the few shared component styles it uses, scoped under .no-runtime so a HOSTED run
+     keeps theme.css as the single source of truth. */
+  html.no-runtime { color-scheme:light dark;
+    --embabel-bg:#f6f7f9; --embabel-surface:#ffffff; --embabel-surface-subtle:#eef1f5;
+    --embabel-text:#17202a; --embabel-text-muted:#657080; --embabel-border:#d9dee7;
+    --embabel-warning:#9a6700; --embabel-warning-bg:#fff8df;
+    --embabel-error:#a93226; --embabel-error-bg:#fff0ee;
+    --embabel-radius-sm:8px; --embabel-radius:14px; --embabel-shadow:0 14px 40px rgba(21,32,43,.09);
+    --embabel-space-1:.35rem; --embabel-space-2:.7rem; --embabel-space-3:1rem; --embabel-space-4:1.5rem;
+    --embabel-font:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    html.no-runtime {
+      --embabel-bg:#11161c; --embabel-surface:#1a222c; --embabel-surface-subtle:#222d38;
+      --embabel-text:#edf2f7; --embabel-text-muted:#a8b3c0; --embabel-border:#344250;
+      --embabel-warning:#f2c94c; --embabel-warning-bg:#332b16;
+      --embabel-error:#ff8b81; --embabel-error-bg:#351d20; --embabel-shadow:0 14px 44px rgba(0,0,0,.28); }
+  }
+  html.no-runtime .embabel-button { padding:.72rem 1rem; border:1px solid var(--embabel-accent); border-radius:var(--embabel-radius-sm);
+    color:#fff; background:var(--embabel-accent-strong); cursor:pointer; font:650 .9rem/1 var(--embabel-font); }
+  html.no-runtime .embabel-button:hover { filter:brightness(1.08); }
+  html.no-runtime embabel-operation-state, html.no-runtime embabel-warning-panel { display:block; }
+  html.no-runtime .mt-state { padding:var(--embabel-space-3); border:1px solid var(--embabel-border);
+    border-radius:var(--embabel-radius-sm); color:var(--embabel-text-muted); background:var(--embabel-surface-subtle); font-size:.9rem; }
+  html.no-runtime .mt-state--error { color:var(--embabel-error); background:var(--embabel-error-bg); }
+  html, body { margin:0; padding:0; background:var(--embabel-bg); }
+  body { font-family:var(--embabel-font); color:var(--embabel-text); padding-bottom:3.2rem; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 var(--embabel-space-4) var(--embabel-space-4); }
+
+  /* Hero */
+  .hero { padding:2.6rem 0 1.6rem; }
+  .hero .kicker { font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; color:var(--embabel-accent); }
+  .hero h1 { margin:.25rem 0 .4rem; font-size:clamp(1.9rem, 4.2vw, 2.7rem); line-height:1.06; letter-spacing:-.02em; }
+  .hero p { margin:0; max-width:56ch; color:var(--embabel-text-muted); font-size:1.02rem; }
+  .src-chips { display:flex; flex-wrap:wrap; gap:.45rem; margin-top: .9rem; }
+  .chip { font-size:.74rem; font-weight:650; color:var(--embabel-text-muted); background:var(--embabel-surface); border:1px solid var(--embabel-border); border-radius:999px; padding:.28rem .7rem; }
+  .chip b { color:var(--embabel-text); font-weight:700; }
+
+  /* Cards & sections */
+  section { margin-top:var(--embabel-space-4); }
+  .card { background:var(--embabel-surface); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius); box-shadow:var(--embabel-shadow); padding:var(--embabel-space-4); }
+  .card h2 { margin:0 0 .2rem; font-size:1.22rem; letter-spacing:-.01em; }
+  .card .sub { margin:0 0 1rem; color:var(--embabel-text-muted); font-size:.9rem; }
+  .searchrow { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; }
+  .searchrow input { flex:1 1 14rem; padding:.72rem .85rem; font:inherit; color:var(--embabel-text); background:var(--embabel-bg); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); }
+  .searchrow input:focus { border-color:var(--embabel-accent); outline:3px solid color-mix(in srgb, var(--embabel-accent) 18%, transparent); }
+  .samples { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.65rem; }
+  .sample { font:650 .78rem/1.2 var(--embabel-font); color:var(--embabel-accent); background:color-mix(in srgb, var(--embabel-accent) 9%, transparent); border:1px solid color-mix(in srgb, var(--embabel-accent) 30%, transparent); border-radius:999px; padding:.34rem .75rem; cursor:pointer; }
+  .sample:hover { background:color-mix(in srgb, var(--embabel-accent) 16%, transparent); }
+
+  /* Stat tiles */
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:.7rem; margin:1rem 0; }
+  .tile { background:var(--embabel-surface-subtle); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); padding:.8rem .9rem; }
+  .tile .lbl { font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--embabel-text-muted); }
+  .tile .val { margin-top:.18rem; font-size:1.35rem; font-weight:750; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .tile .val.up { color:var(--embabel-warning); }
+  .tile .note { font-size:.72rem; color:var(--embabel-text-muted); margin-top:.15rem; }
+
+  /* Meta grid */
+  .meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:.35rem 1.4rem; margin:.9rem 0 0; }
+  .meta div { padding:.42rem 0; border-bottom:1px dashed color-mix(in srgb, var(--embabel-border) 70%, transparent); font-size:.9rem; }
+  .meta .k { font-size:.72rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--embabel-text-muted); display:block; }
+  .badge { display:inline-block; font:700 .72rem/1.3 var(--embabel-font); border-radius:6px; padding:.14rem .5rem; border:1px solid; }
+  .badge.limited { color:var(--embabel-warning); border-color:color-mix(in srgb, var(--embabel-warning) 45%, transparent); background:var(--embabel-warning-bg); }
+  .badge.open { color:var(--embabel-accent-strong); border-color:color-mix(in srgb, var(--embabel-accent) 40%, transparent); background:color-mix(in srgb, var(--embabel-accent) 10%, transparent); }
+  .badge.partial { color:var(--embabel-warning); border-color:color-mix(in srgb, var(--embabel-warning) 45%, transparent); background:var(--embabel-warning-bg); }
+  .badge.complete { color:var(--embabel-accent-strong); border-color:color-mix(in srgb, var(--embabel-accent) 40%, transparent); background:color-mix(in srgb, var(--embabel-accent) 10%, transparent); }
+
+  /* The needle — description note */
+  .needle { margin-top:1rem; border-left:4px solid var(--embabel-warning); background:var(--embabel-warning-bg); border-radius:0 var(--embabel-radius-sm) var(--embabel-radius-sm) 0; padding:.85rem 1rem; }
+  .needle .t { font-weight:750; font-size:.85rem; color:var(--embabel-warning); }
+  .needle blockquote { margin:.45rem 0; font-size:1.02rem; font-style:italic; color:var(--embabel-text); }
+  .needle .why { font-size:.8rem; color:var(--mt-ink-soft); }
+
+  /* Chart */
+  .chart-box { margin-top:1.1rem; }
+  .chart-title { font-size:.85rem; font-weight:750; color:var(--embabel-text-muted); margin-bottom:.3rem; }
+  svg.curve { width:100%; height:auto; display:block; }
+  svg.curve text { font-family:var(--embabel-font); }
+  .tt { position:fixed; z-index:50; pointer-events:none; background:var(--embabel-surface); color:var(--embabel-text); border:1px solid var(--embabel-border); border-radius:8px; box-shadow:var(--embabel-shadow); padding:.5rem .65rem; font-size:.8rem; display:none; }
+  .tt b { display:block; font-variant-numeric:tabular-nums; }
+
+  /* Tables */
+  table { width:100%; border-collapse:collapse; margin-top:.7rem; font-size:.88rem; }
+  th { text-align:left; font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--embabel-text-muted); font-weight:700; padding:.45rem .6rem; border-bottom:1px solid var(--embabel-border); }
+  td { padding:.5rem .6rem; border-bottom:1px solid color-mix(in srgb, var(--embabel-border) 60%, transparent); vertical-align:top; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.click { cursor:pointer; } tr.click:hover td { background:color-mix(in srgb, var(--embabel-accent) 7%, transparent); }
+  .cn { color:var(--embabel-accent); font-weight:700; }
+
+  /* Bars */
+  .bars { margin-top:.6rem; display:grid; gap:6px; }
+  .bar-row { display:grid; grid-template-columns:minmax(120px, 220px) 1fr auto; gap:.6rem; align-items:center; font-size:.84rem; }
+  .bar-row .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--embabel-text); }
+  .bar-track { height:14px; border-radius:4px; background:color-mix(in srgb, var(--embabel-border) 42%, transparent); overflow:hidden; }
+  .bar-fill { height:100%; border-radius:4px; background:var(--embabel-accent); min-width:2px; }
+  .bar-val { font-variant-numeric:tabular-nums; color:var(--embabel-text-muted); font-size:.8rem; white-space:nowrap; }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--embabel-space-4); }
+  @media (max-width: 780px) { .grid2 { grid-template-columns:1fr; } }
+  .fine { font-size:.78rem; color:var(--embabel-text-muted); margin-top:.9rem; }
+  .fine ul { margin:.3rem 0 0; padding-left:1.1rem; } .fine li { margin:.15rem 0; }
+  .provenance { font-size:.78rem; color:var(--embabel-text-muted); margin-top:.6rem; }
+  .provenance b { color:var(--embabel-text); }
+  embabel-operation-state { margin-top:.9rem; }
+  embabel-warning-panel { margin-top:.6rem; display:grid; gap:.4rem; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<embabel-app-shell>
+  <div class="wrap">
+
+    <header class="hero">
+      <div class="kicker">Australian Government · open registers · live</div>
+      <h1>Money Trail</h1>
+      <p>Open any Commonwealth contract's full amendment history, see what was signed in a period,
+         and check suppliers against the federal lobbyist register — every figure carries its
+         source, and nothing is characterised.</p>
+      <div class="src-chips">
+        <span class="chip"><b>AusTender OCDS</b> · CC BY 3.0 AU · keyless</span>
+        <span class="chip"><b>Register of Lobbyists</b> · AGD · keyless</span>
+        <span class="chip">Commitments as published — never expenditure</span>
+      </div>
+    </header>
+
+    <!-- ============ CONTRACT PASSPORT ============ -->
+    <section class="card" id="passport-card">
+      <h2>The life of one contract</h2>
+      <p class="sub">Every published version — the original and each amendment, value as amended, from the register itself.</p>
+      <div class="searchrow">
+        <input id="cn-input" type="text" inputmode="text" autocomplete="off" spellcheck="false"
+               placeholder="Contract notice id — e.g. CN3942784" aria-label="Contract notice id">
+        <button class="embabel-button" id="cn-go">Open passport</button>
+      </div>
+      <div class="samples" id="samples">
+        <button class="sample" data-cn="CN3942784">CN3942784 — grew $402.5M → $736.3M through amendments</button>
+        <button class="sample" data-cn="CN4118426">CN4118426 — the repayment only the description records</button>
+      </div>
+      <embabel-operation-state id="pp-state"></embabel-operation-state>
+      <embabel-warning-panel id="pp-warnings" hidden></embabel-warning-panel>
+      <div id="pp-result" hidden></div>
+    </section>
+
+    <!-- ============ LOBBYIST CHECK (fed by the passport) ============ -->
+    <section class="card" id="lobby-card" hidden>
+      <h2>Lobbyist-register check</h2>
+      <p class="sub" id="lobby-sub">Whether the supplier appears as a client on the federal Register of Lobbyists — a name match, reported as one.</p>
+      <embabel-operation-state id="lb-state"></embabel-operation-state>
+      <div id="lb-result" hidden></div>
+    </section>
+
+    <!-- ============ WHAT WAS SIGNED ============ -->
+    <section class="card" id="window-card">
+      <h2>What the Commonwealth signed</h2>
+      <p class="sub">Contract notices first published in a window. Aggregates are arithmetic over the register's rows; a capped fetch is a labelled sample, never "the period".</p>
+      <div class="searchrow">
+        <input id="w-from" type="date" aria-label="From date">
+        <input id="w-to" type="date" aria-label="To date (exclusive)">
+        <button class="embabel-button" id="w-go">Scan window</button>
+      </div>
+      <embabel-operation-state id="w-state"></embabel-operation-state>
+      <embabel-warning-panel id="w-warnings" hidden></embabel-warning-panel>
+      <div id="w-result" hidden></div>
+    </section>
+
+    <footer class="provenance">
+      Sources: <b>AusTender OCDS API</b> (contract notices $10,000+ since 2013, CC BY 3.0 AU) ·
+      <b>Australian Government Register of Lobbyists</b> (third-party lobbyists only — in-house are exempt by design).
+      This app reports what the registers record. An amendment, a limited tender or a lobbying
+      relationship is a sourced fact, not a finding.
+    </footer>
+  </div>
+</embabel-app-shell>
+
+<div class="tt" id="tt" role="presentation"></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var DEMO = new URLSearchParams(location.search).has('demo');
+  var demoData = null;
+  if (!window.embabel) document.documentElement.classList.add('no-runtime');
+
+  // State updates go through one helper: the shared <embabel-operation-state> when the runtime
+  // is present, a minimal text fallback when it isn't (standalone demo). Without this, a missing
+  // runtime made setState a silent TypeError and the demo rendered nothing.
+  function setState(el, state, detail) {
+    if (!el) return;
+    if (typeof el.setState === 'function') { el.setState(state, detail || {}); return; }
+    el.hidden = state === 'idle' || state === 'ready';
+    if (el.hidden) { el.innerHTML = ''; return; }
+    var msg = state === 'loading' ? 'Loading…'
+      : state === 'empty' ? 'The operation completed, but nothing matched.'
+      : state === 'partial' ? 'Partial result — some sources were unavailable or truncated.'
+      : (detail && (detail.message || (detail.error && detail.error.message))) || 'Could not complete the request.';
+    el.innerHTML = '<div class="mt-state' + (state === 'error' ? ' mt-state--error' : '') + '">' + esc(msg) + '</div>';
+  }
+
+  // Helpers ride the runtime where present; demo mode (and any runtime-load failure) falls back
+  // so the page still renders honestly instead of dying on a missing global.
+  var E = window.embabel || null;
+  var esc = E ? E.html.escape : function (s) {
+    return String(s == null ? '' : s).replace(/[&<>'"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c];
+    });
+  };
+  function aud(v, compact) {
+    if (v == null || !isFinite(Number(v))) return '—';
+    var opts = compact ? { style: 'currency', currency: 'AUD', notation: 'compact', maximumFractionDigits: 1 }
+                       : { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 };
+    return new Intl.NumberFormat('en-AU', opts).format(Number(v));
+  }
+  function dateLbl(iso) {
+    if (!iso) return '—';
+    try { return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso)); }
+    catch (e) { return String(iso).slice(0, 10); }
+  }
+
+  // ---- Envelope plumbing -------------------------------------------------
+  // Live mode invokes the realm's lenses through the shared runner; the lens presents a JSON
+  // document which arrives as envelope.data (parse defensively — present() sends a string).
+  var runner = (!DEMO && E) ? E.createRunner({ timeoutMs: 120000 }) : null;
+  function lensData(envelope) {
+    if (!envelope) return null;
+    var d = envelope.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { /* leave as-is */ } }
+    return d;
+  }
+  async function runLens(id, args, stateEl) {
+    if (DEMO) return demoLens(id, args, stateEl);
+    if (!runner) throw new Error('The Embabel app runtime did not load.');
+    var envelope = await runner.lens(id, args, { state: stateEl });
+    return envelope ? lensData(envelope) : null; // null = superseded by a newer request
+  }
+  async function demoLens(id, args, stateEl) {
+    setState(stateEl, 'loading', {});
+    if (!demoData) {
+      var res = await fetch('moneytrail-demo-data.json');
+      demoData = await res.json();
+    }
+    var out = null;
+    if (id === 'au-contract-passport') out = demoData.passports[String(args.cnId || '').toUpperCase()] || {
+      kind: 'au-contract-passport', cnId: args.cnId, found: false, status: 'COMPLETE', warnings: [],
+      note: 'Demo mode carries two baked passports (CN3942784, CN4118426) — run against a world for any other id.',
+      source: 'AusTender OCDS API (CC BY 3.0 AU)'
+    };
+    if (id === 'au-window-signed') out = demoData.window;
+    if (id === 'au-supplier-lobbying') out = demoData.lobbying[String(args.supplierName || '').toUpperCase()] || {
+      kind: 'au-supplier-lobbying', supplierName: args.supplierName, status: 'COMPLETE', warnings: [], found: false,
+      matchBasis: { kind: 'NAME MATCH — the register publishes no client ABNs', suppliedName: args.supplierName,
+                    matchedEntries: [], note: 'Baked demo index — run against a world for the live register.' },
+      firms: [],
+      limits: ["The register covers THIRD-PARTY lobbyists only — 'no match' never means 'does not lobby'."],
+      source: 'Australian Government Register of Lobbyists (lobbyists.ag.gov.au)'
+    };
+    setState(stateEl, out ? 'ready' : 'empty', {});
+    return out;
+  }
+
+  function warningsInto(el, list) {
+    if (!el) return;
+    var values = (list || []).map(function (w) {
+      return typeof w === 'string' ? { code: 'Notice', message: w } : { code: w.code || 'Notice', message: w.message || JSON.stringify(w) };
+    });
+    el.hidden = values.length === 0;
+    if (Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'warnings')) {
+      el.warnings = values; // the shared component's setter renders them
+    } else {
+      el.innerHTML = values.map(function (w) {
+        return '<div class="mt-state"><b>' + esc(w.code) + '</b> ' + esc(w.message) + '</div>';
+      }).join('');
+    }
+  }
+  function statusBadge(status) {
+    var s = String(status || 'COMPLETE').toUpperCase();
+    var cls = s === 'COMPLETE' ? 'complete' : 'partial';
+    return '<span class="badge ' + cls + '">' + esc(s) + '</span>';
+  }
+
+  // ---- The value curve ---------------------------------------------------
+  // Single series, so no legend: the title names it, the ends are direct-labeled, every version
+  // gets a hover marker, and the line steps AFTER each version because a contract's value holds
+  // until the register publishes the next amendment.
+  var tt = $('tt');
+  function showTT(x, y, html) { tt.innerHTML = html; tt.style.display = 'block'; tt.style.left = (x + 14) + 'px'; tt.style.top = (y + 14) + 'px'; }
+  function hideTT() { tt.style.display = 'none'; }
+
+  function curveSVG(versions) {
+    var W = 920, H = 260, L = 86, R = 30, T = 26, B = 40;
+    var pts = versions.map(function (v) { return { t: new Date(v.releaseDate).getTime(), a: Number(v.amount), v: v }; })
+                      .filter(function (p) { return isFinite(p.t) && isFinite(p.a); });
+    if (pts.length === 0) return { svg: '', pts: [] };
+    var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    if (t1 === t0) { t0 -= 1; t1 += 1; }
+    var span = t1 - t0; t0 -= span * 0.03; t1 += span * 0.05;
+    var aMax = Math.max.apply(null, pts.map(function (p) { return p.a; }));
+    var aMin = 0; // value curves anchor at zero: growth reads as area, not axis theatre
+    var X = function (t) { return L + (t - t0) / (t1 - t0) * (W - L - R); };
+    var Y = function (a) { return T + (1 - (a - aMin) / (aMax - aMin || 1)) * (H - T - B); };
+
+    // Step-after path + area to the zero baseline.
+    var d = 'M' + X(pts[0].t) + ' ' + Y(pts[0].a);
+    for (var i = 1; i < pts.length; i++) d += ' H' + X(pts[i].t) + ' V' + Y(pts[i].a);
+    d += ' H' + X(t1);
+    var area = d + ' V' + Y(0) + ' H' + X(pts[0].t) + ' Z';
+
+    // Three recessive y gridlines with compact labels.
+    var ticks = [0.5, 1].map(function (f) { return aMax * f; });
+    var grid = ticks.map(function (v) {
+      return '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--embabel-border)" stroke-dasharray="3 5" stroke-width="1"/>' +
+             '<text x="' + (L - 10) + '" y="' + (Y(v) + 4) + '" text-anchor="end" font-size="11" fill="var(--embabel-text-muted)">' + esc(aud(v, true)) + '</text>';
+    }).join('');
+    var base = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(0) + '" y2="' + Y(0) + '" stroke="var(--embabel-border)" stroke-width="1"/>';
+
+    var marks = pts.map(function (p, i) {
+      var lbl = '';
+      if (i === 0 || i === pts.length - 1) {
+        var anchor = i === 0 ? 'start' : 'end';
+        lbl = '<text x="' + X(p.t) + '" y="' + (Y(p.a) - 12) + '" text-anchor="' + anchor + '" font-size="12" font-weight="700" fill="var(--embabel-text)">' + esc(aud(p.a, true)) + '</text>';
+      }
+      return lbl +
+        '<circle class="pt" data-i="' + i + '" cx="' + X(p.t) + '" cy="' + Y(p.a) + '" r="5" fill="var(--embabel-surface)" stroke="var(--embabel-accent)" stroke-width="2.5"/>' +
+        '<circle class="hit" data-i="' + i + '" cx="' + X(p.t) + '" cy="' + Y(p.a) + '" r="14" fill="transparent"/>';
+    }).join('');
+
+    var xlbls = [pts[0], pts[pts.length - 1]].map(function (p, i) {
+      return '<text x="' + X(p.t) + '" y="' + (H - 12) + '" text-anchor="' + (i === 0 ? 'start' : 'end') + '" font-size="11" fill="var(--embabel-text-muted)">' + esc(dateLbl(p.v.releaseDate)) + '</text>';
+    }).join('');
+
+    var svg = '<svg class="curve" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Contract value by published version">' +
+      grid + base +
+      '<path d="' + area + '" fill="color-mix(in srgb, var(--embabel-accent) 13%, transparent)"/>' +
+      '<path d="' + d + '" fill="none" stroke="var(--embabel-accent)" stroke-width="2.5" stroke-linejoin="round"/>' +
+      marks + xlbls + '</svg>';
+    return { svg: svg, pts: pts };
+  }
+
+  function wireCurveHover(box, pts) {
+    box.querySelectorAll('.hit').forEach(function (el) {
+      var p = pts[Number(el.dataset.i)];
+      el.addEventListener('mousemove', function (ev) {
+        var kind = p.v.isAmendment ? ('Amendment' + ((p.v.amendmentIds && p.v.amendmentIds.length) ? ' ' + esc(p.v.amendmentIds.join(', ')) : '')) : 'Original notice';
+        showTT(ev.clientX, ev.clientY, '<b>' + esc(aud(p.a)) + '</b>' + kind + ' · ' + esc(dateLbl(p.v.releaseDate)));
+      });
+      el.addEventListener('mouseleave', hideTT);
+    });
+  }
+
+  // ---- Horizontal bars (uniform hue: identity lives in the row label) ----
+  function barsHTML(items, valueOf, labelOf) {
+    var max = Math.max.apply(null, items.map(valueOf).concat([1]));
+    return '<div class="bars">' + items.map(function (it) {
+      var v = valueOf(it);
+      return '<div class="bar-row"><span class="name" title="' + esc(labelOf(it)) + '">' + esc(labelOf(it)) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + Math.max(1, v / max * 100) + '%"></span></span>' +
+        '<span class="bar-val">' + esc(aud(v, true)) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  // ---- Passport rendering -------------------------------------------------
+  function renderPassport(d) {
+    var box = $('pp-result');
+    warningsInto($('pp-warnings'), d.warnings);
+    if (!d.found) {
+      box.innerHTML = '<div class="fine" style="margin-top:1rem">' + esc(d.note || 'The register has no notice with this id.') + '</div>';
+      box.hidden = false; $('lobby-card').hidden = true; return;
+    }
+    var c = d.contract, vc = d.valueCurve;
+    var methodCls = c.procurementMethod === 'limited' ? 'limited' : 'open';
+    var tiles =
+      '<div class="tiles">' +
+      '<div class="tile"><div class="lbl">Original value</div><div class="val">' + esc(aud(vc.originalAmount, true)) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Current value</div><div class="val">' + esc(aud(vc.currentAmount, true)) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Growth through amendments</div><div class="val' + (vc.growthPct > 0 ? ' up' : '') + '">' +
+        (vc.growthPct == null ? '—' : esc((vc.growthPct > 0 ? '+' : '') + vc.growthPct + '%')) + '</div>' +
+        '<div class="note">' + vc.amendmentCount + ' amendment' + (vc.amendmentCount === 1 ? '' : 's') + '</div></div>' +
+      '<div class="tile"><div class="lbl">Record</div><div class="val" style="font-size:1rem">' + statusBadge(d.status) + '</div>' +
+        '<div class="note">' + esc((d.joins && d.joins[0] && d.joins[0].detail) || '') + '</div></div>' +
+      '</div>';
+
+    var meta =
+      '<div class="meta">' +
+      '<div><span class="k">Supplier</span>' + esc(c.supplierName || '—') + (c.supplierAbn ? ' <span class="fine">ABN ' + esc(c.supplierAbn) + '</span>' : ' <span class="fine">(no ABN published)</span>') + '</div>' +
+      '<div><span class="k">Agency</span>' + esc(c.agencyName || '—') + (c.agencyAbn ? ' <span class="fine">ABN ' + esc(c.agencyAbn) + '</span>' : '') + '</div>' +
+      '<div><span class="k">Procurement</span><span class="badge ' + methodCls + '">' + esc(c.procurementMethodDetails || c.procurementMethod || 'unstated') + '</span></div>' +
+      '<div><span class="k">Signed</span>' + esc(dateLbl(c.dateSigned)) + '</div>' +
+      '<div><span class="k">Period</span>' + esc(dateLbl(c.startDate)) + ' → ' + esc(dateLbl(c.endDate)) + '</div>' +
+      '<div><span class="k">Category (UNSPSC)</span>' + esc((c.unspscCodes || []).join(', ') || '—') + '</div>' +
+      '</div>' +
+      (c.limitedTenderReason
+        ? '<div class="fine" style="margin-top:.6rem"><b>Stated limited-tender ground (verbatim):</b> ' + esc(c.limitedTenderReason) + '</div>'
+        : '') +
+      '<div class="fine" style="margin-top:.6rem"><b>Description (register text):</b> ' + esc(c.description || '—') + '</div>';
+
+    var needle = '';
+    if (d.descriptionNote) {
+      needle = '<div class="needle"><div class="t">The description records what the value never showed</div>' +
+        '<blockquote>“' + esc(d.descriptionNote.sentence) + '”</blockquote>' +
+        '<div class="why">' + esc(d.descriptionNote.note) + (d.descriptionNote.structuredValueEverChanged === false
+          ? ' The recorded contract value never changed.' : '') + '</div></div>';
+    }
+
+    var curve = curveSVG(d.versions || []);
+    var chart = curve.svg
+      ? '<div class="chart-box"><div class="chart-title">Contracted value by published version — steps hold until the next amendment</div>' + curve.svg + '</div>'
+      : '';
+
+    var vtable = '<table><thead><tr><th>Published</th><th>Version</th><th class="num">Value (AUD)</th></tr></thead><tbody>' +
+      (d.versions || []).map(function (v) {
+        return '<tr><td>' + esc(dateLbl(v.releaseDate)) + '</td><td>' +
+          (v.isAmendment ? esc((v.amendmentIds || []).join(', ') || 'Amendment') : 'Original notice') +
+          '</td><td class="num">' + esc(aud(v.amount)) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+
+    var fine = '<div class="fine"><b>Limits, from the source itself:</b><ul>' +
+      (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
+      '</ul>Source: ' + esc(d.source || '') + '</div>';
+
+    box.innerHTML = tiles + chart + needle + meta + vtable + fine;
+    box.hidden = false;
+    wireCurveHover(box, curve.pts);
+
+    // The lobbying check follows the passport's supplier automatically.
+    if (c.supplierName) runLobby(c.supplierName);
+    else $('lobby-card').hidden = true;
+  }
+
+  // ---- Lobbyist check -----------------------------------------------------
+  function renderLobby(d) {
+    var box = $('lb-result');
+    $('lobby-sub').textContent = 'Register check for “' + d.supplierName + '” — a name match against 2,500+ client rows, reported as a name match.';
+    var mb = d.matchBasis || {};
+    var basis = '<div class="fine"><b>' + esc(mb.kind || 'NAME MATCH') + '.</b> ' + esc(mb.note || '') +
+      (mb.matchedEntries && mb.matchedEntries.length
+        ? ' Matched entries: ' + esc(mb.matchedEntries.join('; ')) + '.'
+        : '') + '</div>';
+    var body;
+    if (d.status === 'FAILED') {
+      body = '<div class="needle"><div class="t">Unknown — the register could not be fetched</div><div class="why">' + esc(d.note || '') + '</div></div>';
+    } else if (!d.found) {
+      body = '<div class="fine" style="font-size:.95rem"><b>No client entry matched this name.</b> That is absence from the third-party register only — in-house lobbyists are exempt by design, so it never means “does not lobby”.</div>';
+    } else {
+      body = (d.firms || []).map(function (f) {
+        var r = f.registerRecord;
+        var head = '<div style="margin-top:.8rem"><b>' + esc(f.firmName) + '</b>' +
+          (r && r.abn ? ' <span class="fine">ABN ' + esc(r.abn) + '</span>' : '') +
+          (r && r.deregistered ? ' <span class="badge partial">deregistered</span>' : '') + '</div>';
+        if (!f.profileFetched) return head + '<div class="fine">Profile fetch did not complete — declarations unknown for this firm.</div>';
+        var people = (r.formerRepPeople || []).map(function (p) {
+          return '<li>' + esc(p.name) + ' — ' + esc(p.position || '') +
+            (p.previousPosition ? ' · previously: ' + esc(p.previousPosition) : '') +
+            (p.cessationDate ? ' (until ' + esc(dateLbl(p.cessationDate)) + ')' : '') + '</li>';
+        }).join('');
+        return head +
+          '<div class="fine">Registers <b>' + r.lobbyists + '</b> lobbyist(s); the register’s own declarations mark <b>' + r.formerReps +
+          '</b> as former government representatives.' + (people ? '<ul>' + people + '</ul>' : '') + '</div>';
+      }).join('');
+    }
+    var fine = '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>Source: ' + esc(d.source || '') + '</div>';
+    box.innerHTML = basis + body + fine;
+    box.hidden = false;
+  }
+  async function runLobby(supplierName) {
+    var card = $('lobby-card'); card.hidden = false; $('lb-result').hidden = true;
+    try {
+      var d = await runLens('au-supplier-lobbying', { supplierName: supplierName }, $('lb-state'));
+      if (d) renderLobby(d);
+    } catch (e) { /* state component already shows the error */ }
+  }
+
+  // ---- Window rendering ---------------------------------------------------
+  function renderWindow(d) {
+    var box = $('w-result');
+    warningsInto($('w-warnings'), d.warnings);
+    var t = d.totals || {};
+    var tiles = '<div class="tiles">' +
+      '<div class="tile"><div class="lbl">Committed value</div><div class="val">' + esc(aud(t.fetchedValue, true)) + '</div>' +
+      '<div class="note">across ' + esc(String(t.fetchedCount || 0)) + ' notices</div></div>' +
+      '<div class="tile"><div class="lbl">Coverage</div><div class="val" style="font-size:1rem">' + statusBadge(d.status) + '</div>' +
+      '<div class="note">' + esc(t.coverage || '') + '</div></div>' +
+      Object.entries(d.byMethod || {}).map(function (kv) {
+        return '<div class="tile"><div class="lbl">' + esc(kv[0]) + ' tender</div><div class="val">' + esc(String(kv[1].count)) + '</div>' +
+          '<div class="note">' + esc(aud(kv[1].value, true)) + '</div></div>';
+      }).join('') + '</div>';
+
+    var top = '<div class="chart-title" style="margin-top:1rem">Largest contracts in the fetch</div>' +
+      '<table><thead><tr><th>CN</th><th>Supplier</th><th>Agency</th><th>Method</th><th class="num">Value</th></tr></thead><tbody>' +
+      (d.topContracts || []).map(function (x) {
+        return '<tr class="click" data-cn="' + esc(x.cnId) + '"><td class="cn">' + esc(x.cnId) + '</td>' +
+          '<td>' + esc(x.supplierName || '—') + '</td><td>' + esc(x.agencyName || '—') + '</td>' +
+          '<td>' + esc(x.procurementMethod || '—') + '</td><td class="num">' + esc(aud(x.amount)) + '</td></tr>';
+      }).join('') + '</tbody></table><div class="fine">Click a CN to open its passport — amendments and all.</div>';
+
+    var g2 = '<div class="grid2" style="margin-top:1rem">' +
+      '<div><div class="chart-title">Top suppliers by committed value</div>' +
+      barsHTML(d.topSuppliers || [], function (x) { return x.value; }, function (x) { return x.name; }) + '</div>' +
+      '<div><div class="chart-title">Top agencies by committed value</div>' +
+      barsHTML(d.topAgencies || [], function (x) { return x.value; }, function (x) { return x.name; }) + '</div></div>';
+
+    var fine = '<div class="fine"><b>Limits, from the source itself:</b><ul>' +
+      (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
+      '</ul>Source: ' + esc(d.source || '') + '</div>';
+
+    box.innerHTML = tiles + top + g2 + fine;
+    box.hidden = false;
+    box.querySelectorAll('tr.click').forEach(function (tr) {
+      tr.addEventListener('click', function () { loadPassport(tr.dataset.cn); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    });
+  }
+
+  // ---- Wiring --------------------------------------------------------------
+  async function loadPassport(cnId) {
+    cnId = String(cnId || '').trim().toUpperCase();
+    if (!cnId) return;
+    $('cn-input').value = cnId;
+    $('pp-result').hidden = true; $('pp-warnings').hidden = true; $('lobby-card').hidden = true;
+    try {
+      var d = await runLens('au-contract-passport', { cnId: cnId }, $('pp-state'));
+      if (d) renderPassport(d);
+    } catch (e) { /* state component shows it */ }
+  }
+  async function loadWindow() {
+    var from = $('w-from').value, to = $('w-to').value;
+    if (!from || !to) return;
+    $('w-result').hidden = true; $('w-warnings').hidden = true;
+    try {
+      var d = await runLens('au-window-signed', { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', minAmount: '0' }, $('w-state'));
+      if (d) renderWindow(d);
+    } catch (e) { /* state component shows it */ }
+  }
+
+  $('cn-go').addEventListener('click', function () { loadPassport($('cn-input').value); });
+  $('cn-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadPassport($('cn-input').value); });
+  $('samples').addEventListener('click', function (e) {
+    var b = e.target.closest('.sample'); if (b) loadPassport(b.dataset.cn);
+  });
+  $('w-go').addEventListener('click', loadWindow);
+  document.addEventListener('embabel-retry', function (e) {
+    var host = e.target && e.target.id;
+    if (host === 'pp-state') loadPassport($('cn-input').value);
+    if (host === 'w-state') loadWindow();
+    if (host === 'lb-state' && $('cn-input').value) loadPassport($('cn-input').value);
+  });
+
+  // Default window: the last 7 days.
+  (function () {
+    var now = new Date(), from = new Date(now.getTime() - 7 * 86400000);
+    var iso = function (d) { return d.toISOString().slice(0, 10); };
+    $('w-from').value = iso(from); $('w-to').value = iso(now);
+  })();
+
+  async function start() {
+    if (!DEMO && E) {
+      var pre = await E.manifest.ready;
+      if (pre && pre.ok === false) {
+        var missing = pre.missing ? Object.entries(pre.missing).filter(function (kv) { return (kv[1] || []).length; })
+          .map(function (kv) { return kv[0] + ': ' + kv[1].join(', '); }).join(' · ') : 'unknown';
+        setState($('pp-state'), 'error', { message: 'This world is missing capabilities the app needs — ' + missing +
+          '. Install the gov-au realm and reload.' });
+        return;
+      }
+    }
+    // Land on the story: the $402.5M → $736.3M chain, with the window scan one click away.
+    loadPassport('CN3942784');
+    if (DEMO) { $('w-from').value = '2026-07-28'; $('w-to').value = '2026-07-29'; loadWindow(); }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
+})();
+</script>
+
+<div id="embabel-badge" style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:6px 0;background:rgba(10,10,15,0.9);border-top:1px solid rgba(99,192,245,0.2);font-size:0.75rem;color:#6b7280;z-index:9999;pointer-events:none;">
+  Created with <a href="https://embabel.com" target="_blank" rel="noopener noreferrer" style="color:#63c0f5;text-decoration:none;pointer-events:auto;">Embabel Me</a>
+</div>
+</body>
+</html>

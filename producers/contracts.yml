@@ -1,0 +1,141 @@
+# RemoteRepositories over the AusTender OCDS feed.
+#
+# The feed serves exactly two access paths — by CN id and by date window — and its path params
+# are filled by key-splitting (`keyArgs`), which implies one key per call. Everything else about
+# these producers follows from two measured facts (2026-08-01, 200 consecutive releases):
+#
+#   1. `parties` is ALWAYS [supplier, procuringEntity] in that order with those single roles, and
+#      `awards[0].suppliers[0].name` always names the supplier. The dotted-numeric projections
+#      below (parties.0.name, parties.1.name) depend on that order; the interpreter resolves a
+#      numeric segment as an array index (bracket form Location[0] does NOT work — see the NSW
+#      realm's measured warning). If AusTender ever varies party order these projections misfile
+#      supplier and agency, so the order is asserted in the spec and should be re-measured on any
+#      upstream change.
+#
+#   2. ABNs (additionalIdentifiers, scheme AU-ABN) are present on MOST parties, not all. An
+#      absent supplierAbn is a register fact, not a fetch failure, and never worth a warning.
+#
+# Paging: the next cursor exists ONLY inside links.next as a full URL; cursorPath points at the
+# URL and the walker extracts the `cursor` query parameter (PagingSpec.resolveCursor). The engine
+# always sends a page-size arg; this feed has no such parameter, so sizeParam is named `pageSize`
+# — verified ignored by the service (identical TotalCount with and without it).
+
+- name: versionsById
+  kind: remote
+  operation: findContractNoticeById
+  records: "$.releases[*]"
+  keyArgs: [cnid]
+  echoKeyAs: cnKeyEcho   # findById already returns cnId on every record; echo kept for join safety
+  # No paging: findById returns the whole version chain in one response (a CN with >100 versions
+  # does not exist in this register — the largest observed chains are single digits).
+  project:
+    releaseId: id
+    cnId: "contracts.0.id"
+    releaseDate: date
+    tags: "tag[*]"
+    amendmentIds: "contracts.0.amendments[*].id"
+    title: "contracts.0.title"
+    description: "contracts.0.description"
+    amount: "contracts.0.value.amount"
+    currency: "contracts.0.value.currency"
+    dateSigned: "contracts.0.dateSigned"
+    startDate: "contracts.0.period.startDate"
+    endDate: "contracts.0.period.endDate"
+    supplierName: "awards.0.suppliers.0.name"
+    supplierAbn: "parties.0.additionalIdentifiers.0.id"
+    agencyName: "parties.1.name"
+    agencyAbn: "parties.1.additionalIdentifiers.0.id"
+    supplierLocality: "parties.0.address.locality"
+    supplierRegion: "parties.0.address.region"
+    procurementMethod: "tender.procurementMethod"
+    procurementMethodDetails: "tender.procurementMethodDetails"
+    limitedTenderReason: "tender.limitedTenderReason"
+    unspscCodes: "contracts.0.items[*].classification.id"
+  # Notices amend on business days; an hour's TTL keeps a repeated passport instant. An unknown
+  # CN id returns an EMPTY release list — that emptiness is an answer (the id does not exist in
+  # the register) and is cached as one.
+  cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
+  cost:
+    bucket: "austender"
+    rate: "3/sec"
+    yield: high
+
+- name: releasesPublishedInWindow
+  kind: remote
+  operation: findContractsPublishedBetween
+  records: "$.releases[*]"
+  # The anchor key is 'from/to' in ISO instants — '2026-07-01T00:00:00Z/2026-07-28T00:00:00Z'.
+  # ISO instants contain no '/', so the default split is unambiguous.
+  keyArgs: [from, to]
+  echoKeyAs: publishedWindow
+  # 100 releases/page, cursor-paged. maxPages 12 = 1,200 releases ≈ 3-5 business days feed-wide
+  # (~100-400/business day measured). A window bigger than the cap hits the walker's PARTIAL
+  # warning (page cap with a full last page) rather than silently passing a sample off as the
+  # period — lenses must carry that warning into their status. Ask for wider periods as several
+  # window keys, which also parallelises the fetch.
+  paging: { style: cursor, cursorParam: cursor, cursorPath: "$.links.next", size: 100, sizeParam: pageSize, maxPages: 12 }
+  project:
+    releaseId: id
+    cnId: "contracts.0.id"
+    releaseDate: date
+    tags: "tag[*]"
+    title: "contracts.0.title"
+    description: "contracts.0.description"
+    amount: "contracts.0.value.amount"
+    currency: "contracts.0.value.currency"
+    dateSigned: "contracts.0.dateSigned"
+    startDate: "contracts.0.period.startDate"
+    endDate: "contracts.0.period.endDate"
+    supplierName: "awards.0.suppliers.0.name"
+    supplierAbn: "parties.0.additionalIdentifiers.0.id"
+    agencyName: "parties.1.name"
+    agencyAbn: "parties.1.additionalIdentifiers.0.id"
+    supplierLocality: "parties.0.address.locality"
+    supplierRegion: "parties.0.address.region"
+    procurementMethod: "tender.procurementMethod"
+    procurementMethodDetails: "tender.procurementMethodDetails"
+    limitedTenderReason: "tender.limitedTenderReason"
+    unspscCodes: "contracts.0.items[*].classification.id"
+  # A closed window's contents never change; an open one gains releases through the business day.
+  cache: { kind: ttl, seconds: 3600 }
+  cost:
+    bucket: "austender"
+    rate: "3/sec"
+    yield: high
+
+- name: releasesModifiedInWindow
+  kind: remote
+  operation: findContractsModifiedBetween
+  records: "$.releases[*]"
+  keyArgs: [from, to]
+  echoKeyAs: changedWindow
+  # Same shape and caps as the published window; this is the feed where amendment releases
+  # (tag contractAmendment) surface, so it is the entry point for every "what changed" question.
+  paging: { style: cursor, cursorParam: cursor, cursorPath: "$.links.next", size: 100, sizeParam: pageSize, maxPages: 12 }
+  project:
+    releaseId: id
+    cnId: "contracts.0.id"
+    releaseDate: date
+    tags: "tag[*]"
+    title: "contracts.0.title"
+    description: "contracts.0.description"
+    amount: "contracts.0.value.amount"
+    currency: "contracts.0.value.currency"
+    dateSigned: "contracts.0.dateSigned"
+    startDate: "contracts.0.period.startDate"
+    endDate: "contracts.0.period.endDate"
+    supplierName: "awards.0.suppliers.0.name"
+    supplierAbn: "parties.0.additionalIdentifiers.0.id"
+    agencyName: "parties.1.name"
+    agencyAbn: "parties.1.additionalIdentifiers.0.id"
+    supplierLocality: "parties.0.address.locality"
+    supplierRegion: "parties.0.address.region"
+    procurementMethod: "tender.procurementMethod"
+    procurementMethodDetails: "tender.procurementMethodDetails"
+    limitedTenderReason: "tender.limitedTenderReason"
+    unspscCodes: "contracts.0.items[*].classification.id"
+  cache: { kind: ttl, seconds: 3600 }
+  cost:
+    bucket: "austender"
+    rate: "3/sec"
+    yield: high

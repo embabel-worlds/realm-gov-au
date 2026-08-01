@@ -1,0 +1,61 @@
+# Virtual types over the federal Register of Lobbyists. Small enough to fetch live every time
+# (385 firms, 728 lobbyists, 2,522 client entries as of 2026-08-01).
+#
+# The register's own scope limit belongs in every answer built on these types: it covers
+# THIRD-PARTY lobbyists only — in-house government-relations staff are exempt by design — so
+# "not on the register" never means "does not lobby". And a client row matches an AusTender
+# supplier by NAME ONLY (the register carries no client ABNs): any such join is a name match and
+# must be reported as one, with the matched strings shown.
+
+- name: LobbyistFirm
+  visibility: internal
+  description: >-
+    A lobbying organisation's register record — ABN, registration dates, deregistration state —
+    fetched on demand by anchoring a LobbyistOrg by its register GUID (found via the register
+    index, which lenses reach directly through the agLobbyists gateway namespace).
+  properties:
+    firmId:
+      metadata: { identity: "true" }
+    name: "Registered legal name."
+    tradingName: "Trading name where declared."
+    abn: "ABN as registered (space-grouped) — the deterministic join to company/contract data."
+    registeredOn: "When the firm entered the register (ISO)."
+    modifiedOn: "Last register update (ISO)."
+    deregistered: "true when the firm has left the register; its history remains published."
+    dateDeregistered: "When it left, where applicable."
+  virtualJoins:
+    - anchorLabel: LobbyistOrg
+      relationship: HAS_RECORD
+      keyField: firmId
+      recordKeyField: firmId
+      producer: firmSummaryById
+      description: The firm's register summary, keyed by organisation GUID.
+
+- name: RegisteredLobbyist
+  visibility: internal
+  description: >-
+    One person a lobbying firm registers as lobbying on its behalf, with the register's own
+    former-government-representative declaration. `isFormerRepresentative`, the previous position
+    and the cessation date are the FIRM'S DECLARATIONS to the register, reported verbatim — never
+    an inference, and never a characterisation of the person.
+  properties:
+    lobbyistKey:
+      metadata: { identity: "true" }
+    firmId: "The employing firm's GUID — how lobbyists join back to their firm."
+    name: "The lobbyist's name as registered."
+    position: "Their declared position at the firm."
+    isFormerRepresentative: "The register's declaration that this person formerly held a government position."
+    previousPosition: "The declared previous government position, where structured."
+    previousPositionOther: "Free-text previous role (e.g. MOP(S) Act employment), where declared."
+    cessationDate: "When they declared leaving the government position (ISO)."
+    datePublished: "When this entry was published to the register (ISO)."
+  virtualJoins:
+    - anchorLabel: LobbyistOrg
+      relationship: REGISTERS
+      keyField: firmId
+      recordKeyField: firmId
+      producer: firmLobbyistsById
+      description: >-
+        The people a firm registers, keyed by organisation GUID. Aggregating
+        isFormerRepresentative over a firm gives the register's own former-representative
+        headcount — always with the firm's total alongside it.

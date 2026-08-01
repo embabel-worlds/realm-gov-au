@@ -1,0 +1,114 @@
+id: au-window-signed
+name: What the Commonwealth signed in a period
+description: >-
+  Contract notices first published in a date window — total committed value, the procurement-
+  method split (with every limited tender's stated reason available), and the largest contracts,
+  suppliers and agencies. Pure arithmetic over the register's rows; a capped fetch is reported
+  as PARTIAL, never passed off as the whole period.
+params:
+  - name: from
+    type: STRING
+    label: Window start (ISO instant)
+    required: true
+    default: "2026-07-21T00:00:00Z"
+  - name: to
+    type: STRING
+    label: Window end (ISO instant, exclusive)
+    required: true
+    default: "2026-07-28T00:00:00Z"
+  - name: minAmount
+    type: STRING
+    label: Ignore contracts below (AUD)
+    required: false
+    default: "0"
+spec:
+  kind: cypherscript
+  script: |
+    const from = String(lensArgs.from || "").trim();
+    const to = String(lensArgs.to || "").trim();
+    const minAmount = Number(lensArgs.minAmount || 0) || 0;
+    const window = `${from}/${to}`;
+
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE toFloat(r.amount) >= $minAmount
+        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+               toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+               r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
+               r.procurementMethod AS procurementMethod,
+               r.limitedTenderReason AS limitedTenderReason,
+               r.releaseDate AS releaseDate
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, minAmount }),
+    });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = (r && r.warnings) || [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    // The walker caps at 12 pages (1,200 releases) and says so — a windowed aggregate over a
+    // capped fetch is a SAMPLE. The truncation warning decides the status; totals over a sample
+    // are labelled as covering "the fetched releases", never "the period".
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+
+    const sum = rows.reduce((a, x) => a + (x.amount || 0), 0);
+    const byMethod = {};
+    for (const x of rows) {
+      const m = x.procurementMethod || "unstated";
+      byMethod[m] = byMethod[m] || { count: 0, value: 0 };
+      byMethod[m].count++; byMethod[m].value += (x.amount || 0);
+    }
+    const groupTop = (field, n) => {
+      const g = {};
+      for (const x of rows) {
+        const k = x[field] || "(unstated)";
+        g[k] = g[k] || { name: k, count: 0, value: 0 };
+        g[k].count++; g[k].value += (x.amount || 0);
+      }
+      return Object.values(g).sort((a, b) => b.value - a.value).slice(0, n);
+    };
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-window-signed",
+      window: { from, to }, minAmount,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [{
+        title: "Contracts first published in the window",
+        note: "Aggregates are arithmetic over the register's rows; no model produces any figure.",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                "WHERE toFloat(r.amount) >= $minAmount RETURN r ORDER BY toFloat(r.amount) DESC",
+      }],
+      joins: [{ source: "AusTender OCDS API", role: "Contract notices first published in the window",
+                licence: "CC BY 3.0 AU, keyless", ok: !failed,
+                detail: `${rows.length} release(s) fetched${truncated ? " (CAPPED — sample, not the period)" : ""}` }],
+      totals: {
+        fetchedCount: rows.length,
+        fetchedValue: Math.round(sum),
+        coverage: truncated
+          ? "the fetched releases only — the window has more; narrow it or split it"
+          : "the whole window",
+      },
+      byMethod,
+      topContracts: rows.slice(0, 15).map(x => ({
+        cnId: x.cnId, amount: x.amount, supplierName: x.supplierName,
+        agencyName: x.agencyName, procurementMethod: x.procurementMethod,
+        limitedTenderReason: x.limitedTenderReason || null, description: x.description,
+      })),
+      topSuppliers: groupTop("supplierName", 10),
+      topAgencies: groupTop("agencyName", 10),
+      method: "Contract notices FIRST PUBLISHED in the window (amendments to older contracts are " +
+              "not in this feed — ask the change window for those). Values are commitments as " +
+              "published, summed arithmetically.",
+      limits: [
+        "The source filters by nothing but the window itself — supplier/agency cuts are computed after the fetch.",
+        "A capped fetch is a sample and is labelled PARTIAL — totals then cover the fetched releases, not the period.",
+        "Notices under $10,000 are not required to be published and are absent by design.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

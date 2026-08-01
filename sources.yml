@@ -1,0 +1,108 @@
+# What these collections ARE, as distinct from how producers/ read them.
+#
+# Everything here was measured against the live services on 2026-08-01, not assumed. The
+# strategic note first: BOTH sources stay live in v1. AusTender is the interesting call — the
+# axes people ask on (agency, supplier, category) and the axes the source filters on (id, date)
+# barely overlap, which is normally the mirror signal (see the NSW realm). The reason v1 does
+# not mirror is volume shape: the whole register is ~450k notices since 2013, but the questions
+# this realm answers live either at ONE notice (the passport — per-key, instant) or inside a
+# BOUNDED recent window (what was signed / what changed — a few pages, TTL-cached). A mirror
+# partitioned by publication month is the v2 answer the moment someone needs
+# "all contracts of supplier X since 2013" as a graph traversal rather than a baked dataset.
+
+sources:
+  - name: austender-contract-versions
+    producer: versionsById
+    label: ContractVersion
+    identityProperty: releaseId
+    anchor:
+      label: ContractNotice
+      keyProperty: cnId
+      edge: HAS_VERSION
+    shape: per-key
+    partition: contract-notice
+    queriedBy: [cnId]
+    ordering: version-order         # releases arrive original-first; ORDER BY releaseDate anyway
+    updates: business-days
+    sync:
+      strategy: live                # a passport is one instant call; nothing to mirror
+    visibility: public
+
+  - name: austender-published-window
+    producer: releasesPublishedInWindow
+    label: ContractRelease
+    identityProperty: releaseId
+    anchor:
+      label: PublicationWindow
+      keyProperty: window
+      edge: PUBLISHED
+    shape: bounded
+    cardinality: 450000             # full register since 2013; a WINDOW is a few hundred
+    partition: window
+    # Measured: the feed narrows on NOTHING but the window itself. No agency, supplier, ABN,
+    # category or text filter exists — agency/supplier questions fetch the window and narrow
+    # after. That is why windows must stay small and why the page-cap PARTIAL warning matters:
+    # a capped window presented as complete would silently understate an agency's month.
+    queriedBy: [agency, supplier, amount, method]
+    filterableAtSource: [window]
+    ordering: cursor-forward
+    updates: business-days
+    sync:
+      strategy: live
+    completeness:
+      aggregatesRequireComplete: true
+    visibility: public
+
+  - name: austender-changed-window
+    producer: releasesModifiedInWindow
+    label: ContractRelease
+    identityProperty: releaseId
+    anchor:
+      label: ChangeWindow
+      keyProperty: window
+      edge: CHANGED
+    shape: bounded
+    partition: window
+    queriedBy: [tags, agency, supplier, amount]
+    filterableAtSource: [window]
+    ordering: cursor-forward
+    updates: business-days
+    sync:
+      strategy: live
+    completeness:
+      aggregatesRequireComplete: true
+    visibility: public
+
+  - name: lobbyists-firm-summary
+    producer: firmSummaryById
+    label: LobbyistFirm
+    identityProperty: firmId
+    anchor:
+      label: LobbyistOrg
+      keyProperty: firmId
+      edge: HAS_RECORD
+    shape: per-key
+    partition: firm
+    queriedBy: [firmId]
+    ordering: irrelevant
+    updates: on-registration-events
+    sync:
+      strategy: live                # 385 firms; the whole register is smaller than one NSW council
+    visibility: public
+
+  - name: lobbyists-registered-people
+    producer: firmLobbyistsById
+    label: RegisteredLobbyist
+    identityProperty: lobbyistKey   # the register publishes NO person id — see producers/lobbying.yml
+    anchor:
+      label: LobbyistOrg
+      keyProperty: firmId
+      edge: REGISTERS
+    shape: per-key
+    partition: firm
+    queriedBy: [firmId, isFormerRepresentative]
+    ordering: irrelevant
+    updates: on-registration-events
+    sync:
+      strategy: live
+    visibility: public

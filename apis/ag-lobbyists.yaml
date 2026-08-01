@@ -1,0 +1,125 @@
+openapi: 3.0.3
+info:
+  title: Australian Government Register of Lobbyists API
+  version: "0.1.0"
+  description: >-
+    Vendored spec for the Attorney-General's Department lobbyist register backend
+    (api.lobbyists.ag.gov.au — the API behind the lobbyists.ag.gov.au SPA). The service publishes
+    a Swagger document, but its search POSTs (/search/organisations, /search/clients) return 500
+    to anonymous callers; the two GETs below are the operations verified to answer keyless
+    (2026-08-01), and they are sufficient: one is the whole register, the other the detail.
+
+    /statistics/register is the register AS ONE DOCUMENT — a typeahead index of every row: 385
+    lobbying organisations, 728 registered lobbyists, 2,522 client entries (counts as fetched
+    2026-08-01, ~720KB). Each row carries the OWNING ORGANISATION's GUID, so the index is also
+    the join table: a client row is (client name → lobbying firm). Names are free text as the
+    firms registered them — matching a client name to a company or an AusTender supplier is a
+    NAME match and must be reported as one.
+
+    /search/organisations/{id}/profile is one firm's full record: ABN, registration dates, every
+    lobbyist with the register's own `isFormerRepresentative` flag plus the previous position and
+    cessation date they declared, clients, and owners/stakeholders. The flag is the register's
+    statement, not an inference.
+
+    Scope caveat that belongs in every answer built on this source: the register covers
+    THIRD-PARTY lobbyists only — in-house lobbyists are exempt by design. "Not on the register"
+    therefore never means "does not lobby".
+
+    Licence: the register is published by AGD, whose site licence is CC BY 4.0; the API
+    subdomain carries no separate statement (UNVERIFIED). Attribute the Australian Government
+    Register of Lobbyists and re-check before any commercial surface.
+servers:
+  - url: https://api.lobbyists.ag.gov.au
+    description: Register of Lobbyists (production)
+paths:
+  /statistics/register:
+    get:
+      operationId: registerIndex
+      summary: >-
+        The whole register as a typeahead index — every organisation, lobbyist and client entry,
+        each row carrying the owning organisation's GUID. ~720KB, one call, no paging.
+      responses:
+        '200':
+          description: All register rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items: { type: string, enum: [Clients, Lobbyists, Organisations] }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category: { type: string, enum: [Clients, Lobbyists, Organisations] }
+                        displayName:
+                          type: string
+                          description: >-
+                            The row's subject — the client's name on a Clients row, the person on
+                            a Lobbyists row, the firm on an Organisations row.
+                        description: { type: string, description: "The owning lobbying organisation's name." }
+                        descriptionCaption: { type: string }
+                        organisationId: { type: string, description: "GUID — the profile key." }
+  /search/organisations/{id}/profile:
+    get:
+      operationId: organisationProfile
+      summary: >-
+        One lobbying firm's full register record — ABN, dates, lobbyists with former-government-
+        representative declarations, clients and stakeholders.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Organisation GUID from the register index.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The firm's profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      displayName: { type: string }
+                      tradingName: { type: string }
+                      abn: { type: string, description: "Space-grouped, e.g. '12 684 183 373'." }
+                      registeredOn: { type: string }
+                      modifiedOn: { type: string }
+                      dateDeregistered: { type: string, nullable: true }
+                      isDeregistered: { type: boolean }
+                  lobbyists:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        displayName: { type: string }
+                        position: { type: string }
+                        isFormerRepresentative:
+                          type: boolean
+                          description: The register's own declaration — never inferred.
+                        previousPosition: { type: string, nullable: true }
+                        previousPositionOther:
+                          type: string
+                          nullable: true
+                          description: Free-text previous role, e.g. MOP(S) Act employment.
+                        cessationDate: { type: string, nullable: true }
+                        datePublished: { type: string }
+                  clients:
+                    type: array
+                    items: { type: object }
+                  stakeholders:
+                    type: array
+                    description: Owners/stakeholders — distinct from clients.
+                    items:
+                      type: object
+                      properties:
+                        lastName: { type: string, nullable: true, description: "Also used for business names." }
+                        businessName: { type: string, nullable: true }
+                        isBusiness: { type: boolean }

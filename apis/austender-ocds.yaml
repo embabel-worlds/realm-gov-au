@@ -1,0 +1,243 @@
+openapi: 3.0.3
+info:
+  title: AusTender OCDS API
+  version: "0.1.0"
+  description: >-
+    Vendored spec for the Commonwealth's AusTender contract-notice feed in Open Contracting Data
+    Standard 1.1 form. The upstream documents this API in a GitHub README
+    (github.com/austender/austender-ocds-api) and ships no OpenAPI document, so this is
+    hand-curated from the live service (probed 2026-08-01) and pinned to the three operations this
+    realm uses.
+
+    NO AUTHENTICATION. Verified keyless against the live service. Coverage from 1 January 2013;
+    contract notices of $10,000 and over are mandatory.
+
+    Paging: 100 releases per page, opaque cursor. The next cursor is published ONLY inside
+    `links.next` as a full URL carrying a `cursor` query parameter — there is no bare cursor
+    field anywhere in the response. Point cursorPath at `$.links.next`; the paging walker takes
+    the `cursor` parameter's value from a URL-shaped scalar. Verified: the bare value re-sent as
+    `?cursor=` returns the next page.
+
+    AMENDMENTS ARE FIRST-CLASS AND THE POINT. findById returns one release per version of a
+    contract notice — the original plus every amendment (tag `contractAmendment`), each carrying
+    the value AS AMENDED. CN3942784 returns four releases: $402,526,031.59 → $430,026,031.62 →
+    $524,154,321.92 → $736,309,011.90. Every release's `contracts[0].id` is the BASE CN id; the
+    amendment's own id (CN…-A1) appears under `contracts[0].amendments[*].id`.
+
+    One measured caveat on the version timestamps: a release's `date` is the version's publish
+    timestamp AS CURRENTLY SERVED, and a re-publication event can stamp several amendments with
+    one date (CN3942784's three amendments all carry 2026-01-15). Treat the ORDER of versions as
+    authoritative and the spacing between their dates as indicative only.
+
+    TWO THINGS THIS API DOES NOT SERVE, measured, so do not reach for them. (1) No search: there
+    is no filter by agency, supplier, ABN, category or text — only by id and by date window. Any
+    agency- or supplier-shaped question fetches a window and narrows AFTER the fetch. (2) The
+    consultancy and confidentiality flags shown on the AusTender website are NOT in the OCDS
+    payload — they exist only in the site's XLSX exports. A contract's description text IS served,
+    and it sometimes records what the structured fields do not: CN4118426's value was never
+    amended, while its description states a $97,587.11 repayment. Read both.
+
+    Party shape, measured across 200 consecutive releases: `parties` is always exactly
+    [supplier, procuringEntity] in that order with those single roles, and
+    `awards[0].suppliers[0].name` always names the supplier. `additionalIdentifiers` (scheme
+    AU-ABN) is present on most parties but NOT all — an absent ABN is a fact about the register,
+    not a fetch failure.
+
+    Licence: CC BY 3.0 AU (stated in every response envelope's `license` field). Attribute
+    AusTender on any surface that displays this data.
+servers:
+  - url: https://api.tenders.gov.au/ocds
+    description: AusTender OCDS (production)
+paths:
+  /findById/{cnid}:
+    get:
+      operationId: findContractNoticeById
+      summary: >-
+        Every published version of one contract notice — the original release plus one release per
+        amendment, each with the value as amended. The base CN id (e.g. CN3942784) returns the
+        whole chain; asking for an amendment id (CN3942784-A1) returns no records.
+      parameters:
+        - name: cnid
+          in: path
+          required: true
+          description: Contract notice id, e.g. CN3942784. Base id, not the -A1 amendment form.
+          schema: { type: string }
+      responses:
+        '200':
+          description: A release package for the notice; `releases` is empty for an unknown id.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReleasePackage' }
+  /findByDates/contractPublished/{from}/{to}:
+    get:
+      operationId: findContractsPublishedBetween
+      summary: >-
+        Contract notices FIRST PUBLISHED in the window, oldest cursor first, 100 per page. ISO
+        instants, e.g. 2026-07-01T00:00:00Z. New contracts only — amendments to older contracts do
+        not appear here; use findContractsModifiedBetween for change-shaped questions.
+      parameters:
+        - { name: from, in: path, required: true, schema: { type: string }, description: "Window start, ISO instant (inclusive)." }
+        - { name: to, in: path, required: true, schema: { type: string }, description: "Window end, ISO instant (exclusive)." }
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque page cursor from the previous response's links.next. Omit on the first call.
+          schema: { type: string }
+      responses:
+        '200':
+          description: One page of releases with links.next while more remain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReleasePackage' }
+  /findByDates/contractLastModified/{from}/{to}:
+    get:
+      operationId: findContractsModifiedBetween
+      summary: >-
+        Releases LAST MODIFIED in the window — this is where amendment releases surface (tag
+        `contractAmendment`), alongside newly published notices. The feed for "what changed",
+        as distinct from "what was signed".
+      parameters:
+        - { name: from, in: path, required: true, schema: { type: string }, description: "Window start, ISO instant (inclusive)." }
+        - { name: to, in: path, required: true, schema: { type: string }, description: "Window end, ISO instant (exclusive)." }
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque page cursor from the previous response's links.next. Omit on the first call.
+          schema: { type: string }
+      responses:
+        '200':
+          description: One page of releases with links.next while more remain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReleasePackage' }
+components:
+  schemas:
+    ReleasePackage:
+      type: object
+      properties:
+        uri: { type: string }
+        publisher:
+          type: object
+          properties:
+            name: { type: string }
+        publishedDate: { type: string }
+        license:
+          type: string
+          description: CC BY 3.0 AU.
+        version: { type: string }
+        releases:
+          type: array
+          items: { $ref: '#/components/schemas/Release' }
+        links:
+          type: object
+          description: Present on findByDates responses. `next` is a full URL carrying ?cursor=.
+          properties:
+            self: { type: string }
+            next: { type: string }
+    Release:
+      type: object
+      properties:
+        ocid: { type: string, description: "Open-contracting process id; stable across versions." }
+        id: { type: string, description: "RELEASE id — unique per version. Use as version identity." }
+        date: { type: string, description: "When this version was published. The amendment time series." }
+        tag:
+          type: array
+          items: { type: string, enum: [contract, contractAmendment] }
+          description: contract = original notice; contractAmendment = a later version.
+        initiationType: { type: string }
+        language: { type: string }
+        parties:
+          type: array
+          description: >-
+            Measured order [supplier, procuringEntity], each with that single role. ABN under
+            additionalIdentifiers (scheme AU-ABN) — present on most parties, not all.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              roles: { type: array, items: { type: string } }
+              additionalIdentifiers:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, description: "ABN, digits only." }
+                    scheme: { type: string, enum: [AU-ABN] }
+              address:
+                type: object
+                properties:
+                  locality: { type: string }
+                  region: { type: string }
+                  postalCode: { type: string }
+                  countryName: { type: string }
+        awards:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              date: { type: string }
+              status: { type: string }
+              suppliers:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    name: { type: string }
+        contracts:
+          type: array
+          description: One contract per release in practice.
+          items:
+            type: object
+            properties:
+              id: { type: string, description: "The BASE CN id on every version, amendments included." }
+              awardID: { type: string }
+              title: { type: string, description: "Usually an internal reference, not a human title." }
+              description: { type: string, description: "Free text. Sometimes records repayments and variations the structured fields never carry — read it." }
+              dateSigned: { type: string }
+              status: { type: string }
+              period:
+                type: object
+                properties:
+                  startDate: { type: string }
+                  endDate: { type: string }
+              value:
+                type: object
+                properties:
+                  currency: { type: string }
+                  amount: { type: string, description: "The value AS OF THIS VERSION — serialized as a string." }
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    classification:
+                      type: object
+                      properties:
+                        scheme: { type: string, enum: [UNSPSC] }
+                        id: { type: string }
+              amendments:
+                type: array
+                description: Present on amendment releases only.
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, description: "The amendment's own id, e.g. CN3942784-A3." }
+                    releaseID: { type: string }
+                    amendsReleaseID: { type: string }
+        tender:
+          type: object
+          properties:
+            id: { type: string }
+            procurementMethod: { type: string, description: "open | selective | limited." }
+            procurementMethodDetails: { type: string }
+            limitedTenderExempt: { type: string }
+            limitedTenderReasonCode: { type: string }
+            limitedTenderReason:
+              type: string
+              description: >-
+                The stated CPR ground for a limited tender, verbatim (e.g. "10.3.e. Additional
+                deliveries by original supplier…"). A recorded reason, never a finding.
