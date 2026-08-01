@@ -456,10 +456,12 @@
   }
   function renderPortfolios(d) {
     var rows=(d.portfolios||[]), max=Math.max.apply(null,rows.map(function(x){return Number(x.committed||0);}).concat([1]));
+    var hasSummaries=rows.some(function(p){var digest=(p.judged||{}).digest;return digest&&!/standalone demo shows/i.test(digest);});
     var body=rows.map(function(p){ var j=p.judged||{}; return '<div class="ground"><div style="display:flex;justify-content:space-between;gap:12px"><strong>' + esc(p.portfolio) + '</strong><strong>' + esc(aud(p.committed,true)) + '</strong></div><div class="ground-meta">' + p.contracts + ' notices · ' + p.limitedCount + ' limited</div><div class="rail" style="margin-top:8px"><span class="alt" style="width:' + clampPct(Number(p.committed||0)/max*100) + '%"></span></div>' +
-      (j.digest && !/standalone demo shows/i.test(j.digest) ? '<div class="judgment"><strong>Machine reading, not register text:</strong> ' + esc(j.digest) + '</div>' : '') + '</div>'; }).join('');
+      (j.digest && !/standalone demo shows/i.test(j.digest) ? '<p class="panel-sub" style="margin:9px 0 0">' + esc(j.digest) + '</p>' : '') + '</div>'; }).join('');
     var un=d.unplaced||{};
-    return '<div class="deep-result">' + deepHead('Portfolio context',d,'Agency names joined to AGOR; unmatched value stays visible.') + body +
+    return '<div class="deep-result">' + deepHead('Portfolio context',d,'Agency names joined to AGOR; unmatched value stays visible.') +
+      (hasSummaries?'<div class="judgment" style="margin-bottom:8px"><strong>Generated summary</strong><br>Short summaries below are generated from the contract descriptions for orientation.</div>':'') + body +
       (un.contracts ? '<div class="judgment"><strong>Unresolved-value ledger:</strong> ' + un.contracts + ' notices / ' + esc(aud(un.committed,true)) + ' could not be placed. ' + esc(un.note||'') + '</div>' : '') + notes(d) + '</div>';
   }
   async function loadDeep(name) {

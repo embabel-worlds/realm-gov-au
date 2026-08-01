@@ -219,6 +219,17 @@
   .legend .sw { width:12px; height:12px; border-radius:3px; }
   .legend .lval { font-variant-numeric:tabular-nums; color:var(--embabel-text-muted); }
 
+  /* The busy banner: one fixed place to answer "is it still working?" */
+  .busybar { position:fixed; top:0; left:0; right:0; z-index:60; display:flex; gap:.6rem; align-items:center;
+    padding:.55rem .9rem; font-size:.85rem; color:var(--embabel-text);
+    background:color-mix(in srgb, var(--embabel-accent) 14%, var(--embabel-surface));
+    border-bottom:1px solid color-mix(in srgb, var(--embabel-accent) 40%, transparent); }
+  .busybar .spin { width:.85rem; height:.85rem; border-radius:50%; flex:0 0 auto;
+    border:2px solid color-mix(in srgb, var(--embabel-accent) 30%, transparent);
+    border-top-color:var(--embabel-accent); animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .busybar .spin { animation:none; } }
+
   /* The query stamp: every result says what produced it */
   .qstamp { font-size:.8rem; color:var(--embabel-text-muted); background:var(--embabel-surface-subtle);
     border:1px solid var(--embabel-border); border-left:3px solid var(--embabel-accent);
@@ -248,6 +259,10 @@
 </style>
 </head>
 <body>
+<div class="busybar" id="busy" hidden>
+  <span class="spin"></span>
+  <span><b id="busy-label">Working</b> — <span id="busy-detail">…</span></span>
+</div>
 <embabel-app-shell>
   <div class="wrap">
 
@@ -651,7 +666,7 @@
     if (DEMO) return demoLens(id, args, stateEl);
     var r = which === 'window' ? wRunner : which === 'lobby' ? lbRunner : runner;
     if (!r) throw new Error('The Embabel app runtime did not load.');
-    var envelope = await r.lens(id, args, { state: stateEl });
+    var envelope = await withBusy(labelFor(id), function () { return r.lens(id, args, { state: stateEl }); });
     return envelope ? lensData(envelope) : null; // null = superseded by a newer request
   }
   /** Load the baked demo envelopes once. Panels that read demoData directly MUST await this. */
@@ -1156,7 +1171,7 @@
     try {
       var d;
       if (DEMO) d = await demoLens('au-contract-search', args, $('q-state-el'));
-      else { var env = await searchRunner.lens('au-contract-search', args, { state: $('q-state-el') }); d = env ? lensData(env) : null; }
+      else { var env = await withBusy(labelFor('au-contract-search'), function () { return searchRunner.lens('au-contract-search', args, { state: $('q-state-el') }); }); d = env ? lensData(env) : null; }
       if (d) renderSearch(d);
     } catch (e) { /* state component shows it */ }
   }
@@ -1168,7 +1183,7 @@
     try {
       var d;
       if (DEMO) d = await demoLens('au-amended-up', args, $('l-state-el'));
-      else { var env = await leagueRunner.lens('au-amended-up', args, { state: $('l-state-el') }); d = env ? lensData(env) : null; }
+      else { var env = await withBusy(labelFor('au-amended-up'), function () { return leagueRunner.lens('au-amended-up', args, { state: $('l-state-el') }); }); d = env ? lensData(env) : null; }
       if (d) renderLeague(d);
     } catch (e) { /* state component shows it */ }
   }
@@ -1415,7 +1430,7 @@
     try {
       var d;
       if (DEMO) { setState($('t-state-el'), 'loading', {}); await ensureDemo(); d = demoData.themes || null; setState($('t-state-el'), d ? 'ready' : 'empty', {}); }
-      else { var env = await thRunner.lens('au-portfolio-themes', args, { state: $('t-state-el') }); d = env ? lensData(env) : null; }
+      else { var env = await withBusy(labelFor('au-portfolio-themes'), function () { return thRunner.lens('au-portfolio-themes', args, { state: $('t-state-el') }); }); d = env ? lensData(env) : null; }
       if (d) renderThemes(d);
     } catch (e) { /* state element shows it */ }
   }
@@ -1465,7 +1480,7 @@
     try {
       var d;
       if (DEMO) { setState($('g-state-el'), 'loading', {}); await ensureDemo(); d = demoData.grounds || null; setState($('g-state-el'), d ? 'ready' : 'empty', {}); }
-      else { var env = await gRunner.lens('au-grounds', args, { state: $('g-state-el') }); d = env ? lensData(env) : null; }
+      else { var env = await withBusy(labelFor('au-grounds'), function () { return gRunner.lens('au-grounds', args, { state: $('g-state-el') }); }); d = env ? lensData(env) : null; }
       if (d) renderGrounds(d);
     } catch (e) { /* state element shows it */ }
   }
@@ -1504,7 +1519,7 @@
     try {
       var d;
       if (DEMO) { setState($('m-state-el'), 'loading', {}); await ensureDemo(); d = demoData.moneyBy || null; setState($('m-state-el'), d ? 'ready' : 'empty', {}); }
-      else { var env = await mRunner.lens('au-money-by', args, { state: $('m-state-el') }); d = env ? lensData(env) : null; }
+      else { var env = await withBusy(labelFor('au-money-by'), function () { return mRunner.lens('au-money-by', args, { state: $('m-state-el') }); }); d = env ? lensData(env) : null; }
       if (d) renderMoneyBy(d);
     } catch (e) { /* state element shows it */ }
   }
@@ -1537,13 +1552,23 @@
   // ---- The four profile/pipeline lenses ------------------------------------------------------
   function mkRunner(ms) { return (!DEMO && E) ? E.createRunner({ timeoutMs: ms }) : null; }
   var apR = mkRunner(240000), spR = mkRunner(240000), sdR = mkRunner(240000), nsR = mkRunner(300000);
+  /** A human name for the lens, for the progress banner. */
+  function labelFor(id) {
+    return ({ 'au-window-signed': 'Scanning the window', 'au-contract-search': 'Searching contracts',
+      'au-amended-up': 'Reading amendment histories', 'au-portfolio-themes': 'Reading portfolio descriptions',
+      'au-grounds': 'Counting procurement grounds', 'au-money-by': 'Breaking down the spend',
+      'au-contract-passport': 'Opening the contract', 'au-supplier-lobbying': 'Checking the lobbyist register',
+      'au-agency-profile': 'Profiling the agency', 'au-supplier-profile': 'Profiling the supplier',
+      'au-short-dated': 'Finding contracts near their end', 'au-new-suppliers': 'Comparing two windows',
+      'au-ask': 'Writing and running a query' })[id] || 'Working';
+  }
   async function runLensInto(runner, id, args, stampId, stampHtml, stateId, resultId, render) {
     $(resultId).hidden = true;
     stamp(stampId, stampHtml);
     try {
       var d;
       if (DEMO) { setState($(stateId), 'error', { message: 'This lens needs a running world — the standalone demo has no host.' }); return; }
-      var env = await runner.lens(id, args, { state: $(stateId) });
+      var env = await withBusy(labelFor(id), function () { return runner.lens(id, args, { state: $(stateId) }); });
       d = env ? lensData(env) : null;
       if (d) { render(d); $(resultId).hidden = false; }
     } catch (e) { /* the state element shows it */ }
@@ -1725,25 +1750,73 @@
   // Forms come from the runtime's <embabel-lens-form>, which reads each lens's DECLARED params
   // from /apps-runtime/v1/contracts. Hand-writing them would drift from the realm the moment a
   // lens gains a parameter.
-  // Long lens runs stream per-producer progress on /api/v1/virtual-cypher/events — without it a
-  // window walk looks dead for a minute. One shared stream, latest line into #lens-live.
-  var vcStream = null;
+  // PROGRESS. A window walk is a dozen paged fetches against a government API and can take a
+  // minute; with no signal a user reasonably concludes it has died. The engine already streams
+  // per-producer events on /api/v1/virtual-cypher/events — this surfaces them globally, for every
+  // panel, not just the lens runner.
+  //
+  // Deliberately a FIXED banner rather than per-card text: whichever panel you are looking at, the
+  // answer to "is it still working" is in the same place.
+  var vcStream = null, busyCount = 0, lastTick = 0, tickTimer = null;
   function ensureProgressStream() {
     if (DEMO || !window.EventSource || vcStream) return;
     try {
       vcStream = new EventSource('/api/v1/virtual-cypher/events');
-      var tick = function (text) {
-        var el = $('lens-live');
-        if (el) { el.hidden = false; el.textContent = text; }
-      };
       vcStream.addEventListener('producer.progress', function (e) {
-        try { var d = JSON.parse(e.data);
-          tick('Fetching ' + d.producer + ' — ' + d.unit + ' ' + d.current + ' of ' + d.total + '…'); } catch (x) {}
+        try {
+          var d = JSON.parse(e.data);
+          progressTick('Fetching ' + esc(sourceLabel(d.producer)) + ' — ' + esc(d.unit || 'page') + ' ' +
+            d.current + ' of ' + d.total);
+        } catch (x) { /* a malformed frame must never break the page */ }
       });
       vcStream.addEventListener('producer.fetch', function (e) {
-        try { var d = JSON.parse(e.data); tick('Fetching ' + (d.producer || '') + '…'); } catch (x) {}
+        try { var d = JSON.parse(e.data); progressTick('Fetching ' + esc(sourceLabel(d.producer)) + '…'); } catch (x) {}
       });
-    } catch (e) { /* progress is a nicety */ }
+    } catch (e) { /* progress is a nicety, never a dependency */ }
+  }
+  /** Producer names are internal; show the register a human recognises. */
+  function sourceLabel(p) {
+    var n = String(p || '');
+    return /releases(Published|Modified)InWindow/.test(n) ? 'AusTender (window)'
+      : /versionsById/.test(n) ? 'AusTender (contract history)'
+      : /firm|lobby/i.test(n) ? 'the lobbyist register'
+      : /news|brave/i.test(n) ? 'press coverage'
+      : n;
+  }
+  function progressTick(text) {
+    lastTick = Date.now();
+    var el = $('busy-detail');
+    if (el) el.textContent = text;
+  }
+  /** Wrap any slow call so the banner shows while it runs — and clears even if it throws. */
+  async function withBusy(what, fn) {
+    ensureProgressStream();
+    busyCount++;
+    var bar = $('busy'), label = $('busy-label'), detail = $('busy-detail');
+    if (label) label.textContent = what;
+    if (detail) detail.textContent = 'Asking the registers…';
+    if (bar) bar.hidden = false;
+    var started = Date.now();
+    // If nothing has been heard for a while, SAY so rather than leaving a spinner that implies
+    // progress the app cannot actually see.
+    if (tickTimer) clearInterval(tickTimer);
+    tickTimer = setInterval(function () {
+      var quiet = Date.now() - Math.max(lastTick, started);
+      if (quiet > 12000 && detail) {
+        detail.textContent = 'Still working — ' + Math.round((Date.now() - started) / 1000) +
+          's so far. Government feeds are paged and can be slow.';
+      }
+    }, 3000);
+    try {
+      return await fn();
+    } finally {
+      busyCount--;
+      if (busyCount <= 0) {
+        busyCount = 0;
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+        if (bar) bar.hidden = true;
+      }
+    }
   }
 
   var lensCatalogue = null, lastLensContract = null;

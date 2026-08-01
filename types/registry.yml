@@ -147,3 +147,33 @@
     recipientState: "The recipient's own state."
     deliveryPostcode: "WHERE THE MONEY IS SPENT — the join to an electorate."
     deliveryState: "Delivery state, or 'National'/multi-state where it cannot be localised."
+
+- name: BannedPerson
+  userAnchor: false
+  description: |
+    A person banned or disqualified by ASIC, from ASIC's own open release (CC BY 3.0 AU), filtered
+    to bans IN FORCE — an expired ban is history, not a risk signal.
+
+    THE MATCHING RULE, and it is absolute: the register publishes NO date of birth and NO ABN.
+    Matching is by NAME and LOCALITY only, so a hit is a SCREENING PROMPT for a human to verify
+    against the source, never a determination that a particular individual is banned. Names are
+    common; the register itself cannot distinguish two people who share one. Any surface showing a
+    match must show the locality, the ban type and the ASIC document number so the reader can check,
+    and must never assert identity.
+
+    This is the only openly published slice of Australian director data. The full officeholder
+    register is $24 per company from ASIC with no bulk product at any price, so "which directors
+    keep appearing across suppliers" is not answerable here — only "does a banned person's name
+    appear".
+  properties:
+    banKey:
+      identity: true
+      description: "Name + ASIC document number. Identity key."
+    name: "Name as ASIC publishes it (SURNAME, GIVEN)."
+    banType: "e.g. Disq. Director, AFS Banned & Disqualified, Banned Securities."
+    documentNumber: "ASIC document number — the reference for verifying against the source."
+    startDate: "When the ban started (dd/mm/yyyy)."
+    endDate: "When it ends; absent means open-ended."
+    locality: "Suburb/town as recorded — part of the (weak) matching basis."
+    state: "State as recorded."
+    postcode: "Postcode as recorded."
