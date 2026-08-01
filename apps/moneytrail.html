@@ -219,16 +219,28 @@
   .legend .sw { width:12px; height:12px; border-radius:3px; }
   .legend .lval { font-variant-numeric:tabular-nums; color:var(--embabel-text-muted); }
 
-  /* The busy banner: one fixed place to answer "is it still working?" */
-  .busybar { position:fixed; top:0; left:0; right:0; z-index:60; display:flex; gap:.6rem; align-items:center;
-    padding:.55rem .9rem; font-size:.85rem; color:var(--embabel-text);
+  /* The busy banner: one fixed place to answer "is it still working?" — spinner + live detail,
+     a progress track that turns determinate the moment the engine reports day/page counts, an
+     expectation line so a slow scan was PREDICTED, and an elapsed clock so time never vanishes. */
+  .busybar { position:fixed; top:0; left:0; right:0; z-index:60;
+    padding:.55rem .9rem .5rem; font-size:.85rem; color:var(--embabel-text);
     background:color-mix(in srgb, var(--embabel-accent) 14%, var(--embabel-surface));
     border-bottom:1px solid color-mix(in srgb, var(--embabel-accent) 40%, transparent); }
+  .busybar .busyrow { display:flex; gap:.6rem; align-items:center; }
   .busybar .spin { width:.85rem; height:.85rem; border-radius:50%; flex:0 0 auto;
     border:2px solid color-mix(in srgb, var(--embabel-accent) 30%, transparent);
     border-top-color:var(--embabel-accent); animation:spin .8s linear infinite; }
+  .busybar .track { height:5px; border-radius:999px; overflow:hidden; margin:.45rem 0 0;
+    background:color-mix(in srgb, var(--embabel-accent) 18%, transparent); }
+  .busybar .fill { width:34%; height:100%; border-radius:999px;
+    background:linear-gradient(90deg, var(--embabel-accent), var(--embabel-accent-strong));
+    animation:busysweep 1.45s ease-in-out infinite alternate; }
+  .busybar .fill.determinate { animation:none; transition:width .25s ease; }
+  .busybar .busymeta { display:flex; justify-content:space-between; gap:1rem; margin-top:.3rem;
+    font-size:.72rem; color:var(--embabel-text-muted); font-variant-numeric:tabular-nums; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .busybar .spin { animation:none; } }
+  @keyframes busysweep { from { transform:translateX(-75%); } to { transform:translateX(195%); } }
+  @media (prefers-reduced-motion: reduce) { .busybar .spin, .busybar .fill { animation:none; } }
 
   /* The query stamp: every result says what produced it */
   .qstamp { font-size:.8rem; color:var(--embabel-text-muted); background:var(--embabel-surface-subtle);
@@ -259,9 +271,13 @@
 </style>
 </head>
 <body>
-<div class="busybar" id="busy" hidden>
-  <span class="spin"></span>
-  <span><b id="busy-label">Working</b> — <span id="busy-detail">…</span></span>
+<div class="busybar" id="busy" hidden role="status" aria-live="polite">
+  <div class="busyrow">
+    <span class="spin" aria-hidden="true"></span>
+    <span><b id="busy-label">Working</b> — <span id="busy-detail">…</span></span>
+  </div>
+  <div class="track"><div class="fill" id="busy-fill"></div></div>
+  <div class="busymeta"><span id="busy-expect">This may take a moment.</span><span id="busy-elapsed">0s</span></div>
 </div>
 <embabel-app-shell>
   <div class="wrap">
@@ -666,7 +682,11 @@
     if (DEMO) return demoLens(id, args, stateEl);
     var r = which === 'window' ? wRunner : which === 'lobby' ? lbRunner : runner;
     if (!r) throw new Error('The Embabel app runtime did not load.');
-    var envelope = await withBusy(labelFor(id), function () { return r.lens(id, args, { state: stateEl }); });
+    var envelope = await withBusy(labelFor(id), function () {
+      // waitSeconds: a long scan hands back a run the runtime polls to completion, instead of
+      // holding one request open against a timeout. Ignored harmlessly by older runtimes.
+      return r.lens(id, args, { state: stateEl, waitSeconds: 15 });
+    }, expectationFor(args));
     return envelope ? lensData(envelope) : null; // null = superseded by a newer request
   }
   /** Load the baked demo envelopes once. Panels that read demoData directly MUST await this. */
@@ -1765,12 +1785,12 @@
       vcStream.addEventListener('producer.progress', function (e) {
         try {
           var d = JSON.parse(e.data);
-          progressTick('Fetching ' + esc(sourceLabel(d.producer)) + ' — ' + esc(d.unit || 'page') + ' ' +
-            d.current + ' of ' + d.total);
+          progressTick('Fetching ' + sourceLabel(d.producer) + ' — ' + (d.unit || 'page') + ' ' +
+            d.current + ' of ' + d.total, d.unit, d.current, d.total);
         } catch (x) { /* a malformed frame must never break the page */ }
       });
       vcStream.addEventListener('producer.fetch', function (e) {
-        try { var d = JSON.parse(e.data); progressTick('Fetching ' + esc(sourceLabel(d.producer)) + '…'); } catch (x) {}
+        try { var d = JSON.parse(e.data); progressTick('Fetching ' + sourceLabel(d.producer) + '…'); } catch (x) {}
       });
     } catch (e) { /* progress is a nicety, never a dependency */ }
   }
@@ -1783,30 +1803,52 @@
       : /news|brave/i.test(n) ? 'press coverage'
       : n;
   }
-  function progressTick(text) {
+  // Which unit owns the progress BAR this operation: a partitioned scan interleaves day events
+  // ("day 18 of 61") with each day's page events ("page 2 of 12") — letting both drive the fill
+  // makes it jitter between unrelated scales, so once a partition unit appears, page ticks keep
+  // updating the TEXT but not the bar.
+  var barUnit = null;
+  function progressTick(text, unit, current, total) {
     lastTick = Date.now();
     var el = $('busy-detail');
     if (el) el.textContent = text;
+    var n = Number(current), d = Number(total);
+    if (!isFinite(n) || !isFinite(d) || d <= 0) return;
+    var partitionUnit = /^(hour|day|week|month)$/.test(String(unit || ''));
+    if (partitionUnit) barUnit = unit;
+    if (barUnit && !partitionUnit) return;
+    var fill = $('busy-fill');
+    if (fill) {
+      fill.classList.add('determinate');
+      fill.style.width = Math.max(0, Math.min(100, (n / d) * 100)) + '%';
+    }
   }
-  /** Wrap any slow call so the banner shows while it runs — and clears even if it throws. */
-  async function withBusy(what, fn) {
+  /** Wrap any slow call so the banner shows while it runs — and clears even if it throws.
+   *  [expectation] is shown up-front so a slow scan reads as PREDICTED, not stuck. */
+  async function withBusy(what, fn, expectation) {
     ensureProgressStream();
     busyCount++;
-    var bar = $('busy'), label = $('busy-label'), detail = $('busy-detail');
+    var bar = $('busy'), label = $('busy-label'), detail = $('busy-detail'),
+        fill = $('busy-fill'), expect = $('busy-expect'), clock = $('busy-elapsed');
     if (label) label.textContent = what;
     if (detail) detail.textContent = 'Asking the registers…';
+    if (expect) expect.textContent = expectation || 'This may take a moment.';
+    if (clock) clock.textContent = '0s';
+    if (fill) { fill.classList.remove('determinate'); fill.style.width = ''; }
+    barUnit = null;
     if (bar) bar.hidden = false;
     var started = Date.now();
-    // If nothing has been heard for a while, SAY so rather than leaving a spinner that implies
-    // progress the app cannot actually see.
+    lastTick = started;
     if (tickTimer) clearInterval(tickTimer);
     tickTimer = setInterval(function () {
-      var quiet = Date.now() - Math.max(lastTick, started);
-      if (quiet > 12000 && detail) {
-        detail.textContent = 'Still working — ' + Math.round((Date.now() - started) / 1000) +
-          's so far. Government feeds are paged and can be slow.';
+      // The clock always moves — a number that ticks is the cheapest proof of life there is.
+      if (clock) clock.textContent = Math.round((Date.now() - started) / 1000) + 's';
+      // And if the ENGINE has gone quiet, say so rather than leaving a spinner implying
+      // progress the app cannot actually see.
+      if (Date.now() - lastTick > 12000 && detail) {
+        detail.textContent = 'Still working — government feeds are paged, and wide windows fetch day by day.';
       }
-    }, 3000);
+    }, 1000);
     try {
       return await fn();
     } finally {
@@ -1817,6 +1859,16 @@
         if (bar) bar.hidden = true;
       }
     }
+  }
+
+  /** What to EXPECT for a windowed scan, from the window itself — wide = slower but complete. */
+  function expectationFor(args) {
+    var f = Date.parse(args && args.from), t = Date.parse(args && args.to);
+    if (!isFinite(f) || !isFinite(t) || t <= f) return null;
+    var days = Math.max(1, Math.round((t - f) / 86400000));
+    return days > 3
+      ? 'Scanning ' + days + ' days day-by-day for complete totals — wide windows take longer.'
+      : 'A window this short is usually quick.';
   }
 
   var lensCatalogue = null, lastLensContract = null;
@@ -1863,7 +1915,9 @@
     ensureProgressStream();
     setState($('lens-out-state'), 'loading', {});
     try {
-      var env = await E.lenses.invoke(d.lens, d.args || {});
+      var env = await withBusy('Running ' + d.lens, function () {
+        return E.lenses.invoke(d.lens, d.args || {}, { waitSeconds: 15 });
+      }, expectationFor(d.args || {}));
       var data = lensData(env);
       $('lens-live').hidden = true;
       lastLensContract = (lensCatalogue || []).filter(function (l) { return l.id === d.lens; })[0] || null;

@@ -90,6 +90,16 @@ function check(name, cond, detail) {
   const oos = await page.locator('#ask-stamp').innerText();
   check('refuses rather than guessing', /no built-in panel matches|contract registers only/i.test(oos));
 
+  console.log('\n== progress banner (idle structure) ==');
+  // The banner only SHOWS during live scans (demo mode never fetches), but its structure is
+  // load-bearing for the progress JS — a renamed id silently degrades every live scan to a
+  // bare spinner, so pin the contract here.
+  check('busy banner hidden when idle', await page.locator('#busy').isHidden());
+  for (const id of ['busy-label', 'busy-detail', 'busy-fill', 'busy-expect', 'busy-elapsed']) {
+    check('#' + id + ' exists', (await page.locator('#' + id).count()) === 1);
+  }
+  check('progress track present', (await page.locator('#busy .track').count()) === 1);
+
   console.log('\n== console cleanliness ==');
   check('no page or console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
