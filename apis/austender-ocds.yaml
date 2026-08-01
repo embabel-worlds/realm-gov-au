@@ -72,7 +72,8 @@ paths:
     get:
       operationId: findContractsPublishedBetween
       summary: >-
-        Contract notices FIRST PUBLISHED in the window, oldest cursor first, 100 per page. ISO
+        Contract notices FIRST PUBLISHED in the window, NEWEST FIRST (measured live 2026-08-01 —
+        a capped walk covers the window's most recent days, not its start), 100 per page. ISO
         instants, e.g. 2026-07-01T00:00:00Z. New contracts only — amendments to older contracts do
         not appear here; use findContractsModifiedBetween for change-shaped questions.
       parameters:

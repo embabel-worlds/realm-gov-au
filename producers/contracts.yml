@@ -75,12 +75,16 @@
   # ISO instants contain no '/', so the default split is unambiguous.
   keyArgs: [from, to]
   echoKeyAs: publishedWindow
-  # 100 releases/page, cursor-paged. maxPages 12 = 1,200 releases ≈ 3-5 business days feed-wide
-  # (~100-400/business day measured). A window bigger than the cap hits the walker's PARTIAL
-  # warning (page cap with a full last page) rather than silently passing a sample off as the
-  # period — lenses must carry that warning into their status. Ask for wider periods as several
-  # window keys, which also parallelises the fetch.
+  # 100 releases/page, cursor-paged. With daily partitioning below, maxPages 12 = 1,200 releases
+  # is a PER-DAY budget — comfortably above the busiest measured day (~100-400/business day;
+  # end-of-financial-year spikes are the case to watch). A single day that still caps surfaces
+  # the walker's TRUNCATED warning NAMING that day — lenses must carry it into their status.
   paging: { style: cursor, cursorParam: cursor, cursorPath: "$.links.next", size: 100, sizeParam: pageSize, maxPages: 12 }
+  # The feed returns newest-first and caps per request, so an unpartitioned broad window
+  # silently returned only its newest ~1,200 notices — a result that LOOKS like a recent window.
+  # Partitioning fetches each UTC day with its own page budget and stamps records back to the
+  # caller's window; queries and the app change not at all.
+  partition: { unit: day, maxUnits: 366 }
   project:
     releaseId: id
     cnId: "contracts.0.id"
@@ -125,7 +129,10 @@
   echoKeyAs: changedWindow
   # Same shape and caps as the published window; this is the feed where amendment releases
   # (tag contractAmendment) surface, so it is the entry point for every "what changed" question.
+  # NOTE the completeness caveat: this feed filters on LAST-MODIFIED, a mutable attribute, so a
+  # partitioned scan is complete AS OF the scan — a later amendment moves the release forward.
   paging: { style: cursor, cursorParam: cursor, cursorPath: "$.links.next", size: 100, sizeParam: pageSize, maxPages: 12 }
+  partition: { unit: day, maxUnits: 366 }
   project:
     releaseId: id
     cnId: "contracts.0.id"
