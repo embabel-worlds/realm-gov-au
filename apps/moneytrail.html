@@ -212,6 +212,14 @@
   .chiprow span { font-size:.78rem; background:var(--embabel-surface); border:1px solid var(--embabel-border);
     border-radius:999px; padding:.2rem .6rem; }
 
+  /* Donut: part-to-whole for a handful of slices */
+  .donut-wrap { display:flex; flex-wrap:wrap; gap:1.2rem; align-items:center; margin-top:.6rem; }
+  svg.donut { flex:0 0 auto; width:220px; height:220px; }
+  .legend { flex:1 1 260px; display:grid; gap:.3rem; font-size:.85rem; }
+  .legend .lrow { display:grid; grid-template-columns:14px 1fr auto; gap:.55rem; align-items:center; }
+  .legend .sw { width:12px; height:12px; border-radius:3px; }
+  .legend .lval { font-variant-numeric:tabular-nums; color:var(--embabel-text-muted); }
+
   /* The query stamp: every result says what produced it */
   .qstamp { font-size:.8rem; color:var(--embabel-text-muted); background:var(--embabel-surface-subtle);
     border:1px solid var(--embabel-border); border-left:3px solid var(--embabel-accent);
@@ -411,8 +419,15 @@
       <section class="card" id="lens-out-card" hidden>
         <h2 id="lens-out-title">Result</h2>
         <div class="qstamp" id="lens-out-stamp"></div>
+        <nav class="tabs" role="tablist" aria-label="Lens output">
+          <button class="tab" id="lt-queries" role="tab" aria-selected="true">The queries it ran</button>
+          <button class="tab" id="lt-raw" role="tab" aria-selected="false">Raw envelope</button>
+          <button class="tab" id="lt-contract" role="tab" aria-selected="false">The lens contract</button>
+        </nav>
         <embabel-operation-state id="lens-out-state"></embabel-operation-state>
-        <pre class="cy" id="lens-out" style="max-height:560px; overflow:auto"></pre>
+        <div id="lens-queries"></div>
+        <pre class="cy" id="lens-out" style="max-height:560px; overflow:auto" hidden></pre>
+        <pre class="cy" id="lens-contract" style="max-height:560px; overflow:auto" hidden></pre>
       </section>
     </div><!-- /pane-lenses -->
 
@@ -783,6 +798,58 @@
       });
       el.addEventListener('mouseleave', hideTT);
     });
+  }
+
+  // ---- Donut: part-to-whole, for a handful of slices --------------------------------------
+  // Categorical hues assigned in FIXED ORDER (never cycled) and validated to stay distinguishable
+  // in both themes; slices are separated by a surface-coloured stroke so adjacent bands read as
+  // separate marks. Every slice is also in the legend with its value, so identity is never
+  // colour-alone. Above 8 slices the tail folds into "Other" rather than inventing hues.
+  var DONUT_HUES = ['#2b7a8c', '#c1663b', '#5b7f4a', '#8a5fa8', '#b3903a', '#3f6fa8', '#a0524f', '#61706e'];
+  function donutHTML(items, valueOf, labelOf, opts) {
+    opts = opts || {};
+    var data = (items || []).map(function (x) { return { label: labelOf(x), value: Math.max(0, valueOf(x) || 0) }; })
+      .filter(function (x) { return x.value > 0; })
+      .sort(function (a, b) { return b.value - a.value; });
+    if (!data.length) return '';
+    if (data.length > 8) {
+      var tail = data.slice(7).reduce(function (a, x) { return a + x.value; }, 0);
+      data = data.slice(0, 7).concat([{ label: 'Other (' + (items.length - 7) + ' more)', value: tail }]);
+    }
+    var total = data.reduce(function (a, x) { return a + x.value; }, 0);
+    if (!total) return '';
+    var R = 100, r0 = 58, cx = 110, cy = 110, a = -Math.PI / 2, arcs = [], rows = [];
+    data.forEach(function (d, i) {
+      var frac = d.value / total, a2 = a + frac * Math.PI * 2;
+      var large = frac > 0.5 ? 1 : 0;
+      var x1 = cx + R * Math.cos(a), y1 = cy + R * Math.sin(a);
+      var x2 = cx + R * Math.cos(a2), y2 = cy + R * Math.sin(a2);
+      var x3 = cx + r0 * Math.cos(a2), y3 = cy + r0 * Math.sin(a2);
+      var x4 = cx + r0 * Math.cos(a), y4 = cy + r0 * Math.sin(a);
+      var hue = DONUT_HUES[i % DONUT_HUES.length];
+      // A single 100% slice cannot be drawn as an arc (start == end): draw two rings instead.
+      if (data.length === 1) {
+        arcs.push('<circle cx="' + cx + '" cy="' + cy + '" r="' + ((R + r0) / 2) + '" fill="none" stroke="' + hue + '" stroke-width="' + (R - r0) + '"/>');
+      } else {
+        arcs.push('<path d="M' + x1.toFixed(1) + ' ' + y1.toFixed(1) +
+          ' A' + R + ' ' + R + ' 0 ' + large + ' 1 ' + x2.toFixed(1) + ' ' + y2.toFixed(1) +
+          ' L' + x3.toFixed(1) + ' ' + y3.toFixed(1) +
+          ' A' + r0 + ' ' + r0 + ' 0 ' + large + ' 0 ' + x4.toFixed(1) + ' ' + y4.toFixed(1) + ' Z" ' +
+          'fill="' + hue + '" stroke="var(--embabel-surface)" stroke-width="2"><title>' +
+          esc(d.label) + ' — ' + esc(aud(d.value)) + ' (' + (frac * 100).toFixed(1) + '%)</title></path>');
+      }
+      rows.push('<div class="lrow"><span class="sw" style="background:' + hue + '"></span>' +
+        '<span title="' + esc(d.label) + '" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.label) + '</span>' +
+        '<span class="lval">' + esc(aud(d.value, true)) + ' · ' + (frac * 100).toFixed(1) + '%</span></div>');
+      a = a2;
+    });
+    var centre = opts.centre
+      ? '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" font-size="15" font-weight="700" fill="var(--embabel-text)">' + esc(opts.centre) + '</text>' +
+        '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" font-size="10" fill="var(--embabel-text-muted)">' + esc(opts.centreNote || '') + '</text>'
+      : '';
+    return '<div class="donut-wrap"><svg class="donut" viewBox="0 0 220 220" role="img" aria-label="' +
+      esc(opts.title || 'Share of value') + '">' + arcs.join('') + centre + '</svg>' +
+      '<div class="legend">' + rows.join('') + '</div></div>';
   }
 
   // ---- Horizontal bars (uniform hue: identity lives in the row label) ----
@@ -1430,12 +1497,17 @@
   }
   function renderMoneyBy(d) {
     var box = $('m-result');
-    var bandBars = barsHTML(d.bySize || [], function (x) { return x.value; }, function (x) { return x.band; });
-    var catBars = barsHTML(d.byCategory || [], function (x) { return x.value; }, function (x) { return x.title; });
+    var totalV = (d.totals && d.totals.value) || 0;
+    var bandBars = donutHTML(d.bySize || [], function (x) { return x.value; }, function (x) { return x.band; },
+      { title: 'Committed value by contract size', centre: aud(totalV, true), centreNote: 'committed' });
+    var catBars = (d.byCategory || []).length
+      ? donutHTML(d.byCategory, function (x) { return x.value; }, function (x) { return x.title; },
+          { title: 'Committed value by category' })
+      : '<div class="fine">No categories resolved.</div>';
     var un = d.uncategorised || {};
     var sector = d.bySector
       ? '<div class="judged"><div class="jlabel">Model judgment — a reading of the descriptions, not a government classification</div>' +
-        barsHTML(d.bySector, function (x) { return x.value; }, function (x) { return x.sector; }) +
+        donutHTML(d.bySector, function (x) { return x.value; }, function (x) { return x.sector; }, { title: 'Committed value by sector' }) +
         '<div class="fine">' + esc(d.sectorNote || '') + '</div></div>'
       : '<div class="fine" style="margin-top:.8rem">' + esc(d.sectorNote || '') + '</div>';
     box.innerHTML =
@@ -1453,6 +1525,13 @@
   // Forms come from the runtime's <embabel-lens-form>, which reads each lens's DECLARED params
   // from /apps-runtime/v1/contracts. Hand-writing them would drift from the realm the moment a
   // lens gains a parameter.
+  var lensCatalogue = null, lastLensContract = null;
+  function lensOutTab(which) {
+    [['queries', 'lens-queries'], ['raw', 'lens-out'], ['contract', 'lens-contract']].forEach(function (kv) {
+      $('lt-' + kv[0]).setAttribute('aria-selected', String(kv[0] === which));
+      $(kv[1]).hidden = kv[0] !== which;
+    });
+  }
   async function loadLensCatalogue() {
     var host = $('lens-list');
     if (!E || !E.contracts) {
@@ -1461,7 +1540,8 @@
     }
     try {
       var cat = await E.contracts();
-      var mine = (cat.lenses || []).filter(function (l) { return /^au-/.test(l.id); });
+      lensCatalogue = cat.lenses || [];
+      var mine = lensCatalogue.filter(function (l) { return /^au-/.test(l.id); });
       if (!mine.length) { host.innerHTML = '<div class="fine">No gov-au lenses are installed in this world.</div>'; return; }
       host.innerHTML = mine.map(function (l) {
         return '<div class="lens-item"><h3>' + esc(l.name || l.id) + ' <span class="fine">' + esc(l.id) + '</span></h3>' +
@@ -1474,6 +1554,9 @@
   }
   // One handler for every generated form: run the lens and show its raw envelope, stamped with
   // the exact arguments used — the point of this tab is seeing what a governed query returns.
+  ['queries', 'raw', 'contract'].forEach(function (t) {
+    document.addEventListener('DOMContentLoaded', function () {});
+  });
   document.addEventListener('embabel-submit', async function (ev) {
     var d = ev.detail || {};
     if (!d.lens) return;
@@ -1486,10 +1569,28 @@
     try {
       var env = await E.lenses.invoke(d.lens, d.args || {});
       var data = lensData(env);
+      lastLensContract = (lensCatalogue || []).filter(function (l) { return l.id === d.lens; })[0] || null;
       setState($('lens-out-state'), (env && env.outcome === 'PARTIAL') ? 'partial' : 'ready', {});
       $('lens-out-stamp').innerHTML = 'Ran <b>' + esc(d.lens) + '</b> with <b>' + esc(JSON.stringify(d.args || {})) +
         '</b> · status <b>' + esc((data && data.status) || (env && env.outcome) || '?') + '</b>';
       $('lens-out').textContent = JSON.stringify(data, null, 1);
+      $('lens-contract').textContent = JSON.stringify(lastLensContract, null, 1);
+      // The queries a lens RAN are the honest "what is this lens" view — the Cypher it emitted,
+      // with the sources it touched, rather than a config blob.
+      var qs = (data && data.queries) || [];
+      var joins = (data && data.joins) || [];
+      $('lens-queries').innerHTML =
+        (qs.length ? qs.map(function (q) {
+          return '<div style="margin-top:.8rem"><b>' + esc(q.title || 'Query') + '</b>' +
+            (q.note ? '<div class="fine">' + esc(q.note) + '</div>' : '') +
+            '<pre class="cy">' + esc(q.cypher || '') + '</pre></div>';
+        }).join('') : '<div class="fine" style="margin-top:.8rem">This lens did not publish its queries.</div>') +
+        (joins.length ? '<div class="chart-title" style="margin-top:1rem">Sources touched</div>' +
+          joins.map(function (j) {
+            return '<div class="fine">' + (j.ok ? '✓' : '✕') + ' <b>' + esc(j.source) + '</b> — ' +
+              esc(j.role || '') + ' · ' + esc(j.detail || '') + ' <i>' + esc(j.licence || '') + '</i></div>';
+          }).join('') : '');
+      lensOutTab('queries');
       $('lens-out-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
       setState($('lens-out-state'), 'error', { error: e });
@@ -1514,6 +1615,9 @@
   $('tab-ask').addEventListener('click', function () { selectTab('ask'); });
   $('tab-explore').addEventListener('click', function () { selectTab('explore'); });
   $('tab-lenses').addEventListener('click', function () { selectTab('lenses'); });
+  $('lt-queries').addEventListener('click', function () { lensOutTab('queries'); });
+  $('lt-raw').addEventListener('click', function () { lensOutTab('raw'); });
+  $('lt-contract').addEventListener('click', function () { lensOutTab('contract'); });
   $('tab-how').addEventListener('click', function () { selectTab('how'); });
   $('go-browse').addEventListener('click', function () {
     selectTab('explore'); window.scrollTo({ top: 0, behavior: 'smooth' });

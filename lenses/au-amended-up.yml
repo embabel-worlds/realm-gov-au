@@ -9,15 +9,15 @@ description: >-
   as one.
 params:
   - name: from
-    type: STRING
-    label: Window start (ISO instant)
+    type: DATE
+    label: From
     required: true
-    default: "2026-07-21T00:00:00Z"
+    default: "2026-07-21"
   - name: to
-    type: STRING
-    label: Window end (ISO instant, exclusive)
+    type: DATE
+    label: To (exclusive)
     required: true
-    default: "2026-07-28T00:00:00Z"
+    default: "2026-07-28"
   - name: state
     type: STRING
     label: Supplier state filter (NSW/VIC/QLD/SA/WA/TAS/NT/ACT; blank = all)
@@ -31,8 +31,14 @@ params:
 spec:
   kind: cypherscript
   script: |
-    const from = String(lensArgs.from || "").trim();
-    const to = String(lensArgs.to || "").trim();
+    // Params are DATEs (the generated form gives a date picker); the feed wants ISO instants.
+    const isoAt = (d, endOfDay) => {
+      const v = String(d || '').trim();
+      if (!v) return v;
+      return /T/.test(v) ? v : v + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z');
+    };
+    const from = isoAt(lensArgs.from);
+    const to = isoAt(lensArgs.to);
     const state = String(lensArgs.state || "").trim().toUpperCase();
     const rankBy = String(lensArgs.rankBy || "growthPct") === "delta" ? "delta" : "growthPct";
     const window = `${from}/${to}`;

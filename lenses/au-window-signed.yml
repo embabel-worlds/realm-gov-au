@@ -7,15 +7,15 @@ description: >-
   as PARTIAL, never passed off as the whole period.
 params:
   - name: from
-    type: STRING
-    label: Window start (ISO instant)
+    type: DATE
+    label: From
     required: true
-    default: "2026-07-21T00:00:00Z"
+    default: "2026-07-21"
   - name: to
-    type: STRING
-    label: Window end (ISO instant, exclusive)
+    type: DATE
+    label: To (exclusive)
     required: true
-    default: "2026-07-28T00:00:00Z"
+    default: "2026-07-28"
   - name: minAmount
     type: STRING
     label: Ignore contracts below (AUD)
@@ -24,8 +24,14 @@ params:
 spec:
   kind: cypherscript
   script: |
-    const from = String(lensArgs.from || "").trim();
-    const to = String(lensArgs.to || "").trim();
+    // Params are DATEs (the generated form gives a date picker); the feed wants ISO instants.
+    const isoAt = (d, endOfDay) => {
+      const v = String(d || '').trim();
+      if (!v) return v;
+      return /T/.test(v) ? v : v + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z');
+    };
+    const from = isoAt(lensArgs.from);
+    const to = isoAt(lensArgs.to);
     const minAmount = Number(lensArgs.minAmount || 0) || 0;
     const window = `${from}/${to}`;
 

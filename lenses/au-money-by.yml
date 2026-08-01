@@ -8,15 +8,15 @@ description: >-
   labelled as a judgment throughout.
 params:
   - name: from
-    type: STRING
-    label: Window start (ISO instant)
+    type: DATE
+    label: From
     required: true
-    default: "2026-07-21T00:00:00Z"
+    default: "2026-07-21"
   - name: to
-    type: STRING
-    label: Window end (ISO instant, exclusive)
+    type: DATE
+    label: To (exclusive)
     required: true
-    default: "2026-07-28T00:00:00Z"
+    default: "2026-07-28"
   - name: sectors
     type: STRING
     label: Sector labels for the LLM cut (comma-separated; blank = skip the model entirely)
@@ -25,8 +25,14 @@ params:
 spec:
   kind: cypherscript
   script: |
-    const from = String(lensArgs.from || "").trim();
-    const to = String(lensArgs.to || "").trim();
+    // Params are DATEs (the generated form gives a date picker); the feed wants ISO instants.
+    const isoAt = (d, endOfDay) => {
+      const v = String(d || '').trim();
+      if (!v) return v;
+      return /T/.test(v) ? v : v + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z');
+    };
+    const from = isoAt(lensArgs.from);
+    const to = isoAt(lensArgs.to);
     const sectors = String(lensArgs.sectors || "").trim();
     const window = `${from}/${to}`;
 
@@ -94,6 +100,10 @@ spec:
         : titleByCode[code.slice(0, 2) + "000000"] ? { title: titleByCode[code.slice(0, 2) + "000000"], matchedOn: "code segment" }
         : null;
     };
+    // Zero rows back from a non-empty ask means the ProcurementCategory nodes do not exist here —
+    // a setup state, not a data state, and reporting it as "1,096 uncategorised" reads as a defect
+    // in the register rather than an unseeded world.
+    const codesetSeeded = Object.keys(titleByCode).length > 0;
     const catAgg = {}; let uncategorised = { contracts: 0, value: 0, codes: {} };
     for (const x of rows) {
       const code = (x.unspscCodes || [])[0];
@@ -113,28 +123,43 @@ spec:
     })).sort((a, b) => b.value - a.value).slice(0, 20);
 
     // ---- Judgment: sector classification, only if asked for -------------------------------
-    // `classify` folds a GROUP of text to ONE label from a caller-supplied closed set. This is
-    // the ONLY model-produced cut here, it is opt-in (blank sectors skips it entirely), and it
-    // is reported under its own heading so it can never be read as the register's own taxonomy.
+    // PER-ROW, and that distinction is the whole bug this replaced: `classify(text, labels)` is a
+    // fan-IN aggregation that reduces a GROUP to ONE label, so with no grouping key the entire
+    // window collapsed to a single "other". `ai.classify(alias, 'dimension')` is the fan-OUT
+    // projection — one label per row — which can then be grouped.
+    //
+    // The dimension must be a QUOTED LITERAL in the Cypher: the rewriter matches
+    // `ai.classify(alias, '...')` textually and a $param never matches it. So the labels are
+    // escaped and inlined, and single quotes are stripped rather than escaped into the literal.
     let bySector = null, sectorNote = null;
     if (sectors) {
+      const labels = sectors.replace(/['"\\]/g, " ").replace(/\s+/g, " ").trim();
+      const dimension = `sector: ${labels.split(",").map(s => s.trim()).filter(Boolean).join(" / ")}`;
       const sr = await gateway.kg.query({
         cypher: `
           MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
-          RETURN classify(r.description, $sectors) AS sector,
+          RETURN ai.classify(r, '${dimension}') AS sector,
                  count(r) AS contracts, sum(toFloat(r.amount)) AS value
         `,
-        params: JSON.stringify({ window, sectors }),
+        params: JSON.stringify({ window }),
       });
       const srows = ((sr && sr.rows) ? sr.rows : (sr || []));
       warnings.push(...((sr && sr.warnings) || []));
-      bySector = srows.map(x => ({
-        sector: x.sector, contracts: Number(x.contracts || 0), value: Math.round(Number(x.value || 0)),
-        shareOfValuePct: total > 0 ? Math.round((Number(x.value || 0) / total) * 1000) / 10 : null,
-      })).sort((a, b) => b.value - a.value);
-      sectorNote = "A model assigned each contract's DESCRIPTION to one of the labels you supplied. " +
-                   "It is a reading of the agencies' prose, not a government classification, and a " +
-                   "different label set would produce a different split.";
+      bySector = srows
+        .map(x => ({
+          sector: String(x.sector || "").trim() || "(unlabelled)",
+          contracts: Number(x.contracts || 0), value: Math.round(Number(x.value || 0)),
+          shareOfValuePct: total > 0 ? Math.round((Number(x.value || 0) / total) * 1000) / 10 : null,
+        }))
+        .sort((a, b) => b.value - a.value);
+      // One label covering everything is the signature of the fan-in mistake, or of a model that
+      // could not tell the labels apart. Say so rather than presenting 100% of one bucket as a finding.
+      const single = bySector.length === 1;
+      sectorNote = "A model read each contract's DESCRIPTION and assigned it one of your labels. " +
+        "It is a reading of the agencies' prose, not a government classification, and a different " +
+        "label set would produce a different split." +
+        (single ? " EVERY contract landed in one label — treat that as a failed classification " +
+                  "(too-similar labels, or descriptions too terse to separate), not as a finding." : "");
     } else {
       sectorNote = "Skipped — no sector labels supplied, so no model ran.";
     }
@@ -142,14 +167,17 @@ spec:
     await gateway.lens.present({ content: JSON.stringify({
       kind: "au-money-by",
       window: { from, to }, sectorLabels: sectors || null,
-      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
-      warnings,
+      status: failed ? "FAILED" : ((truncated || !codesetSeeded) ? "PARTIAL" : "COMPLETE"),
+      warnings: codesetSeeded ? warnings
+        : warnings.concat(["The UNSPSC codeset is not seeded in this world, so the category cut is empty. Reload the world to seed it."]),
       joins: [
         { source: "AusTender OCDS API", role: "Contract notices published in the window",
           licence: "CC BY 3.0 AU, keyless", ok: !failed, detail: `${rows.length} release(s)` },
         { source: "AusTender UNSPSC codeset (seeded)", role: "Category titles for the codes contracts carry",
-          licence: "CC BY", ok: Object.keys(titleByCode).length > 0,
-          detail: `${Object.keys(titleByCode).length} code(s) resolved` },
+          licence: "CC BY", ok: codesetSeeded,
+          detail: codesetSeeded
+            ? `${Object.keys(titleByCode).length} code(s) resolved`
+            : "NOT SEEDED in this world — reload the world to seed the published codeset" },
       ],
       totals: { contracts: rows.length, value: Math.round(total),
                 coverage: truncated ? "the fetched releases only" : "the whole window" },
@@ -157,8 +185,12 @@ spec:
       byCategory,
       uncategorised: { contracts: uncategorised.contracts, value: Math.round(uncategorised.value),
                        exampleCodes: Object.keys(uncategorised.codes).slice(0, 6),
-                       note: "Codes absent from the published codeset, or contracts with no code. " +
-                             "Reported rather than folded into a category." },
+                       note: codesetSeeded
+                         ? "Codes absent from the published codeset, or contracts with no code. " +
+                           "Reported rather than folded into a category."
+                         : "THE CODESET IS NOT SEEDED IN THIS WORLD — every contract is unmatched for that " +
+                           "reason, not because its code is unpublished. Reload the world (or POST " +
+                           "/api/v1/admin/reference/seed) to seed the 586 published UNSPSC titles." },
       bySector, sectorNote,
       interpretation: {
         factual: ["bySize", "byCategory", "uncategorised", "totals"],

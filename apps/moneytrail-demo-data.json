@@ -6420,8 +6420,51 @@
    "exampleCodes": [],
    "note": "Codes absent from the published codeset, or contracts with no code. Reported rather than folded into a category."
   },
-  "bySector": null,
-  "sectorNote": "Skipped in this standalone demo \u2014 the sector cut runs the engine's classify() aggregation and needs a live world.",
+  "bySector": [
+   {
+    "sector": "other",
+    "contracts": 95,
+    "value": 38751552,
+    "shareOfValuePct": 42.0
+   },
+   {
+    "sector": "software and IT",
+    "contracts": 30,
+    "value": 34478099,
+    "shareOfValuePct": 37.4
+   },
+   {
+    "sector": "construction and property",
+    "contracts": 11,
+    "value": 9605065,
+    "shareOfValuePct": 10.4
+   },
+   {
+    "sector": "professional and consulting services",
+    "contracts": 43,
+    "value": 4440220,
+    "shareOfValuePct": 4.8
+   },
+   {
+    "sector": "transport and logistics",
+    "contracts": 16,
+    "value": 2523044,
+    "shareOfValuePct": 2.7
+   },
+   {
+    "sector": "weapons and defence materiel",
+    "contracts": 4,
+    "value": 2343077,
+    "shareOfValuePct": 2.5
+   },
+   {
+    "sector": "health and medical",
+    "contracts": 1,
+    "value": 15361,
+    "shareOfValuePct": 0.0
+   }
+  ],
+  "sectorNote": "ILLUSTRATIVE in this standalone demo \u2014 assigned by keyword so the chart has shape offline. In a live world this cut is ai.classify() reading each description, and is labelled as a model judgment there too.",
   "limits": [
    "Category titles are the government's own; the match level (exact/family/segment) is stated per row.",
    "Values are commitments as published, not expenditure."
