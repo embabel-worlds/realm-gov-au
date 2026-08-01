@@ -52,6 +52,12 @@ basis. `?demo=1` renders from `apps/moneytrail-demo-data.json` — REAL register
 2026-08-01 — with no host required. Explore/How tabs; the How tab explains the joins and the
 extension roadmap.
 
+`apps/signal-room.html` — an additional insight-first entry point for readers who do not want the
+full workbench. One date-window scan opens with five plain-language signals and a short evidence
+list; amendment, procurement-ground, category and portfolio lenses load only when requested.
+`?demo=1` uses the same baked real-register data. The product rationale and next insight ideas are
+in [`INSIGHTS.md`](INSIGHTS.md).
+
 ## Discipline
 
 This realm reports what the registers record and never characterises it. Amounts are commitments,

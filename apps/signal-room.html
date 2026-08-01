@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signal Room — Commonwealth contract signals</title>
+<meta name="description" content="A calm, evidence-first view of concentration, procurement paths, amendments and data coverage in Australian Government contract notices.">
+<link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
+<script src="/api/v1/apps-runtime/v1/embabel.js"></script>
+<script type="application/embabel-app+json">
+{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+</script>
+<style>
+  :root {
+    --sr-night:#102a2e; --sr-night-2:#183f43; --sr-mint:#a8e6cf; --sr-coral:#ff8f70;
+    --sr-gold:#f5c451; --sr-sky:#8ed5e8; --sr-paper:#f3f1e9; --sr-ink:#153033;
+    --sr-muted:#607174; --sr-line:#d7d9d2; --sr-card:#fffefa; --sr-soft:#e9eee9;
+    --sr-danger:#9d3f35; --sr-radius:20px; --sr-shadow:0 18px 55px rgba(24,63,67,.10);
+    --embabel-accent:#246b70; --embabel-accent-strong:#174c50;
+  }
+  @media (prefers-color-scheme:dark) {
+    :root {
+      --sr-paper:#10191a; --sr-ink:#edf6f2; --sr-muted:#a7b8b5; --sr-line:#314345;
+      --sr-card:#172526; --sr-soft:#203132; --sr-danger:#ff9b8c; --sr-shadow:0 18px 55px rgba(0,0,0,.28);
+      --embabel-bg:var(--sr-paper); --embabel-surface:var(--sr-card); --embabel-text:var(--sr-ink);
+      --embabel-text-muted:var(--sr-muted); --embabel-border:var(--sr-line);
+    }
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--sr-paper); color:var(--sr-ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  button,input { font:inherit; }
+  button { color:inherit; }
+  a { color:inherit; }
+  .shell { max-width:1220px; margin:0 auto; padding:0 26px 70px; }
+
+  .mast { position:relative; overflow:hidden; background:var(--sr-night); color:#f4fbf8; border-radius:0 0 34px 34px; }
+  .mast::after { content:""; position:absolute; width:480px; height:480px; border-radius:50%; right:-155px; top:-245px; border:74px solid rgba(168,230,207,.11); }
+  .mast-inner { max-width:1220px; margin:auto; padding:26px 26px 38px; position:relative; z-index:1; }
+  .brand { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+  .brandmark { display:flex; align-items:center; gap:10px; font-size:.76rem; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+  .pulse { width:13px; height:13px; border-radius:50%; background:var(--sr-coral); box-shadow:0 0 0 6px rgba(255,143,112,.15); }
+  .mode { border:1px solid rgba(255,255,255,.24); border-radius:999px; padding:6px 10px; font-size:.72rem; color:#cce1dc; }
+  .hero { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(290px,.7fr); gap:34px; align-items:end; margin-top:42px; }
+  .eyebrow { color:var(--sr-mint); font-size:.78rem; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+  h1 { font-size:clamp(2.6rem,6vw,5.2rem); line-height:.92; letter-spacing:-.06em; margin:10px 0 18px; max-width:780px; }
+  .lede { max-width:690px; color:#c7dad6; font-size:1.06rem; line-height:1.58; margin:0; }
+  .hero-rule { border-left:1px solid rgba(255,255,255,.18); padding-left:24px; color:#c7dad6; font-size:.88rem; line-height:1.55; }
+  .hero-rule strong { color:#fff; display:block; margin-bottom:5px; font-size:.95rem; }
+
+  .controls { margin-top:-18px; position:relative; z-index:2; background:var(--sr-card); border:1px solid var(--sr-line); border-radius:18px; box-shadow:var(--sr-shadow); padding:15px; display:flex; flex-wrap:wrap; align-items:end; gap:12px; }
+  .field { display:grid; gap:5px; }
+  .field label { color:var(--sr-muted); font-size:.69rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+  .field input { border:1px solid var(--sr-line); background:var(--sr-paper); color:var(--sr-ink); border-radius:10px; padding:10px 12px; min-height:42px; }
+  .field input:focus { outline:3px solid color-mix(in srgb,var(--sr-mint) 42%,transparent); border-color:#5d9d91; }
+  .primary { border:0; border-radius:10px; padding:11px 17px; min-height:42px; background:var(--sr-coral); color:#231b18; font-weight:850; cursor:pointer; }
+  .primary:hover { filter:brightness(1.04); transform:translateY(-1px); }
+  .primary:disabled { opacity:.55; cursor:wait; transform:none; }
+  .control-note { margin-left:auto; max-width:370px; color:var(--sr-muted); font-size:.76rem; line-height:1.45; }
+
+  .status { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:18px 0 4px; min-height:28px; color:var(--sr-muted); font-size:.82rem; }
+  .status-dot { width:9px; height:9px; border-radius:50%; background:var(--sr-muted); }
+  .status.ready .status-dot { background:#3aa77a; }
+  .status.partial .status-dot { background:var(--sr-gold); }
+  .status.error .status-dot { background:var(--sr-danger); }
+  .pill { border:1px solid var(--sr-line); background:var(--sr-soft); padding:4px 8px; border-radius:999px; font-size:.69rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+
+  .intro { padding:54px 0 13px; display:flex; align-items:end; justify-content:space-between; gap:22px; }
+  .section-kicker { color:#397b75; font-size:.73rem; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
+  h2 { font-size:clamp(1.65rem,3.5vw,2.75rem); letter-spacing:-.045em; line-height:1.05; margin:7px 0 0; }
+  .intro p { max-width:430px; color:var(--sr-muted); line-height:1.5; margin:0; font-size:.9rem; }
+
+  .signals { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; }
+  .signal { grid-column:span 4; min-height:250px; position:relative; overflow:hidden; background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:20px; box-shadow:var(--sr-shadow); display:flex; flex-direction:column; }
+  .signal.hero-signal { grid-column:span 8; background:var(--sr-night-2); color:#f5fbf8; border-color:transparent; }
+  .signal-index { font-size:.67rem; font-weight:900; letter-spacing:.14em; text-transform:uppercase; color:var(--sr-muted); }
+  .hero-signal .signal-index { color:var(--sr-mint); }
+  .signal-value { font-size:clamp(2rem,4vw,3.7rem); letter-spacing:-.055em; line-height:1; font-weight:900; margin:20px 0 8px; }
+  .signal h3 { margin:0; font-size:1.02rem; letter-spacing:-.018em; }
+  .signal p { color:var(--sr-muted); line-height:1.48; font-size:.83rem; margin:9px 0 0; }
+  .hero-signal p { color:#c4d9d4; max-width:570px; }
+  .signal-bottom { margin-top:auto; padding-top:18px; }
+  .rail { height:8px; border-radius:10px; overflow:hidden; background:var(--sr-soft); display:flex; }
+  .hero-signal .rail { background:rgba(255,255,255,.12); }
+  .rail > span { display:block; min-width:2px; background:var(--sr-coral); }
+  .rail > span.alt { background:var(--sr-mint); }
+  .micro { margin-top:7px; font-size:.7rem; color:var(--sr-muted); display:flex; justify-content:space-between; gap:10px; }
+  .hero-signal .micro { color:#b9cfca; }
+  .placeholder { grid-column:1/-1; border:1px dashed var(--sr-line); border-radius:var(--sr-radius); padding:50px 24px; color:var(--sr-muted); text-align:center; }
+
+  .evidence-grid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(270px,.65fr); gap:18px; margin-top:18px; }
+  .panel { background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:21px; box-shadow:var(--sr-shadow); }
+  .panel-head { display:flex; justify-content:space-between; align-items:start; gap:16px; margin-bottom:10px; }
+  .panel h3 { margin:0; font-size:1.06rem; }
+  .panel-sub { color:var(--sr-muted); font-size:.78rem; margin-top:4px; line-height:1.4; }
+  .commitment { display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; padding:13px 0; border-top:1px solid var(--sr-line); align-items:center; }
+  .commitment:first-child { border-top:0; }
+  .rank { width:34px; height:34px; display:grid; place-items:center; border-radius:50%; background:var(--sr-soft); color:var(--sr-muted); font-size:.75rem; font-weight:850; }
+  .desc { font-weight:760; font-size:.88rem; line-height:1.35; }
+  .meta { color:var(--sr-muted); font-size:.73rem; margin-top:4px; line-height:1.35; }
+  .money { font-weight:900; font-size:.92rem; white-space:nowrap; }
+  .source-link { color:#28766e; text-decoration:none; font-weight:800; }
+  .source-link:hover { text-decoration:underline; }
+  .readout { display:grid; gap:12px; }
+  .readout-row { border-top:1px solid var(--sr-line); padding-top:12px; }
+  .readout-row:first-child { border-top:0; padding-top:0; }
+  .readout-label { color:var(--sr-muted); text-transform:uppercase; font-size:.65rem; font-weight:850; letter-spacing:.08em; }
+  .readout-value { font-size:1.15rem; font-weight:900; margin-top:3px; }
+  .readout-note { color:var(--sr-muted); font-size:.73rem; line-height:1.4; margin-top:3px; }
+
+  .desk { margin-top:66px; }
+  .desk-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 16px; }
+  .desk-tab { border:1px solid var(--sr-line); background:transparent; color:var(--sr-muted); border-radius:999px; padding:8px 13px; font-size:.78rem; font-weight:820; cursor:pointer; }
+  .desk-tab[aria-selected=true] { background:var(--sr-night); border-color:var(--sr-night); color:white; }
+  .desk-pane[hidden] { display:none; }
+  .lazy { min-height:260px; display:grid; place-items:center; text-align:center; background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:34px; }
+  .lazy-inner { max-width:540px; }
+  .lazy h3 { font-size:1.35rem; margin:0 0 8px; }
+  .lazy p { color:var(--sr-muted); line-height:1.55; margin:0 0 18px; font-size:.88rem; }
+  .secondary { border:1px solid var(--sr-night); background:var(--sr-night); color:white; border-radius:10px; padding:10px 15px; font-weight:830; cursor:pointer; }
+  .secondary:hover { background:var(--sr-night-2); }
+  .secondary:disabled { opacity:.55; cursor:wait; }
+  .deep-result { background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:22px; box-shadow:var(--sr-shadow); }
+  .result-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:14px; align-items:start; margin-bottom:15px; }
+  .result-head h3 { margin:0; font-size:1.3rem; }
+  .coverage { max-width:600px; color:var(--sr-muted); font-size:.75rem; line-height:1.45; }
+  table { width:100%; border-collapse:collapse; font-size:.79rem; }
+  th { color:var(--sr-muted); text-align:left; font-size:.64rem; text-transform:uppercase; letter-spacing:.07em; padding:8px 9px; border-bottom:1px solid var(--sr-line); }
+  td { padding:11px 9px; border-bottom:1px solid var(--sr-line); vertical-align:top; }
+  th.num,td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .scroll { overflow:auto; }
+  .grow { color:var(--sr-danger); font-weight:900; }
+  .bars { display:grid; gap:11px; margin-top:14px; }
+  .bar { display:grid; grid-template-columns:minmax(140px,260px) 1fr 62px; gap:10px; align-items:center; }
+  .bar-label { font-size:.78rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track { height:11px; border-radius:10px; background:var(--sr-soft); overflow:hidden; }
+  .bar-fill { height:100%; min-width:2px; background:#4a978d; border-radius:10px; }
+  .bar-num { color:var(--sr-muted); font-size:.72rem; text-align:right; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .ground { padding:14px 0; border-top:1px solid var(--sr-line); }
+  .ground:first-child { border-top:0; }
+  .ground-code { display:inline-grid; place-items:center; min-width:32px; height:26px; border-radius:7px; background:var(--sr-gold); color:#302716; font-size:.72rem; font-weight:900; margin-right:7px; }
+  .ground-text { font-size:.82rem; line-height:1.45; }
+  .ground-meta { color:var(--sr-muted); font-size:.72rem; margin-top:6px; }
+  .judgment { border-left:3px solid var(--sr-sky); background:color-mix(in srgb,var(--sr-sky) 12%,transparent); padding:10px 12px; margin-top:8px; color:var(--sr-muted); font-size:.76rem; line-height:1.45; }
+  details.notes { margin-top:18px; border-top:1px solid var(--sr-line); padding-top:12px; color:var(--sr-muted); font-size:.76rem; line-height:1.5; }
+  details.notes summary { cursor:pointer; color:var(--sr-ink); font-weight:800; }
+  details.notes ul { margin-bottom:0; padding-left:18px; }
+  .error-box { color:var(--sr-danger); border:1px solid color-mix(in srgb,var(--sr-danger) 35%,var(--sr-line)); background:color-mix(in srgb,var(--sr-danger) 7%,var(--sr-card)); border-radius:12px; padding:14px; font-size:.83rem; }
+  .foot { margin-top:60px; padding-top:18px; border-top:1px solid var(--sr-line); display:flex; justify-content:space-between; gap:20px; color:var(--sr-muted); font-size:.73rem; line-height:1.5; }
+
+  @media (max-width:880px) {
+    .hero { grid-template-columns:1fr; } .hero-rule { border-left:0; border-top:1px solid rgba(255,255,255,.18); padding:18px 0 0; }
+    .signal,.signal.hero-signal { grid-column:span 6; } .evidence-grid,.split { grid-template-columns:1fr; }
+    .control-note { width:100%; margin-left:0; }
+  }
+  @media (max-width:600px) {
+    .shell,.mast-inner { padding-left:16px; padding-right:16px; }
+    .signal,.signal.hero-signal { grid-column:1/-1; min-height:220px; }
+    .intro { align-items:start; flex-direction:column; }
+    .commitment { grid-template-columns:36px minmax(0,1fr); } .commitment .money { grid-column:2; }
+    .bar { grid-template-columns:110px 1fr 52px; } .foot { flex-direction:column; }
+  }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .primary:hover { transform:none; } }
+</style>
+</head>
+<body>
+<embabel-app-shell>
+  <header class="mast">
+    <div class="mast-inner">
+      <div class="brand">
+        <div class="brandmark"><span class="pulse"></span> Signal Room</div>
+        <div class="mode" id="mode-label">Live public registers</div>
+      </div>
+      <div class="hero">
+        <div>
+          <div class="eyebrow">Commonwealth procurement · evidence desk</div>
+          <h1>What deserves a closer look?</h1>
+          <p class="lede">A small set of signals from Australian Government contract notices. Start with what is concentrated or changing, then open the source record.</p>
+        </div>
+        <div class="hero-rule">
+          <strong>Designed to orient, not accuse.</strong>
+          Values are commitments, not expenditure. Procurement grounds are recorded reasons. Amendments are not budget overruns.
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <div class="controls" aria-label="Date window controls">
+      <div class="field"><label for="from">From</label><input id="from" type="date"></div>
+      <div class="field"><label for="to">To (exclusive)</label><input id="to" type="date"></div>
+      <button class="primary" id="scan">Scan this window</button>
+      <div class="control-note">Keep live scans to a few business days. The source pages at 100 notices and the governed lens labels capped results as a sample.</div>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"><span class="status-dot"></span><span id="status-text">Choose a window to begin.</span></div>
+
+    <section aria-labelledby="signals-heading">
+      <div class="intro">
+        <div><div class="section-kicker">The briefing</div><h2 id="signals-heading">Five signals, then the evidence</h2></div>
+        <p>These signals are arithmetic over the fetched notices. They do not score risk or infer intent.</p>
+      </div>
+      <div class="signals" id="signals"><div class="placeholder">Run a scan to turn the register into a short briefing.</div></div>
+      <div class="evidence-grid" id="evidence" hidden>
+        <article class="panel"><div class="panel-head"><div><h3>Largest commitments</h3><div class="panel-sub">Shortlist from the selected publication window</div></div></div><div id="commitments"></div></article>
+        <aside class="panel"><div class="panel-head"><div><h3>Read the result correctly</h3><div class="panel-sub">Coverage and interpretation</div></div></div><div class="readout" id="readout"></div></aside>
+      </div>
+    </section>
+
+    <section class="desk" aria-labelledby="desk-heading">
+      <div class="section-kicker">Evidence desk</div><h2 id="desk-heading">Go deeper only when useful</h2>
+      <div class="desk-tabs" role="tablist" aria-label="Evidence views">
+        <button class="desk-tab" role="tab" aria-selected="true" data-tab="amendments">Amendments</button>
+        <button class="desk-tab" role="tab" aria-selected="false" data-tab="grounds">Procurement paths</button>
+        <button class="desk-tab" role="tab" aria-selected="false" data-tab="categories">Size & categories</button>
+        <button class="desk-tab" role="tab" aria-selected="false" data-tab="portfolios">Portfolios</button>
+      </div>
+      <div id="pane-amendments" class="desk-pane"></div>
+      <div id="pane-grounds" class="desk-pane" hidden></div>
+      <div id="pane-categories" class="desk-pane" hidden></div>
+      <div id="pane-portfolios" class="desk-pane" hidden></div>
+    </section>
+
+    <footer class="foot">
+      <div>Source: AusTender OCDS API (CC BY 3.0 AU), with AGOR reference data where shown.</div>
+      <div>The original <a href="moneytrail.html" class="source-link">Money Trail workbench</a> remains available for contract passports, search, maps, lobbying checks and raw lens envelopes.</div>
+    </footer>
+  </main>
+</embabel-app-shell>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var DEMO = new URLSearchParams(location.search).has('demo');
+  var E = window.embabel || null;
+  var demoData = null;
+  var snapshot = null;
+  var loaded = {};
+  var runners = {};
+
+  var esc = E && E.html ? E.html.escape : function (value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  };
+  function aud(value, compact) {
+    if (!isFinite(Number(value))) return '—';
+    return new Intl.NumberFormat('en-AU', compact
+      ? {style:'currency',currency:'AUD',notation:'compact',maximumFractionDigits:1}
+      : {style:'currency',currency:'AUD',maximumFractionDigits:0}).format(Number(value));
+  }
+  function pct(value) { return isFinite(Number(value)) ? (Math.round(Number(value) * 10) / 10) + '%' : '—'; }
+  function clampPct(value) { return Math.max(0, Math.min(100, Number(value) || 0)); }
+  function envelopeData(env) {
+    if (!env) return null;
+    var value = env.data != null ? env.data : env;
+    if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return null; } }
+    if (value && typeof value.content === 'string') { try { return JSON.parse(value.content); } catch (e2) { return null; } }
+    return value;
+  }
+  async function ensureDemo() {
+    if (!demoData) demoData = await (await fetch('moneytrail-demo-data.json')).json();
+    return demoData;
+  }
+  function args() { return {from:$('from').value + 'T00:00:00Z',to:$('to').value + 'T00:00:00Z'}; }
+  function runnerFor(id) {
+    if (!runners[id] && E) runners[id] = E.createRunner({timeoutMs:300000});
+    return runners[id];
+  }
+  async function invoke(id, lensArgs) {
+    if (DEMO) {
+      var d = await ensureDemo();
+      if (id === 'au-window-signed') return d.window;
+      if (id === 'au-amended-up') return {kind:id,status:'PARTIAL',window:d.league.window,coverage:d.league.coverage,league:d.league.entries || [],limits:[
+        'Growth is a change in the registered commitment, not a budget overrun.',
+        'The baked ranking covers the largest amended contracts by current value in its stated window.'
+      ],source:'AusTender OCDS API (CC BY 3.0 AU)'};
+      if (id === 'au-grounds') return d.grounds;
+      if (id === 'au-money-by') return d.moneyBy;
+      if (id === 'au-portfolio-themes') return d.themes;
+      return null;
+    }
+    if (!E) throw new Error('The Embabel app runtime is unavailable. Add ?demo=1 to use the baked data.');
+    var env = await runnerFor(id).lens(id, lensArgs || {});
+    return envelopeData(env);
+  }
+  function setStatus(kind, message, extra) {
+    var box = $('status'); box.className = 'status ' + (kind || '');
+    $('status-text').innerHTML = esc(message || '');
+    var old = box.querySelector('.pill'); if (old) old.remove();
+    if (extra) { var p = document.createElement('span'); p.className = 'pill'; p.textContent = extra; box.appendChild(p); }
+  }
+  function resetDeepViews() {
+    loaded = {};
+    ['amendments','grounds','categories','portfolios'].forEach(function (name) { renderLazy(name); });
+  }
+  function currentWindowLabel() { return $('from').value + ' → ' + $('to').value; }
+
+  function signalCard(index, value, title, copy, fill, left, right, hero) {
+    return '<article class="signal' + (hero ? ' hero-signal' : '') + '">' +
+      '<div class="signal-index">Signal ' + esc(index) + '</div><div class="signal-value">' + esc(value) + '</div>' +
+      '<h3>' + esc(title) + '</h3><p>' + esc(copy) + '</p><div class="signal-bottom"><div class="rail"><span style="width:' + clampPct(fill) + '%"></span></div>' +
+      '<div class="micro"><span>' + esc(left || '') + '</span><span>' + esc(right || '') + '</span></div></div></article>';
+  }
+  function renderSnapshot(d) {
+    snapshot = d;
+    var total = Number(d.totals && d.totals.fetchedValue || 0);
+    var count = Number(d.totals && d.totals.fetchedCount || 0);
+    var contracts = d.topContracts || [];
+    var suppliers = d.topSuppliers || [];
+    var methods = d.byMethod || {};
+    var largest = contracts[0] || {};
+    var largestShare = total ? Number(largest.amount || 0) / total * 100 : 0;
+    var topSupplier = suppliers[0] || {};
+    var supplierShare = total ? Number(topSupplier.value || 0) / total * 100 : 0;
+    var limited = methods.limited || {count:0,value:0};
+    var limitedCountShare = count ? Number(limited.count || 0) / count * 100 : 0;
+    var limitedValueShare = total ? Number(limited.value || 0) / total * 100 : 0;
+    var mapped = (d.geo && d.geo.points || []).reduce(function (n,p) { return n + Number(p.count || 0); }, 0);
+    var postcodeShare = count ? mapped / count * 100 : 0;
+    var topFive = suppliers.slice(0,5).reduce(function (n,s) { return n + Number(s.value || 0); },0);
+    var topFiveShare = total ? topFive / total * 100 : 0;
+
+    $('signals').innerHTML =
+      signalCard('01',aud(total,true),'Committed value in view',count + ' fetched notices in ' + currentWindowLabel() + '. The number is only as complete as the coverage statement below.',100,'0',aud(total,true),true) +
+      signalCard('02',pct(largestShare),'One notice sets the tone',(largest.description || largest.cnId || 'The largest notice') + ' represents the largest single share of fetched value.',largestShare,largest.cnId || 'largest',aud(largest.amount,true)) +
+      signalCard('03',pct(supplierShare),'Top-supplier concentration',(topSupplier.name || 'The leading supplier') + ' accounts for this share; the top five account for ' + pct(topFiveShare) + '.',supplierShare,'top supplier',aud(topSupplier.value,true)) +
+      signalCard('04',pct(limitedValueShare),'Limited tender by value','Limited tender is ' + pct(limitedCountShare) + ' of fetched notices by count. Seeing count and value together avoids a false headline.',limitedValueShare,pct(limitedCountShare) + ' by count',pct(limitedValueShare) + ' by value') +
+      signalCard('05',pct(postcodeShare),'Registered-postcode coverage','This share of notices can be placed at the supplier\'s registered postcode. That is corporate geography, never delivery geography.',postcodeShare,mapped + ' located',(count - mapped) + ' unlocated');
+
+    $('commitments').innerHTML = contracts.slice(0,6).map(function (x,i) {
+      var url = x.austenderUrl || ('https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(x.cnId || ''));
+      return '<div class="commitment"><div class="rank">' + (i+1) + '</div><div><div class="desc">' + esc(x.description || x.title || x.cnId) + '</div>' +
+        '<div class="meta"><a class="source-link" target="_blank" rel="noopener" href="' + esc(url) + '">' + esc(x.cnId) + ' ↗</a> · ' + esc(x.supplierName || 'supplier unstated') + ' · ' + esc(x.agencyName || 'agency unstated') + '</div></div>' +
+        '<div class="money">' + esc(aud(x.amount,true)) + '</div></div>';
+    }).join('') || '<div class="panel-sub">No commitments matched this window.</div>';
+
+    var coverage = d.totals && d.totals.coverage || 'coverage not stated';
+    $('readout').innerHTML =
+      '<div class="readout-row"><div class="readout-label">Coverage</div><div class="readout-value">' + esc(String(d.status || 'UNKNOWN')) + '</div><div class="readout-note">' + esc(coverage) + '</div></div>' +
+      '<div class="readout-row"><div class="readout-label">Measure</div><div class="readout-value">Commitments</div><div class="readout-note">AusTender values are contract commitments as published, not money already spent.</div></div>' +
+      '<div class="readout-row"><div class="readout-label">Geography</div><div class="readout-value">Registered address</div><div class="readout-note">Postcodes locate suppliers, not the place services or works are delivered.</div></div>' +
+      '<div class="readout-row"><div class="readout-label">Method</div><div class="readout-value">Recorded fact</div><div class="readout-note">A procurement method or ground is shown as the register records it, without a propriety judgment.</div></div>';
+    $('evidence').hidden = false;
+    var state = String(d.status || '').toUpperCase();
+    setStatus(state === 'COMPLETE' ? 'ready' : state === 'PARTIAL' ? 'partial' : 'error',
+      state === 'COMPLETE' ? 'Scan complete.' : state === 'PARTIAL' ? 'Partial result: read the coverage before comparing totals.' : 'The scan did not complete.',
+      state || 'unknown');
+  }
+
+  async function scan() {
+    if (!$('from').value || !$('to').value || $('from').value >= $('to').value) {
+      setStatus('error','Choose a From date earlier than the exclusive To date.','date window'); return;
+    }
+    $('scan').disabled = true; setStatus('','Scanning the publication window…','au-window-signed');
+    $('signals').innerHTML = '<div class="placeholder">Fetching and shaping notices from the governed window lens…</div>';
+    $('evidence').hidden = true; resetDeepViews();
+    try {
+      var data = await invoke('au-window-signed', Object.assign(args(),{minAmount:'0'}));
+      if (!data) throw new Error('The lens returned no readable result.');
+      renderSnapshot(data);
+    } catch (e) {
+      $('signals').innerHTML = '<div class="error-box">' + esc(e && e.message || e) + '</div>';
+      setStatus('error','Could not complete the scan.','failed');
+    } finally { $('scan').disabled = false; }
+  }
+
+  var lazyCopy = {
+    amendments:['Which commitments changed?','This uses the change-window anchor, then fetches each notice\'s complete version chain.','Load amendment signals','au-amended-up'],
+    grounds:['Why was competition limited?','Decode the register\'s reason codes and compare their count and value. Recorded reasons are not assessments.','Load procurement paths','au-grounds'],
+    categories:['Is activity or value driving the window?','Compare fixed size bands and the government\'s UNSPSC category titles. No model classification is requested.','Load size & categories','au-money-by'],
+    portfolios:['Which portfolios are visible?','Join agency names to the seeded AGOR portfolio spine and show any value that could not be placed.','Load portfolio context','au-portfolio-themes']
+  };
+  function renderLazy(name) {
+    var c = lazyCopy[name], pane = $('pane-' + name); if (!pane) return;
+    pane.innerHTML = '<div class="lazy"><div class="lazy-inner"><h3>' + esc(c[0]) + '</h3><p>' + esc(c[1]) + '</p><button class="secondary" data-load="' + esc(name) + '">' + esc(c[2]) + '</button></div></div>';
+  }
+  function notes(d) {
+    var list = d && d.limits || [];
+    return '<details class="notes"><summary>Method, limits & source</summary>' +
+      (list.length ? '<ul>' + list.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
+      '<p>' + esc(d && d.source || 'Source stated by the governed lens.') + '</p></details>';
+  }
+  function deepHead(title,d,coverage) {
+    return '<div class="result-head"><div><h3>' + esc(title) + '</h3><div class="panel-sub">' + esc(currentWindowLabel()) + '</div></div>' +
+      '<div class="coverage"><span class="pill">' + esc(d.status || 'UNKNOWN') + '</span> ' + esc(coverage || '') + '</div></div>';
+  }
+  function renderAmendments(d) {
+    var rows = (d.league || []).filter(function (x) { return Number(x.delta) > 0; });
+    var body = rows.slice(0,12).map(function (x) {
+      return '<tr><td><a target="_blank" rel="noopener" class="source-link" href="' + esc(x.austenderUrl || '#') + '">' + esc(x.cnId) + ' ↗</a><div class="meta">' + esc(x.description || '') + '</div></td>' +
+        '<td>' + esc(x.supplierName || '—') + '<div class="meta">' + esc(x.agencyName || '') + '</div></td><td class="num">' + esc(aud(x.originalAmount,true)) + '</td><td class="num">' + esc(aud(x.currentAmount,true)) + '</td>' +
+        '<td class="num grow">+' + esc(pct(x.growthPct)) + '</td><td class="num">' + esc(aud(x.delta,true)) + '</td></tr>';
+    }).join('');
+    return '<div class="deep-result">' + deepHead('Contracts amended upward',d,d.coverage) +
+      '<div class="scroll"><table><thead><tr><th>Notice</th><th>Supplier / agency</th><th class="num">Original</th><th class="num">Current</th><th class="num">Growth</th><th class="num">Change</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+      (!rows.length ? '<div class="panel-sub">No upward amendments were found in the fetched window.</div>' : '') + notes(d) + '</div>';
+  }
+  function renderGrounds(d) {
+    var groups = (d.limitedTenderGrounds || []).concat(d.exemptions || []);
+    var max = Math.max.apply(null, groups.map(function (x) { return Number(x.value || 0); }).concat([1]));
+    var cards = groups.map(function (x) {
+      return '<div class="ground"><div class="ground-text"><span class="ground-code">' + esc(x.code) + '</span>' + esc(x.text || 'Text not carried') + '</div>' +
+        '<div class="ground-meta">' + x.contracts + ' notice(s) · ' + esc(aud(x.value,true)) + ' · ' + esc(pct(x.shareOfWindowPct)) + ' of fetched value</div>' +
+        '<div class="rail" style="margin-top:8px"><span style="width:' + clampPct(Number(x.value || 0)/max*100) + '%"></span></div></div>';
+    }).join('');
+    var methodRows = Object.keys(d.byMethod || {}).map(function (key) {
+      var x=d.byMethod[key]; return '<div class="readout-row"><div class="readout-label">' + esc(key) + '</div><div class="readout-value">' + esc(aud(x.value,true)) + '</div><div class="readout-note">' + x.contracts + ' notices · ' + esc(pct(x.shareOfWindowPct != null ? x.shareOfWindowPct : x.shareOfValuePct)) + ' of value</div></div>';
+    }).join('');
+    return '<div class="deep-result">' + deepHead('Procurement paths',d,d.totals && d.totals.coverage) + '<div class="split"><div>' + cards + '</div><aside class="readout">' + methodRows + '<div class="judgment">These are the agencies\' stated grounds as published. This view measures frequency and value; it does not decide whether a ground was appropriate.</div></aside></div>' + notes(d) + '</div>';
+  }
+  function bars(items,labelKey) {
+    var max=Math.max.apply(null,(items||[]).map(function(x){return Number(x.value||0);}).concat([1]));
+    return '<div class="bars">' + (items||[]).map(function(x){ return '<div class="bar"><div class="bar-label" title="' + esc(x[labelKey]) + '">' + esc(x[labelKey]) + '</div><div class="bar-track"><div class="bar-fill" style="width:' + clampPct(Number(x.value||0)/max*100) + '%"></div></div><div class="bar-num">' + esc(pct(x.shareOfValuePct)) + '</div></div>'; }).join('') + '</div>';
+  }
+  function renderCategories(d) {
+    var un=d.uncategorised||{};
+    return '<div class="deep-result">' + deepHead('Size and government categories',d,d.totals && d.totals.coverage) + '<div class="split"><div><div class="panel-sub">Committed value by fixed contract-size band</div>' + bars(d.bySize||[],'band') + '</div><div><div class="panel-sub">Leading UNSPSC category titles</div>' + bars((d.byCategory||[]).slice(0,9),'title') + '</div></div>' +
+      (un.contracts ? '<div class="judgment">Unresolved category ledger: ' + un.contracts + ' notices / ' + esc(aud(un.value,true)) + '. ' + esc(un.note||'') + '</div>' : '') + notes(d) + '</div>';
+  }
+  function renderPortfolios(d) {
+    var rows=(d.portfolios||[]), max=Math.max.apply(null,rows.map(function(x){return Number(x.committed||0);}).concat([1]));
+    var body=rows.map(function(p){ var j=p.judged||{}; return '<div class="ground"><div style="display:flex;justify-content:space-between;gap:12px"><strong>' + esc(p.portfolio) + '</strong><strong>' + esc(aud(p.committed,true)) + '</strong></div><div class="ground-meta">' + p.contracts + ' notices · ' + p.limitedCount + ' limited</div><div class="rail" style="margin-top:8px"><span class="alt" style="width:' + clampPct(Number(p.committed||0)/max*100) + '%"></span></div>' +
+      (j.digest && !/standalone demo shows/i.test(j.digest) ? '<div class="judgment"><strong>Machine reading, not register text:</strong> ' + esc(j.digest) + '</div>' : '') + '</div>'; }).join('');
+    var un=d.unplaced||{};
+    return '<div class="deep-result">' + deepHead('Portfolio context',d,'Agency names joined to AGOR; unmatched value stays visible.') + body +
+      (un.contracts ? '<div class="judgment"><strong>Unresolved-value ledger:</strong> ' + un.contracts + ' notices / ' + esc(aud(un.committed,true)) + ' could not be placed. ' + esc(un.note||'') + '</div>' : '') + notes(d) + '</div>';
+  }
+  async function loadDeep(name) {
+    if (loaded[name]) return;
+    var pane=$('pane-'+name), btn=pane.querySelector('[data-load]'); if (btn) btn.disabled=true;
+    pane.innerHTML='<div class="lazy"><div class="lazy-inner"><h3>Loading ' + esc(name) + '…</h3><p>The governed lens may page a public register and materialize virtual records for this window.</p></div></div>';
+    var c=lazyCopy[name];
+    try {
+      var lensArgs=args();
+      if (name==='amendments') Object.assign(lensArgs,{state:'',rankBy:'growthPct'});
+      if (name==='categories') Object.assign(lensArgs,{sectors:''});
+      if (name==='portfolios') Object.assign(lensArgs,{portfolio:''});
+      var d=await invoke(c[3],lensArgs); if(!d) throw new Error('The lens returned no readable result.');
+      pane.innerHTML=name==='amendments'?renderAmendments(d):name==='grounds'?renderGrounds(d):name==='categories'?renderCategories(d):renderPortfolios(d);
+      loaded[name]=true;
+    } catch(e) { pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
+  }
+
+  document.addEventListener('click',function(e){
+    var tab=e.target.closest('.desk-tab');
+    if(tab){ var name=tab.dataset.tab; document.querySelectorAll('.desk-tab').forEach(function(x){x.setAttribute('aria-selected',String(x===tab));}); document.querySelectorAll('.desk-pane').forEach(function(x){x.hidden=x.id!=='pane-'+name;}); return; }
+    var load=e.target.closest('[data-load]'); if(load) loadDeep(load.dataset.load);
+  });
+  $('scan').addEventListener('click',scan);
+
+  function iso(d){return d.toISOString().slice(0,10);}
+  async function start(){
+    resetDeepViews();
+    var now=new Date(), before=new Date(now.getTime()-24*60*60*1000);
+    $('from').value=iso(before); $('to').value=iso(now);
+    if(DEMO){
+      $('mode-label').textContent='Baked real-register demo';
+      try { var d=await ensureDemo(); $('from').value=String(d.window.window.from).slice(0,10); $('to').value=String(d.window.window.to).slice(0,10); await scan(); }
+      catch(e){ setStatus('error','Could not load the baked demo data.','failed'); }
+    } else if(!E) {
+      $('mode-label').textContent='Runtime unavailable';
+      setStatus('error','The app runtime is unavailable. Add ?demo=1 for the standalone demo.','offline');
+    }
+  }
+  start();
+})();
+</script>
+</body>
+</html>
