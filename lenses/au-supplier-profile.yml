@@ -1,0 +1,141 @@
+id: au-supplier-profile
+name: One supplier's Commonwealth business
+description: >-
+  What one supplier won in a period — total committed, which agencies bought from them, how those
+  contracts were procured (and the grounds stated when they were not open), what they supplied by
+  the government's own category titles, and whether the federal lobbyist register lists them as a
+  client. The register has no supplier search, so this fetches a window and narrows by name, which
+  the answer states.
+params:
+  - name: supplier
+    type: STRING
+    label: Supplier name (any distinctive part)
+    required: true
+    default: "IBM"
+  - name: from
+    type: DATE
+    label: From
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: To (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: checkLobbying
+    type: BOOLEAN
+    label: Also check the lobbyist register
+    required: false
+    default: true
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const supplier = String(lensArgs.supplier || "").trim();
+    const wantLobby = String(lensArgs.checkLobbying) !== "false";
+    const window = `${from}/${to}`;
+
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE toLower(r.supplierName) CONTAINS toLower($supplier)
+        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+               r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+               r.agencyName AS agencyName, r.procurementMethod AS procurementMethod,
+               r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
+               r.unspscCodes AS unspscCodes, r.startDate AS startDate, r.endDate AS endDate
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, supplier }),
+    });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = [...((r && r.warnings) || [])];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => asText(w).includes("PRODUCER_ERROR") || asText(w).includes("FETCH_FAILURE"));
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+    const total = rows.reduce((a, x) => a + (x.amount || 0), 0);
+
+    // Spelling variants are the register's, not ours: group case-insensitively but show what it published.
+    const variants = {};
+    for (const x of rows) {
+      const k = String(x.supplierName || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      variants[k] = variants[k] || { name: x.supplierName, abns: new Set(), contracts: 0, value: 0 };
+      variants[k].contracts++; variants[k].value += (x.amount || 0);
+      if (x.supplierAbn) variants[k].abns.add(x.supplierAbn);
+    }
+    const entities = Object.values(variants).map(v => ({
+      name: v.name, abns: Array.from(v.abns), contracts: v.contracts, value: Math.round(v.value),
+    })).sort((a, b) => b.value - a.value);
+
+    const byAgency = {};
+    for (const x of rows) {
+      const a = x.agencyName || "(unstated)";
+      byAgency[a] = byAgency[a] || { name: a, contracts: 0, value: 0 };
+      byAgency[a].contracts++; byAgency[a].value += (x.amount || 0);
+    }
+    const byMethod = {};
+    for (const x of rows) {
+      const m = x.procurementMethod || "unstated";
+      byMethod[m] = byMethod[m] || { contracts: 0, value: 0 };
+      byMethod[m].contracts++; byMethod[m].value += (x.amount || 0);
+    }
+    for (const k of Object.keys(byMethod)) byMethod[k].value = Math.round(byMethod[k].value);
+
+    let lobbying = null;
+    if (wantLobby && rows.length) {
+      try {
+        const idx = await gateway.agLobbyists.registerIndex({});
+        const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ")
+          .replace(/\b(pty|ltd|limited|proprietary|the|co|inc|plc|group|holdings|australia|australian)\b/g, " ")
+          .replace(/\s+/g, " ").trim();
+        const target = norm(supplier);
+        const hits = ((idx && idx.data) || []).filter(x => x.category === "Clients" && target && norm(x.displayName).includes(target));
+        lobbying = {
+          matched: hits.length > 0,
+          basis: "NAME MATCH — the lobbyist register publishes no client ABNs, so this is a name coincidence until a human confirms the entity.",
+          entries: hits.slice(0, 6).map(h => ({ client: h.displayName, firm: h.description })),
+          note: hits.length ? null : "No client entry matched. That is absence from the THIRD-PARTY register only — in-house lobbyists are exempt by design.",
+        };
+      } catch (e) {
+        lobbying = { matched: null, basis: "unavailable", note: "The lobbyist register could not be reached — whether this supplier appears is UNKNOWN." };
+      }
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-supplier-profile",
+      supplier, window: { from, to },
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [{ title: "This supplier's contracts in the window",
+        note: "The register has NO supplier search — the window is fetched and narrowed by name here.",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                "WHERE toLower(r.supplierName) CONTAINS toLower($supplier) RETURN r" }],
+      joins: [
+        { source: "AusTender OCDS API", role: "Contracts published in the window", licence: "CC BY 3.0 AU, keyless",
+          ok: !failed, detail: `${rows.length} match(es)` },
+        ...(lobbying ? [{ source: "Register of Lobbyists", role: "Whether the name appears as a lobbying client",
+          licence: "AGD", ok: lobbying.matched !== null, detail: lobbying.matched ? "matched" : "no match" }] : []),
+      ],
+      totals: { contracts: rows.length, value: Math.round(total),
+                coverage: truncated ? "a capped window — a sample" : "the whole window" },
+      entities,
+      byMethod,
+      byAgency: Object.values(byAgency).map(e => ({ ...e, value: Math.round(e.value) })).sort((a, b) => b.value - a.value),
+      contracts: rows.slice(0, 15).map(x => ({ cnId: x.cnId, amount: x.amount, agencyName: x.agencyName,
+        description: String(x.description || "").slice(0, 160), procurementMethod: x.procurementMethod,
+        groundText: x.groundText || null, startDate: x.startDate, endDate: x.endDate,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId) })),
+      lobbying,
+      allContractsUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(supplier),
+      method: "One window fetched, narrowed by supplier name, aggregated arithmetically; the lobbying " +
+              "check is a conservative name match against the federal register.",
+      limits: [
+        "Name matching, not identity: a supplier trading under several names, or sharing a name with another entity, is the register's ambiguity and shows in the entities list.",
+        "This is ONE WINDOW, never a supplier's whole history — the register cannot be searched by supplier, only by id and date.",
+        "A lobbying relationship is a disclosure, never a finding about a contract.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) + Register of Lobbyists",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

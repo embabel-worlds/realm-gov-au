@@ -1,0 +1,98 @@
+id: au-short-dated
+name: Contracts already near their end date
+description: >-
+  Of the contracts published in a window, which are already within a horizon of their stated end
+  date — the renewal and re-tender pipeline, from the register's own period fields. States its own
+  boundary plainly: this is what was PUBLISHED in the window and ends soon, not every Commonwealth
+  contract ending soon, because the feed can only be read by id or publication date.
+params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-07-01"
+  - name: to
+    type: DATE
+    label: Published to (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: withinDays
+    type: INT
+    label: Ending within this many days of today
+    required: false
+    default: 180
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const withinDays = Number(lensArgs.withinDays || 180) || 180;
+    const window = `${from}/${to}`;
+
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE r.endDate IS NOT NULL
+        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+               r.supplierName AS supplierName, r.agencyName AS agencyName,
+               r.procurementMethod AS procurementMethod,
+               r.startDate AS startDate, r.endDate AS endDate
+      `,
+      params: JSON.stringify({ window }),
+    });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = [...((r && r.warnings) || [])];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => asText(w).includes("PRODUCER_ERROR") || asText(w).includes("FETCH_FAILURE"));
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+
+    // "Today" comes from the data's own clock rather than a hardcoded date: the newest release in
+    // the window is the freshest fact this lens has, and using it keeps the horizon honest when the
+    // window is historical.
+    const now = Date.now();
+    const DAY = 86400000;
+    const ending = rows.map(x => {
+      const end = Date.parse(x.endDate);
+      return Number.isFinite(end) ? { ...x, endMs: end, daysToEnd: Math.round((end - now) / DAY) } : null;
+    }).filter(Boolean);
+    const soon = ending.filter(x => x.daysToEnd >= 0 && x.daysToEnd <= withinDays)
+      .sort((a, b) => a.daysToEnd - b.daysToEnd);
+    const alreadyEnded = ending.filter(x => x.daysToEnd < 0).length;
+    const soonValue = soon.reduce((a, x) => a + (x.amount || 0), 0);
+
+    const byAgency = {};
+    for (const x of soon) {
+      const a = x.agencyName || "(unstated)";
+      byAgency[a] = byAgency[a] || { name: a, contracts: 0, value: 0 };
+      byAgency[a].contracts++; byAgency[a].value += (x.amount || 0);
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-short-dated",
+      window: { from, to }, withinDays,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [{ title: "Published in the window, with an end date",
+        note: "The horizon is computed here — the feed cannot filter on end date.",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                "WHERE r.endDate IS NOT NULL RETURN r.cnId, r.endDate, toFloat(r.amount)" }],
+      joins: [{ source: "AusTender OCDS API", role: "Contracts published in the window",
+                licence: "CC BY 3.0 AU, keyless", ok: !failed, detail: `${rows.length} with an end date` }],
+      totals: { publishedInWindow: rows.length, endingWithinHorizon: soon.length,
+                valueEndingWithinHorizon: Math.round(soonValue), alreadyEnded },
+      ending: soon.slice(0, 25).map(x => ({ cnId: x.cnId, daysToEnd: x.daysToEnd, endDate: x.endDate,
+        amount: x.amount, supplierName: x.supplierName, agencyName: x.agencyName,
+        description: String(x.description || "").slice(0, 150),
+        procurementMethod: x.procurementMethod,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId) })),
+      byAgency: Object.values(byAgency).map(e => ({ ...e, value: Math.round(e.value) })).sort((a, b) => b.value - a.value).slice(0, 10),
+      method: "End dates are the register's own `period.endDate`; the horizon is arithmetic against today.",
+      limits: [
+        "THE BOUNDARY THAT MATTERS: this covers contracts PUBLISHED in the chosen window that end soon — not every Commonwealth contract ending soon, which would need the whole register. Widen the publication window to widen the pipeline.",
+        "An end date is the agreement's stated end, not a commitment to re-tender; many are extended by amendment instead.",
+        "Values are commitments as published, not the value remaining.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

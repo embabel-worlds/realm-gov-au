@@ -1,0 +1,161 @@
+id: au-agency-profile
+name: One agency's procurement
+description: >-
+  Everything the register holds about how one agency bought in a period — total committed, the
+  method split, its largest contracts, who it bought from, what it bought (the government's own
+  category titles), and the grounds it stated when it did not go to open tender. The agency also
+  resolves against the seeded AGOR spine for its portfolio, ABN and staffing, which the contract
+  feed never carries.
+params:
+  - name: agency
+    type: STRING
+    label: Agency name (as AusTender publishes it)
+    required: true
+    default: "Department of Defence"
+  - name: from
+    type: DATE
+    label: From
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: To (exclusive)
+    required: true
+    default: "2026-07-28"
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const agency = String(lensArgs.agency || "").trim();
+    const window = `${from}/${to}`;
+
+    // The feed cannot filter by agency (id and date only), so the window is fetched and narrowed
+    // here — stated in the output, because a filtered view of a capped fetch is a sample twice over.
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE toLower(r.agencyName) CONTAINS toLower($agency)
+        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+               r.supplierName AS supplierName, r.agencyName AS agencyName,
+               r.procurementMethod AS procurementMethod,
+               r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
+               r.exemptionCode AS exemptionCode, r.exemption AS exemptionText,
+               r.unspscCodes AS unspscCodes, r.startDate AS startDate, r.endDate AS endDate
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, agency }),
+    });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = [...((r && r.warnings) || [])];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => asText(w).includes("PRODUCER_ERROR") || asText(w).includes("FETCH_FAILURE"));
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+    const total = rows.reduce((a, x) => a + (x.amount || 0), 0);
+
+    // AGOR context the contract feed does not carry: portfolio, legal identity, staffing.
+    const ctx = await gateway.kg.query({
+      cypher: `
+        MATCH (a:Agency) WHERE toLower(a.name) CONTAINS toLower($agency)
+           OR any(x IN coalesce(a.austenderAliases, []) WHERE toLower(x) CONTAINS toLower($agency))
+        OPTIONAL MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)
+        RETURN a.name AS legalName, a.abn AS abn, a.bodyType AS bodyType,
+               a.staffingLevel AS staffingLevel, a.appropriationsThousands AS appropriations,
+               a.website AS website, p.name AS portfolio LIMIT 1
+      `,
+      params: JSON.stringify({ agency }),
+    });
+    const c = ((ctx && ctx.rows) ? ctx.rows : (ctx || []))[0] || {};
+
+    const group = (keyOf, n) => {
+      const g = {};
+      for (const x of rows) {
+        const k = keyOf(x) || "(unstated)";
+        g[k] = g[k] || { name: k, contracts: 0, value: 0 };
+        g[k].contracts++; g[k].value += (x.amount || 0);
+      }
+      return Object.values(g).map(e => ({ ...e, value: Math.round(e.value),
+        shareOfValuePct: total > 0 ? Math.round((e.value / total) * 1000) / 10 : null }))
+        .sort((a, b) => b.value - a.value).slice(0, n);
+    };
+    const byMethod = {};
+    for (const x of rows) {
+      const m = x.procurementMethod || "unstated";
+      byMethod[m] = byMethod[m] || { contracts: 0, value: 0 };
+      byMethod[m].contracts++; byMethod[m].value += (x.amount || 0);
+    }
+    for (const k of Object.keys(byMethod)) byMethod[k].value = Math.round(byMethod[k].value);
+
+    // Categories via the seeded codeset, longest prefix.
+    const codes = Array.from(new Set(rows.flatMap(x => (x.unspscCodes || []).slice(0, 1)).filter(Boolean)));
+    const prefixes = Array.from(new Set(codes.concat(codes.map(x => x.slice(0, 4) + "0000"), codes.map(x => x.slice(0, 2) + "000000"))));
+    let titleBy = {};
+    if (prefixes.length) {
+      const cr = await gateway.kg.query({
+        cypher: `MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code AS code, c.title AS title`,
+        params: JSON.stringify({ codes: prefixes }),
+      });
+      ((cr && cr.rows) ? cr.rows : (cr || [])).forEach(x => { titleBy[x.code] = x.title; });
+    }
+    const titleFor = (code) => !code ? null :
+      (titleBy[code] || titleBy[code.slice(0, 4) + "0000"] || titleBy[code.slice(0, 2) + "000000"] || null);
+    const catAgg = {};
+    for (const x of rows) {
+      const t = titleFor((x.unspscCodes || [])[0]) || "(no published category)";
+      catAgg[t] = catAgg[t] || { name: t, contracts: 0, value: 0 };
+      catAgg[t].contracts++; catAgg[t].value += (x.amount || 0);
+    }
+    const byCategory = Object.values(catAgg).map(e => ({ ...e, value: Math.round(e.value),
+      shareOfValuePct: total > 0 ? Math.round((e.value / total) * 1000) / 10 : null }))
+      .sort((a, b) => b.value - a.value).slice(0, 12);
+
+    const grounds = {};
+    for (const x of rows) {
+      const code = x.groundCode || x.exemptionCode;
+      if (!code) continue;
+      grounds[code] = grounds[code] || { code, text: x.groundText || x.exemptionText, contracts: 0, value: 0 };
+      grounds[code].contracts++; grounds[code].value += (x.amount || 0);
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-agency-profile",
+      agency, window: { from, to },
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [{ title: "This agency's contracts in the window",
+        note: "The feed cannot filter by agency, so the window is fetched and narrowed here.",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                "WHERE toLower(r.agencyName) CONTAINS toLower($agency) RETURN r ORDER BY toFloat(r.amount) DESC" }],
+      joins: [
+        { source: "AusTender OCDS API", role: "Contracts published in the window", licence: "CC BY 3.0 AU, keyless",
+          ok: !failed, detail: `${rows.length} match(es) of the window` },
+        { source: "AGOR (seeded)", role: "Portfolio, ABN, staffing the contract feed lacks", licence: "CC BY 3.0 AU",
+          ok: !!c.legalName, detail: c.legalName ? `resolved to ${c.legalName}` : "no seeded agency matched this name" },
+      ],
+      identity: {
+        legalName: c.legalName || null, portfolio: c.portfolio || null, abn: c.abn || null,
+        bodyType: c.bodyType || null, staffingLevel: c.staffingLevel || null,
+        appropriationsThousands: c.appropriations || null, website: c.website || null,
+        note: c.legalName ? null : "No seeded agency matched — portfolio and staffing are unavailable, not absent from government.",
+      },
+      totals: { contracts: rows.length, value: Math.round(total),
+                coverage: truncated ? "a capped window — a sample" : "the whole window" },
+      byMethod,
+      topContracts: rows.slice(0, 12).map(x => ({ cnId: x.cnId, amount: x.amount, supplierName: x.supplierName,
+        description: String(x.description || "").slice(0, 160), procurementMethod: x.procurementMethod,
+        startDate: x.startDate, endDate: x.endDate,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId) })),
+      topSuppliers: group(x => x.supplierName, 10),
+      byCategory,
+      groundsUsed: Object.values(grounds).map(g => ({ ...g, value: Math.round(g.value) })).sort((a, b) => b.value - a.value),
+      method: "One window fetched, narrowed to the agency by name, then aggregated arithmetically. " +
+              "Category titles and agency identity come from seeded government registers.",
+      limits: [
+        "Agency match is a NAME CONTAINS — a machinery-of-government rename splits an agency's history, and the register's spelling governs.",
+        "A capped window makes every figure a sample of a sample; the status says so.",
+        "Values are commitments as published, not expenditure.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) + AGOR and the UNSPSC codeset (CC BY, seeded)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

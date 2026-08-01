@@ -42,8 +42,7 @@ spec:
         RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
                toFloat(r.amount) AS amount, r.supplierName AS supplierName,
                r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
-               r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
-               r.supplierPostcode AS supplierPostcode,
+               r.supplierRegion AS supplierRegion,
                r.procurementMethod AS procurementMethod,
                r.limitedTenderReason AS limitedTenderReason,
                r.releaseDate AS releaseDate
@@ -115,24 +114,6 @@ spec:
         limitedTenderReason: x.limitedTenderReason || null, description: x.description,
         austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId),
       })),
-      // Geography of the SUPPLIERS' REGISTERED locations — never delivery locations, which the
-      // register does not publish. Aggregated per postcode; rows without one are counted so the
-      // map can state its own coverage instead of implying completeness.
-      geo: (() => {
-        const g = {};
-        let noPostcode = 0;
-        for (const x of rows) {
-          const pc = (x.supplierPostcode || "").trim();
-          if (!/^\d{4}$/.test(pc)) { noPostcode++; continue; }
-          g[pc] = g[pc] || { postcode: pc, count: 0, value: 0, topSupplier: null, topValue: -1,
-                             locality: x.supplierLocality || null, region: x.supplierRegion || null };
-          g[pc].count++; g[pc].value += (x.amount || 0);
-          if ((x.amount || 0) > g[pc].topValue) { g[pc].topValue = x.amount || 0; g[pc].topSupplier = x.supplierName; }
-        }
-        return { points: Object.values(g).map(({ topValue, ...p }) => p),
-                 withoutPostcode: noPostcode,
-                 basis: "supplier's registered postcode — not where the work is delivered" };
-      })(),
       topSuppliers: groupTop("supplierName", 10),
       topAgencies: groupTop("agencyName", 10),
       method: "Contract notices FIRST PUBLISHED in the window (amendments to older contracts are " +
