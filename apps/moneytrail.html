@@ -162,6 +162,20 @@
   svg.ozmap .bub { fill:color-mix(in srgb, var(--embabel-accent) 55%, transparent); stroke:var(--embabel-surface); stroke-width:1.5; cursor:pointer; }
   svg.ozmap .bub:hover { fill:var(--embabel-accent); }
 
+  /* Chat panel */
+  .chat-examples { display:flex; flex-wrap:wrap; gap:.45rem; margin:.2rem 0 .9rem; }
+  .chat-log { max-height:420px; overflow-y:auto; display:grid; gap:.6rem; padding:.9rem;
+    background:var(--embabel-bg); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); margin-bottom:.7rem; }
+  .msg { max-width:82%; padding:.6rem .85rem; border-radius:12px; font-size:.92rem; line-height:1.5; white-space:pre-wrap; overflow-wrap:break-word; }
+  .msg.user { justify-self:end; background:color-mix(in srgb, var(--embabel-accent) 14%, transparent);
+    border:1px solid color-mix(in srgb, var(--embabel-accent) 30%, transparent); }
+  .msg.assistant { justify-self:start; background:var(--embabel-surface-subtle); border:1px solid var(--embabel-border); }
+  .msg.thinking { color:var(--embabel-text-muted); font-style:italic; }
+  .chat-row { display:flex; gap:.6rem; }
+  .chat-row input { flex:1; padding:.72rem .85rem; font:inherit; color:var(--embabel-text);
+    background:var(--embabel-bg); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); }
+  .chat-row input:focus { border-color:var(--embabel-accent); outline:3px solid color-mix(in srgb, var(--embabel-accent) 18%, transparent); }
+
   /* How-it-works tab */
   .how h3 { margin:1.4rem 0 .3rem; font-size:1.02rem; letter-spacing:-.01em; }
   .how h3:first-of-type { margin-top:0; }
@@ -270,6 +284,25 @@
       <embabel-operation-state id="w-state"></embabel-operation-state>
       <embabel-warning-panel id="w-warnings" hidden></embabel-warning-panel>
       <div id="w-result" hidden></div>
+    </section>
+
+    <!-- ============ ASK ANYTHING ============ -->
+    <section class="card" id="chat-card">
+      <h2>Ask anything about this data</h2>
+      <p class="sub">Your world's assistant, right here — it answers over the same registers with the same rules: sourced figures, disclosed judgments, and "unknown" when a fetch fails. Same session as your main chat.</p>
+      <div class="chat-examples" id="chat-examples">
+        <button class="sample" data-q="Which contracts grew the most through amendments this month?">Which contracts grew the most through amendments this month?</button>
+        <button class="sample" data-q="What did the Department of Defence sign last week?">What did the Department of Defence sign last week?</button>
+        <button class="sample" data-q="Is IBM Australia a client of a registered lobbyist?">Is IBM Australia a client of a registered lobbyist?</button>
+        <button class="sample" data-q="Show the biggest limited tenders this month and their stated reasons">Biggest limited tenders this month, with their stated reasons</button>
+        <button class="sample" data-q="Tell me the story of contract CN3942784">Tell me the story of contract CN3942784</button>
+      </div>
+      <div class="chat-log" id="chat-log" hidden></div>
+      <div class="chat-row">
+        <input id="chat-input" type="text" placeholder="e.g. which suppliers in Queensland won contracts over $1M this month?" aria-label="Ask a question">
+        <button class="embabel-button" id="chat-send">Ask</button>
+      </div>
+      <div class="fine" id="chat-note" hidden></div>
     </section>
 
     </div><!-- /pane-explore -->
@@ -973,6 +1006,71 @@
       else { var env = await leagueRunner.lens('au-amended-up', args, { state: $('l-state-el') }); d = env ? lensData(env) : null; }
       if (d) renderLeague(d);
     } catch (e) { /* state component shows it */ }
+  }
+
+  // ---- Embedded chat ---------------------------------------------------------
+  // The world's own assistant, in the app: EventSource on /api/v1/chat/stream (cookies ride
+  // along automatically), POST /api/v1/chat with credentials included, render `message` events
+  // from role=assistant. Same session as the main chat, and the panel says so.
+  var chatStream = null, chatBusy = false, chatThinkingEl = null;
+  function chatAppend(role, text, thinking) {
+    var log = $('chat-log'); log.hidden = false;
+    var div = document.createElement('div');
+    div.className = 'msg ' + role + (thinking ? ' thinking' : '');
+    div.textContent = text;
+    log.appendChild(div); log.scrollTop = log.scrollHeight;
+    return div;
+  }
+  function chatDisable(note) {
+    $('chat-input').disabled = true; $('chat-send').disabled = true;
+    var n = $('chat-note'); n.hidden = false; n.textContent = note;
+  }
+  function chatEnsureStream() {
+    if (chatStream) return;
+    chatStream = new EventSource('/api/v1/chat/stream');
+    chatStream.addEventListener('message', function (ev) {
+      var data; try { data = JSON.parse(ev.data); } catch (e) { return; }
+      if (data && data.role === 'assistant' && String(data.content || '').trim()) {
+        if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
+        chatAppend('assistant', String(data.content));
+        chatBusy = false; $('chat-send').disabled = false;
+      }
+    });
+    chatStream.onerror = function () {
+      if (chatThinkingEl) { chatThinkingEl.textContent = 'Connection to your world dropped — retrying…'; }
+    };
+  }
+  async function chatSend(q) {
+    q = String(q || $('chat-input').value || '').trim();
+    if (!q || chatBusy) return;
+    chatEnsureStream();
+    chatAppend('user', q);
+    $('chat-input').value = '';
+    chatBusy = true; $('chat-send').disabled = true;
+    chatThinkingEl = chatAppend('assistant', 'Asking your world…', true);
+    try {
+      var res = await fetch('/api/v1/chat', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: q }),
+      });
+      if (!res.ok) throw new Error('chat POST ' + res.status);
+    } catch (e) {
+      if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
+      chatAppend('assistant', 'Could not reach your world (' + (e && e.message || e) + '). Sign in and reload, or use the main chat.');
+      chatBusy = false; $('chat-send').disabled = false;
+    }
+  }
+  $('chat-send').addEventListener('click', function () { chatSend(); });
+  $('chat-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') chatSend(); });
+  $('chat-examples').addEventListener('click', function (e) {
+    var b = e.target.closest('.sample');
+    if (!b) return;
+    if (DEMO || !E) { $('chat-input').value = b.dataset.q; return; }
+    chatSend(b.dataset.q);
+  });
+  if (DEMO || !E) {
+    chatDisable('Chat needs a running Embabel world — this standalone demo has no host. The example questions show what the assistant answers when the gov-au realm is loaded; every answer follows the same rules as the panels above.');
   }
 
   // Tabs: Explore ↔ How this works.

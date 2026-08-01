@@ -1,0 +1,67 @@
+# The PERSISTED spine of this realm — nodes seeded from reference/*.yml on world load, as
+# distinct from the virtual types in contracts.yml/lobbying.yml/parliament.yml that are fetched
+# per query and rolled back.
+#
+# Why these are seeded rather than fetched: they are small, slow-moving and NOT SERVED BY THE
+# CONTRACT FEED AT ALL. AusTender publishes an agency NAME string and a ground CODE; it does not
+# publish which portfolio the agency sits in, what it is appropriated, or what the code means.
+# Those facts come from other registers (AGOR) and from the feed's own accumulated vocabulary,
+# and seeding them turns "which portfolio signed this" from a hand-kept lookup into a traversal.
+
+- name: Portfolio
+  userAnchor: false
+  description: |
+    A Commonwealth portfolio — the ministerial grouping agencies sit under, and the level at
+    which government actually budgets. Seeded from AGOR (CC BY 3.0 AU).
+      MATCH (p:Portfolio)<-[:IN_PORTFOLIO]-(a:Agency)
+      RETURN p.name, count(a)
+  properties:
+    name:
+      identity: true
+      description: "Portfolio name as AGOR records it, e.g. 'Defence'. Identity key."
+
+- name: Agency
+  userAnchor: false
+  description: |
+    A Commonwealth entity that can procure — seeded from AGOR's primary bodies (CC BY 3.0 AU),
+    with the portfolio, ABN, body type, staffing and appropriations the contract feed never
+    carries. This is the node a contract's `agencyName` string resolves to.
+
+    NAME DRIFT IS REAL AND EXPLICIT. AusTender publishes some entities under a different string
+    than their legal title ('Austrade'), and sometimes under a program-level name with no AGOR
+    row at all. `austenderAliases` carries the observed variants, so a join must consider BOTH:
+      MATCH (r:ContractRelease), (a:Agency)
+      WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+    A contract whose agencyName matches neither is NOT an error to hide — it is an unresolved
+    entity, and an answer that aggregates by portfolio must say how much value it could not place.
+  properties:
+    name:
+      identity: true
+      description: "Legal title as AGOR records it. Identity key."
+    abn: "ABN as registered, space-grouped."
+    bodyType: "AGOR body classification, e.g. 'A. Non-corporate Commonwealth entity'."
+    gfsSector: "Government Finance Statistics sector, e.g. GGS."
+    staffingLevel: "Average Staffing Level from AGOR's budget data, where published."
+    appropriationsThousands: "Total appropriations ($000) from AGOR's budget data, where published."
+    website: "Official website."
+    austenderAliases: "Spellings AusTender publishes for this entity that differ from the legal title."
+
+- name: ProcurementGround
+  userAnchor: false
+  description: |
+    A reason code the register itself publishes when a procurement did not go to open tender —
+    either a limited-tender ground under the Commonwealth Procurement Rules (kind
+    'limited-tender') or an Appendix A exemption (kind 'exemption'), with the register's OWN
+    verbatim text. Harvested from the live feed, never transcribed from the rules.
+
+    A ground is a RECORDED REASON, never an assessment of one. Counting how often a ground is
+    used, and by whom, is a fair public question; characterising any individual use of it is not.
+    Join from a contract by its code:
+      MATCH (r:ContractRelease), (g:ProcurementGround {code: r.limitedTenderReasonCode})
+      RETURN g.code, g.text, count(r), sum(toFloat(r.amount))
+  properties:
+    code:
+      identity: true
+      description: "Two-letter code as published, e.g. 'AD', 'DC'. Identity key."
+    kind: "limited-tender | exemption."
+    text: "The register's verbatim description of the ground."

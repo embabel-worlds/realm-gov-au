@@ -44,6 +44,9 @@
     procurementMethod: "open | selective | limited — how the procurement was conducted."
     procurementMethodDetails: "The register's label for the method."
     limitedTenderReason: "Verbatim stated CPR ground when the method was limited tender; absent otherwise."
+    limitedTenderReasonCode: "The ground's code (e.g. 'AD') — joins to (:ProcurementGround {code})."
+    exemption: "Verbatim Appendix A exemption text, where one was claimed."
+    exemptionCode: "The exemption's code (e.g. 'LH') — joins to (:ProcurementGround {code})."
     unspscCodes: "UNSPSC category codes on the contract items."
   virtualJoins:
     - anchorLabel: ContractNotice
@@ -89,6 +92,9 @@
     procurementMethod: "open | selective | limited."
     procurementMethodDetails: "The register's label for the method."
     limitedTenderReason: "Verbatim stated CPR ground when limited; absent otherwise."
+    limitedTenderReasonCode: "The ground's code (e.g. 'AD') — joins to (:ProcurementGround {code})."
+    exemption: "Verbatim Appendix A exemption text, where one was claimed."
+    exemptionCode: "The exemption's code (e.g. 'LH') — joins to (:ProcurementGround {code})."
     unspscCodes: "UNSPSC category codes."
   virtualJoins:
     - anchorLabel: PublicationWindow

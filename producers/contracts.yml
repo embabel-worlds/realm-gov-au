@@ -51,6 +51,12 @@
     procurementMethod: "tender.procurementMethod"
     procurementMethodDetails: "tender.procurementMethodDetails"
     limitedTenderReason: "tender.limitedTenderReason"
+    # The CODES are the join keys to the seeded ProcurementGround nodes; the text is what the
+    # register said. Project both — the code makes the ground countable, the text keeps the
+    # answer quotable without a second lookup.
+    limitedTenderReasonCode: "tender.limitedTenderReasonCode"
+    exemption: "tender.exemption"
+    exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
   # Notices amend on business days; an hour's TTL keeps a repeated passport instant. An unknown
   # CN id returns an EMPTY release list — that emptiness is an answer (the id does not exist in
@@ -97,6 +103,12 @@
     procurementMethod: "tender.procurementMethod"
     procurementMethodDetails: "tender.procurementMethodDetails"
     limitedTenderReason: "tender.limitedTenderReason"
+    # The CODES are the join keys to the seeded ProcurementGround nodes; the text is what the
+    # register said. Project both — the code makes the ground countable, the text keeps the
+    # answer quotable without a second lookup.
+    limitedTenderReasonCode: "tender.limitedTenderReasonCode"
+    exemption: "tender.exemption"
+    exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
   # A closed window's contents never change; an open one gains releases through the business day.
   cache: { kind: ttl, seconds: 3600 }
@@ -136,6 +148,12 @@
     procurementMethod: "tender.procurementMethod"
     procurementMethodDetails: "tender.procurementMethodDetails"
     limitedTenderReason: "tender.limitedTenderReason"
+    # The CODES are the join keys to the seeded ProcurementGround nodes; the text is what the
+    # register said. Project both — the code makes the ground countable, the text keeps the
+    # answer quotable without a second lookup.
+    limitedTenderReasonCode: "tender.limitedTenderReasonCode"
+    exemption: "tender.exemption"
+    exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
   cache: { kind: ttl, seconds: 3600 }
   cost:
