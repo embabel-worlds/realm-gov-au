@@ -42,9 +42,9 @@
     color:#fff; background:var(--embabel-accent-strong); cursor:pointer; font:650 .9rem/1 var(--embabel-font); }
   html.no-runtime .embabel-button:hover { filter:brightness(1.08); }
   html.no-runtime embabel-operation-state, html.no-runtime embabel-warning-panel { display:block; }
-  html.no-runtime .mt-state { padding:var(--embabel-space-3); border:1px solid var(--embabel-border);
+  .mt-state { padding:var(--embabel-space-3); border:1px solid var(--embabel-border); margin-top:.4rem;
     border-radius:var(--embabel-radius-sm); color:var(--embabel-text-muted); background:var(--embabel-surface-subtle); font-size:.9rem; }
-  html.no-runtime .mt-state--error { color:var(--embabel-error); background:var(--embabel-error-bg); }
+  .mt-state--error { color:var(--embabel-error); background:var(--embabel-error-bg); }
   html, body { margin:0; padding:0; background:var(--embabel-bg); }
   body { font-family:var(--embabel-font); color:var(--embabel-text); padding-bottom:3.2rem; }
   .wrap { max-width:1080px; margin:0 auto; padding:0 var(--embabel-space-4) var(--embabel-space-4); }
@@ -419,15 +419,17 @@
       <section class="card" id="lens-out-card" hidden>
         <h2 id="lens-out-title">Result</h2>
         <div class="qstamp" id="lens-out-stamp"></div>
-        <nav class="tabs" role="tablist" aria-label="Lens output">
-          <button class="tab" id="lt-queries" role="tab" aria-selected="true">The queries it ran</button>
-          <button class="tab" id="lt-raw" role="tab" aria-selected="false">Raw envelope</button>
-          <button class="tab" id="lt-contract" role="tab" aria-selected="false">The lens contract</button>
-        </nav>
+        <div class="fine" id="lens-live" hidden></div>
         <embabel-operation-state id="lens-out-state"></embabel-operation-state>
+        <div id="lens-render"></div>
+        <nav class="tabs" role="tablist" aria-label="Behind this result">
+          <button class="tab" id="lt-queries" role="tab" aria-selected="true">Queries it ran</button>
+          <button class="tab" id="lt-raw" role="tab" aria-selected="false">Raw envelope</button>
+          <button class="tab" id="lt-contract" role="tab" aria-selected="false">Definition</button>
+        </nav>
         <div id="lens-queries"></div>
         <pre class="cy" id="lens-out" style="max-height:560px; overflow:auto" hidden></pre>
-        <pre class="cy" id="lens-contract" style="max-height:560px; overflow:auto" hidden></pre>
+        <div id="lens-contract" hidden></div>
       </section>
     </div><!-- /pane-lenses -->
 
@@ -1248,13 +1250,14 @@
   }
   /** Move the card that answers a question into the Ask pane, so the result appears where asked. */
   var movedCard = null;
-  function showCardInline(cardId) {
+  function placeCard(cardId, slotId) {
     var card = $(cardId);
     if (!card) return;
     if (movedCard && movedCard !== card) $('pane-explore').appendChild(movedCard);  // put the last one back
-    $('ask-result').appendChild(card);
+    $(slotId).appendChild(card);
     movedCard = card;
   }
+  function showCardInline(cardId) { placeCard(cardId, 'ask-result'); }
   function askStamp(html) { var el = $('ask-stamp'); el.hidden = false; el.innerHTML = html; }
 
   /** A one-line read of what the panel now shows, so the answer is in the stamp too. */
@@ -1525,6 +1528,27 @@
   // Forms come from the runtime's <embabel-lens-form>, which reads each lens's DECLARED params
   // from /apps-runtime/v1/contracts. Hand-writing them would drift from the realm the moment a
   // lens gains a parameter.
+  // Long lens runs stream per-producer progress on /api/v1/virtual-cypher/events — without it a
+  // window walk looks dead for a minute. One shared stream, latest line into #lens-live.
+  var vcStream = null;
+  function ensureProgressStream() {
+    if (DEMO || !window.EventSource || vcStream) return;
+    try {
+      vcStream = new EventSource('/api/v1/virtual-cypher/events');
+      var tick = function (text) {
+        var el = $('lens-live');
+        if (el) { el.hidden = false; el.textContent = text; }
+      };
+      vcStream.addEventListener('producer.progress', function (e) {
+        try { var d = JSON.parse(e.data);
+          tick('Fetching ' + d.producer + ' — ' + d.unit + ' ' + d.current + ' of ' + d.total + '…'); } catch (x) {}
+      });
+      vcStream.addEventListener('producer.fetch', function (e) {
+        try { var d = JSON.parse(e.data); tick('Fetching ' + (d.producer || '') + '…'); } catch (x) {}
+      });
+    } catch (e) { /* progress is a nicety */ }
+  }
+
   var lensCatalogue = null, lastLensContract = null;
   function lensOutTab(which) {
     [['queries', 'lens-queries'], ['raw', 'lens-out'], ['contract', 'lens-contract']].forEach(function (kv) {
@@ -1565,21 +1589,58 @@
     $('lens-out-stamp').innerHTML = 'Running <b>' + esc(d.lens) + '</b> with ' +
       '<b>' + esc(JSON.stringify(d.args || {})) + '</b>';
     $('lens-out').textContent = '';
+    $('lens-render').innerHTML = '';
+    ensureProgressStream();
     setState($('lens-out-state'), 'loading', {});
     try {
       var env = await E.lenses.invoke(d.lens, d.args || {});
       var data = lensData(env);
+      $('lens-live').hidden = true;
       lastLensContract = (lensCatalogue || []).filter(function (l) { return l.id === d.lens; })[0] || null;
+      // Render the SAME panel the rest of the app uses for this kind — the raw envelope is the
+      // audit view, not the answer.
+      var KIND_PANEL = {
+        'au-window-signed': { card: 'window-card', render: renderWindow },
+        'au-contract-search': { card: 'search-card', render: renderSearch },
+        'au-amended-up': { card: 'league-card', render: renderLeague },
+        'au-portfolio-themes': { card: 'themes-card', render: renderThemes },
+        'au-grounds': { card: 'grounds-card', render: renderGrounds },
+        'au-money-by': { card: 'moneyby-card', render: renderMoneyBy },
+        'au-contract-passport': { card: 'passport-card', render: renderPassport },
+        'au-supplier-lobbying': { card: 'lobby-card', render: renderLobby },
+      };
+      var panel = data && KIND_PANEL[data.kind];
+      if (panel) {
+        browseLoaded = true;
+        placeCard(panel.card, 'lens-render');
+        try { panel.render(data); } catch (renderErr) { /* raw view still stands */ }
+      }
       setState($('lens-out-state'), (env && env.outcome === 'PARTIAL') ? 'partial' : 'ready', {});
       $('lens-out-stamp').innerHTML = 'Ran <b>' + esc(d.lens) + '</b> with <b>' + esc(JSON.stringify(d.args || {})) +
         '</b> · status <b>' + esc((data && data.status) || (env && env.outcome) || '?') + '</b>';
       $('lens-out').textContent = JSON.stringify(data, null, 1);
-      $('lens-contract').textContent = JSON.stringify(lastLensContract, null, 1);
+      // Definition = what this lens IS, readably: name, purpose, parameters. Not a JSON blob.
+      var lc = lastLensContract;
+      $('lens-contract').innerHTML = lc
+        ? '<div style="margin-top:.8rem"><b>' + esc(lc.name || lc.id) + '</b> <span class="fine">' + esc(lc.id) + '</span></div>' +
+          '<p class="fine" style="font-size:.9rem">' + esc(lc.description || '') + '</p>' +
+          '<table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Default</th></tr></thead><tbody>' +
+          (lc.params || []).map(function (pm) {
+            return '<tr><td><b>' + esc(pm.name) + '</b><div class="fine">' + esc(pm.label || '') + '</div></td>' +
+              '<td>' + esc(pm.type || '') + '</td><td>' + (pm.required ? 'yes' : 'no') + '</td>' +
+              '<td>' + esc(pm.default == null ? '—' : String(pm.default)) + '</td></tr>';
+          }).join('') + '</tbody></table>'
+        : '<div class="fine" style="margin-top:.8rem">No declared contract found for this lens.</div>';
       // The queries a lens RAN are the honest "what is this lens" view — the Cypher it emitted,
       // with the sources it touched, rather than a config blob.
       var qs = (data && data.queries) || [];
       var joins = (data && data.joins) || [];
+      var warns = (data && data.warnings) || [];
       $('lens-queries').innerHTML =
+        (warns.length ? '<div class="chart-title" style="margin-top:.8rem">Why status is ' +
+          esc((data && data.status) || '') + '</div>' + warns.map(function (w) {
+            return '<div class="mt-state">' + esc(typeof w === 'string' ? w : JSON.stringify(w)) + '</div>';
+          }).join('') : '') +
         (qs.length ? qs.map(function (q) {
           return '<div style="margin-top:.8rem"><b>' + esc(q.title || 'Query') + '</b>' +
             (q.note ? '<div class="fine">' + esc(q.note) + '</div>' : '') +

@@ -168,6 +168,19 @@ spec:
       kind: "au-money-by",
       window: { from, to }, sectorLabels: sectors || null,
       status: failed ? "FAILED" : ((truncated || !codesetSeeded) ? "PARTIAL" : "COMPLETE"),
+      queries: [
+        { title: "Window rows (arithmetic tiers)",
+          note: "Size bands and the category join are computed over these rows; no model involved.",
+          cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                  "RETURN r.cnId, toFloat(r.amount), r.description, r.unspscCodes" },
+        { title: "Category titles (seeded codeset)",
+          note: "Longest-prefix resolution: exact code, then family (xxxx0000), then segment (xx000000).",
+          cypher: "MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code, c.title" },
+        ...(sectors ? [{ title: "Sector (model judgment, per row)",
+          note: "ai.classify labels EACH row; the dimension is inlined because the rewriter matches it textually.",
+          cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                  "RETURN ai.classify(r, 'sector: …your labels…') AS sector, count(r), sum(toFloat(r.amount))" }] : []),
+      ],
       warnings: codesetSeeded ? warnings
         : warnings.concat(["The UNSPSC codeset is not seeded in this world, so the category cut is empty. Reload the world to seed it."]),
       joins: [
