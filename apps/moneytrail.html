@@ -1071,11 +1071,12 @@
     } catch (e) { /* state component shows it */ }
   }
 
-  // ---- Embedded chat ---------------------------------------------------------
-  // The world's own assistant, in the app: EventSource on /api/v1/chat/stream (cookies ride
-  // along automatically), POST /api/v1/chat with credentials included, render `message` events
-  // from role=assistant. Same session as the main chat, and the panel says so.
-  var chatStream = null, chatBusy = false, chatThinkingEl = null;
+  // ---- Embedded chat: the SHARED runtime helper, not a hand-rolled stream --------------
+  // embabel.chat.session handles the four traps that make a hand-rolled version silently fail
+  // (the 409-before-stream race, the reply arriving on the stream rather than in the POST body,
+  // filtering the stream's other event kinds, and the session being shared with every other
+  // surface). This app used to hand-roll it and hit the first trap.
+  var chat = null;
   function chatAppend(role, text, thinking) {
     var log = $('chat-log'); log.hidden = false;
     var div = document.createElement('div');
@@ -1088,35 +1089,20 @@
     $('chat-input').disabled = true; $('chat-send').disabled = true;
     var n = $('chat-note'); n.hidden = false; n.textContent = note;
   }
-  // The POST is rejected with 409 until an SSE stream is registered server-side ("No active
-  // session. Open GET /api/v1/chat/stream first."), so sending must WAIT for the stream rather
-  // than race it. Resolves on the server's `connected` event, with onopen as a fallback and a
-  // bounded wait so a dead stream surfaces as an error instead of hanging the box.
-  var chatReady = null;
-  function chatEnsureStream() {
-    if (chatReady) return chatReady;
-    chatStream = new EventSource('/api/v1/chat/stream');
-    chatReady = new Promise(function (resolve, reject) {
-      var settled = false;
-      var done = function () { if (!settled) { settled = true; resolve(); } };
-      chatStream.addEventListener('connected', done);
-      chatStream.onopen = function () { setTimeout(done, 150); }; // give `connected` a beat to land first
-      setTimeout(function () {
-        if (!settled) { settled = true; reject(new Error('the chat stream did not open')); }
-      }, 15000);
-    });
-    chatStream.addEventListener('message', function (ev) {
-      var data; try { data = JSON.parse(ev.data); } catch (e) { return; }
-      if (data && data.role === 'assistant' && String(data.content || '').trim()) {
+  var chatThinkingEl = null, chatBusy = false;
+  function chatEnsure() {
+    if (chat) return chat;
+    chat = E.chat.session({
+      onMessage: function (m) {
         if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
-        chatAppend('assistant', String(data.content));
+        chatAppend('assistant', m.content);
         chatBusy = false; $('chat-send').disabled = false;
-      }
+      },
+      onError: function () {
+        if (chatThinkingEl) chatThinkingEl.textContent = 'Connection to your world dropped — retrying…';
+      },
     });
-    chatStream.onerror = function () {
-      if (chatThinkingEl) { chatThinkingEl.textContent = 'Connection to your world dropped — retrying…'; }
-    };
-    return chatReady;
+    return chat;
   }
   async function chatSend(q) {
     q = String(q || $('chat-input').value || '').trim();
@@ -1126,21 +1112,10 @@
     chatBusy = true; $('chat-send').disabled = true;
     chatThinkingEl = chatAppend('assistant', 'Asking your world…', true);
     try {
-      await chatEnsureStream();   // 409 otherwise: the server needs the stream registered first
-      var res = await fetch('/api/v1/chat', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: q }),
-      });
-      if (!res.ok) {
-        throw new Error(res.status === 409
-          ? 'the chat stream was not ready (409) — try again'
-          : res.status === 401 ? 'you are signed out (401) — reload and sign in'
-          : 'chat POST ' + res.status);
-      }
+      await chatEnsure().send(q);
     } catch (e) {
       if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
-      chatAppend('assistant', 'Could not reach your world (' + (e && e.message || e) + '). Sign in and reload, or use the main chat.');
+      chatAppend('assistant', (e && e.message) || 'The assistant could not be reached.');
       chatBusy = false; $('chat-send').disabled = false;
     }
   }
@@ -1149,8 +1124,8 @@
   $('chat-examples').addEventListener('click', function (e) {
     var b = e.target.closest('.qcard');
     if (!b) return;
-    // No host to answer (standalone demo): put the question in the box and send the user to the
-    // panel that answers it, rather than pretending a reply is coming.
+    // No host to answer (standalone demo): put the question in the box and open the panel that
+    // answers it, rather than accepting a question and silently doing nothing.
     if (DEMO || !E) {
       $('chat-input').value = b.dataset.q;
       selectTab('explore');
@@ -1171,105 +1146,12 @@
   });
   if (DEMO || !E) {
     chatDisable('Chat needs a running Embabel world — this standalone demo has no host. Pick a question above and it opens the panel that answers it under “Browse the data”; with a world loaded, the assistant answers it directly under the same rules.');
+  } else {
+    // The conversation is shared with the platform's own chat — say so rather than implying privacy.
+    var n = $('chat-note'); n.hidden = false;
+    n.textContent = 'This continues your assistant conversation — the same session as the main chat window.';
   }
 
-  // ---- Deep dive: three tiers that never blend -------------------------------
-  var ddRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
-  async function runDeepDive(cnId) {
-    var box = $('dd-result');
-    box.innerHTML = '<div class="fine" style="margin-top:1rem">Looking across the registers and the press…</div>';
-    try {
-      var d;
-      if (DEMO) d = (demoData.deepdive || {})[String(cnId).toUpperCase()] || null;
-      else { var env = await ddRunner.lens('au-contract-deepdive', { cnId: cnId, searchPhrase: '' }); d = env ? lensData(env) : null; }
-      if (!d) { box.innerHTML = '<div class="fine" style="margin-top:1rem">Demo mode carries a deep dive for CN4118426 only — run against a world for any other contract.</div>'; return; }
-      renderDeepDive(d, box);
-    } catch (e) {
-      box.innerHTML = '<div class="fine" style="margin-top:1rem">Deep dive failed: ' + esc(e && e.message || e) + '</div>';
-    }
-  }
-  function renderDeepDive(d, box) {
-    var ctx = d.context || {}, cov = d.coverage || {};
-    var ctxRows = [
-      ['Portfolio', ctx.portfolio], ['Agency legal name', ctx.agencyLegalName],
-      ['Agency ABN', ctx.agencyAbn], ['Body type', ctx.bodyType],
-      ['Staffing (ASL)', ctx.staffingLevel],
-      ['Ground ' + (ctx.groundCode ? '(' + ctx.groundCode + ')' : ''), ctx.groundText],
-      ['Exemption ' + (ctx.exemptionCode ? '(' + ctx.exemptionCode + ')' : ''), ctx.exemptionText],
-    ].filter(function (r) { return r[1]; });
-    var context = '<div class="tier t-context"><div class="tlabel">Other government registers</div>' +
-      '<div class="tdesc">' + esc((d.tiers && d.tiers.context) || '') + '</div>' +
-      (ctxRows.length ? '<div class="meta">' + ctxRows.map(function (r) {
-        return '<div><span class="k">' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>';
-      }).join('') + '</div>' : '<div class="fine">No cross-register context resolved.</div>') +
-      (ctx.unresolvedNote ? '<div class="fine">' + esc(ctx.unresolvedNote) + '</div>' : '') + '</div>';
-
-    var covBody;
-    if (cov.status === 'UNAVAILABLE' || cov.status === 'SKIPPED') {
-      covBody = '<div class="fine" style="font-size:.9rem"><b>Not looked at.</b> ' + esc(cov.note || '') + '</div>';
-    } else if (!(cov.results || []).length) {
-      covBody = '<div class="fine" style="font-size:.9rem"><b>No results.</b> ' + esc(cov.note || '') + '</div>';
-    } else {
-      covBody = cov.results.map(function (r) {
-        return '<div class="cov"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title) + ' ↗</a>' +
-          '<div class="cmeta">' + esc(r.age || 'undated') + ' · ' + esc((r.url || '').replace(/^https?:\/\//, '').split('/')[0]) + '</div>' +
-          (r.snippet ? '<div class="cmeta">' + esc(String(r.snippet).replace(/<[^>]*>/g, '')) + '</div>' : '') + '</div>';
-      }).join('');
-    }
-    var coverage = '<div class="tier t-coverage"><div class="tlabel">Press coverage — not evidence about this contract</div>' +
-      '<div class="tdesc">' + esc((d.tiers && d.tiers.coverage) || '') + '</div>' + covBody +
-      '<div class="fine">Searched: <b>' + esc(cov.searchPhrase || '') + '</b>. ' + esc(cov.phraseBasis || '') + '</div></div>';
-
-    box.innerHTML = context + coverage;
-  }
-
-  // ---- Portfolio themes: facts and judgments, visibly separated ---------------
-  var thRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
-  async function runThemes() {
-    var from = $('w-from').value, to = $('w-to').value;
-    $('t-result').hidden = true;
-    var args = { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', portfolio: $('t-portfolio').value };
-    try {
-      var d;
-      if (DEMO) { setState($('t-state-el'), 'loading', {}); d = demoData.themes || null; setState($('t-state-el'), d ? 'ready' : 'empty', {}); }
-      else { var env = await thRunner.lens('au-portfolio-themes', args, { state: $('t-state-el') }); d = env ? lensData(env) : null; }
-      if (d) renderThemes(d);
-    } catch (e) { /* state element shows it */ }
-  }
-  function renderThemes(d) {
-    var box = $('t-result');
-    var rows = d.portfolios || [];
-    var body = rows.map(function (p) {
-      var j = p.judged || {};
-      var topics = (j.topics || []);
-      var clusters = (j.clusters || []);
-      return '<div style="margin-top:1.1rem">' +
-        '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:baseline">' +
-        '<b style="font-size:1.02rem">' + esc(p.portfolio) + '</b>' +
-        '<span class="bar-val">' + esc(aud(p.committed, true)) + ' · ' + p.contracts + ' contracts · ' +
-        p.limitedCount + ' limited</span></div>' +
-        (topics.length || clusters.length || j.digest ?
-          '<div class="judged"><div class="jlabel">Model judgment — not the register\'s words</div>' +
-          (j.digest ? '<div style="font-size:.92rem;margin-top:.3rem">' + esc(j.digest) + '</div>' : '') +
-          (topics.length ? '<div class="chiprow">' + topics.map(function (t) {
-            return '<span>' + esc(typeof t === 'string' ? t : JSON.stringify(t)) + '</span>'; }).join('') + '</div>' : '') +
-          (j.vaguestDescriptionCn ? '<div class="fine" style="margin-top:.4rem">Least informative description for its value: ' +
-            '<span class="linky" data-cn="' + esc(String(j.vaguestDescriptionCn)) + '">' + esc(String(j.vaguestDescriptionCn)) + '</span></div>' : '') +
-          '</div>' : '') +
-        '</div>';
-    }).join('');
-    var un = d.unplaced || {};
-    var unplaced = (un.contracts ? '<div class="rule" style="margin-top:1rem"><b>' + esc(aud(un.committed, true)) +
-      '</b> across ' + un.contracts + ' contract(s) could not be placed in a portfolio. ' + esc(un.note || '') +
-      ((un.exampleNames || []).length ? ' e.g. ' + esc(un.exampleNames.slice(0, 3).join('; ')) : '') + '</div>' : '');
-    var fine = '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
-      '</ul>Source: ' + esc(d.source || '') + '</div>';
-    box.innerHTML = body + unplaced + fine;
-    box.hidden = false;
-    wireRowLinks(box);
-  }
-
-  // Tabs: Explore ↔ How this works.
   // Three panes: Ask is the landing, Browse is the drill-in, How explains the machinery.
   // Browse loads LAZILY on first open — the landing must not pay for panels nobody asked for.
   var browseLoaded = false;
