@@ -1,0 +1,94 @@
+# The integrity join surface: one anchor (IntegrityQuery, keyed by ABN digits) reaching three
+# registers by DISTINCT relationships — so a query names which register it read, and a silence
+# is qualified per register. The discipline of every adverse source in this realm:
+#
+#   1. A record here is a REGISTER ENTRY, never a finding about a contract or a determination
+#      about an entity — matching is by ABN, and an ABN can be re-used, transferred, or shared
+#      across a corporate group.
+#   2. A MISS is qualified: "not in this register" — never "clean". No federal debarment
+#      register exists; these are the closest published substitutes.
+#   3. Where the register carries DATES (NDIS), the temporal overlap with a contract's own
+#      dates is the sharpest honest claim available — and it is still about the REGISTER.
+
+- name: IntegrityQuery
+  visibility: internal
+  description: >-
+    An ABN pinned for integrity screening — the anchor from which the adverse and disclosure
+    registers are fetched. The key is digits-normalized, because the same ABN is published
+    spaced, unspaced, numeric and float across the source estate.
+  properties:
+    abn:
+      metadata: { identity: "true" }
+
+- name: AdverseRecord
+  visibility: internal
+  description: >-
+    One NDIS Commission compliance action — a banning order, revocation, suspension, refusal or
+    compliance notice — matched by ABN. Australia's closest thing to a debarment register entry,
+    WITH effective dates, so 'in force during the contract' is a checkable claim. A register
+    entry about a provider, never a finding about any contract.
+  properties:
+    recordKey:
+      metadata: { identity: "true" }
+    abn: "The matched ABN (digits-normalized), stamped from the anchor."
+    register: "The action type as the Commission publishes it (banning order, revocation, …)."
+    name: "The provider name as published."
+    dateFrom: "Date effective from, as published."
+    dateTo: "Date no longer in force; empty = still in force at the snapshot."
+    state: "State, as published."
+    detail: "The Commission's own 'other relevant info', verbatim."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_ADVERSE
+      keyField: abn
+      recordKeyField: abn
+      producer: ndisActionsByAbn
+      description: "NDIS Commission compliance actions for a pinned ABN (snapshot dataset; the lens shows the snapshot date)."
+
+- name: SlaveryStatement
+  visibility: internal
+  description: >-
+    A Modern Slavery Register lodgement matched by ABN. PRESENCE is a lodgement (the Act's
+    baseline duty for entities over the revenue threshold); the interesting signal is usually
+    the NEGATIVE join — a threshold-scale entity with nothing lodged. Joint statements pack
+    several ABNs into one cell, which this match cannot split — a joint-statement member may
+    read as unlodged, and every consuming surface says so.
+  properties:
+    link:
+      metadata: { identity: "true" }
+    abn: "The matched ABN (digits-normalized), stamped from the anchor."
+    periodStart: "Reporting period start, as lodged."
+    periodEnd: "Reporting period end, as lodged."
+    kind: "Statement type (normal/joint), as published."
+    entities: "The reporting entities named on the statement."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_STATEMENT
+      keyField: abn
+      recordKeyField: abn
+      producer: slaveryStatementsByAbn
+      description: "Modern Slavery Register lodgements for a pinned ABN."
+
+- name: TaxRecord
+  visibility: internal
+  description: >-
+    The entity's row in the ATO corporate tax transparency report (total income ≥ $100M),
+    matched by ABN. TWO published caveats every consumer carries verbatim: a BLANK taxable
+    income or tax payable means '≤ 0' BY LEGISLATION (amounts of zero or less may not be
+    reported), never 'unknown'; and the report is entity-level, not consolidated groups — the
+    contracting entity often differs from the reporting entity.
+  properties:
+    abn:
+      metadata: { identity: "true" }
+    name: "The entity name as the ATO reports it."
+    totalIncome: "Total income $, as reported."
+    taxableIncome: "Taxable income $; BLANK = ≤ 0 by legislation."
+    taxPayable: "Tax payable $; BLANK = ≤ 0 by legislation."
+    incomeYear: "The income year of this report row."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_TAX_RECORD
+      keyField: abn
+      recordKeyField: abn
+      producer: taxRecordByAbn
+      description: "The ATO tax transparency row for a pinned ABN (2023-24 report; absence usually means income under the $100M threshold)."

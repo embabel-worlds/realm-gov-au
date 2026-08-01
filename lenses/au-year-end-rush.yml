@@ -1,0 +1,99 @@
+id: au-year-end-rush
+name: The June rush
+description: >-
+  Use-it-or-lose-it, quantified: June's committed value per agency against that agency's own May
+  baseline, from complete day-partitioned windows of the same register. A June multiple is a fact
+  about TIMING of commitments — end-of-year contracting has legitimate drivers (annual renewals,
+  budget certainty) — so this lens measures the spike and never diagnoses it.
+params:
+  - name: year
+    type: STRING
+    label: Financial-year end (June of…)
+    required: false
+    default: "2026"
+spec:
+  kind: cypherscript
+  script: |
+    const year = String(lensArgs.year || "2026").replace(/\D/g, "") || "2026";
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const warnings = [];
+    const monthRows = async (from, to) => {
+      const q = await gateway.kg.query({
+        cypher: `
+          MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+          RETURN r.agencyName AS agencyName, toFloat(r.amount) AS amount
+        `,
+        params: JSON.stringify({ window: from + "/" + to }),
+      });
+      warnings.push(...((q && q.warnings) || []));
+      return ((q && q.rows) ? q.rows : (q || []));
+    };
+
+    // Two COMPLETE months, fetched day-by-day by the partitioned producer. This is the lens the
+    // partitioning exists for: a capped sample of June would understate the very thing measured.
+    const may = await monthRows(year + "-05-01T00:00:00Z", year + "-06-01T00:00:00Z");
+    const june = await monthRows(year + "-06-01T00:00:00Z", year + "-07-01T00:00:00Z");
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT"));
+
+    const roll = (rows) => {
+      const g = {};
+      for (const r of rows) {
+        const k = r.agencyName || "(unstated)";
+        const e = (g[k] = g[k] || { value: 0, contracts: 0 });
+        e.value += (r.amount || 0); e.contracts++;
+      }
+      return g;
+    };
+    const mayBy = roll(may), juneBy = roll(june);
+    const mayTotal = may.reduce((n, r) => n + (r.amount || 0), 0);
+    const juneTotal = june.reduce((n, r) => n + (r.amount || 0), 0);
+
+    const agencies = Object.keys(juneBy)
+      .filter(a => (juneBy[a].contracts >= 5)) // a multiple over two contracts is noise
+      .map(a => {
+        const m = mayBy[a] || { value: 0, contracts: 0 };
+        return {
+          agency: a,
+          juneValue: Math.round(juneBy[a].value), juneContracts: juneBy[a].contracts,
+          mayValue: Math.round(m.value), mayContracts: m.contracts,
+          multiple: m.value > 0 ? Math.round((juneBy[a].value / m.value) * 10) / 10 : null,
+          noBaseline: m.value === 0,
+        };
+      })
+      .sort((a, b) => ((b.multiple || 0) - (a.multiple || 0)) || (b.juneValue - a.juneValue));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-year-end-rush",
+      year,
+      status: failed ? "FAILED" : (truncated || warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        juneValue: Math.round(juneTotal), juneContracts: june.length,
+        mayValue: Math.round(mayTotal), mayContracts: may.length,
+        overallMultiple: mayTotal > 0 ? Math.round((juneTotal / mayTotal) * 100) / 100 : null,
+        note: mayTotal > 0
+          ? `June ${year} committed ${(juneTotal / mayTotal).toFixed(2)}× May's value across the whole register ` +
+            `($${(juneTotal / 1e9).toFixed(2)}B vs $${(mayTotal / 1e9).toFixed(2)}B) — complete months, fetched day-by-day.`
+          : "No May baseline fetched.",
+      },
+      queries: [{
+        title: "Two complete months, day-partitioned",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\nRETURN r.agencyName, toFloat(r.amount)  // window = the whole month",
+      }],
+      agencies: agencies.slice(0, 20),
+      interpretation: {
+        factual: ["month totals and per-agency multiples — arithmetic over complete windows"],
+        judged: [],
+        note: "A June multiple measures commitment TIMING. Annual renewals, exercised options and budget-certainty effects all legitimately land in June; the number is a place to look, never a verdict.",
+      },
+      limits: [
+        "Agencies with fewer than 5 June contracts are excluded — a multiple over two contracts is noise.",
+        "First-published dates only; a contract negotiated in March and published in June counts as June.",
+        "May is ONE baseline month; a fuller seasonal profile needs the year, which this lens deliberately does not fetch on every run.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU), day-partitioned complete months",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

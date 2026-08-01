@@ -1,0 +1,123 @@
+id: au-accountability-gap
+name: The accountability gap
+description: >-
+  Does scrutiny follow money? The window's largest commitments, each checked against the
+  parliamentary record — Hansard debates, committee evidence and Estimates, searched by contract
+  notice id through ParlInfo's own feeds. The coverage rate nobody publishes: how much of the
+  period's money was EVER raised, and how much never appears. Silence is qualified (these record
+  classes, this id as the phrase) — Questions on Notice are not yet searchable, so 'never raised
+  in Parliament' stays off the table; 'not found in these records' is the honest maximum.
+params:
+  - name: from
+    type: DATE
+    label: Window from
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: Window to (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: topN
+    type: STRING
+    label: How many of the largest contracts to check (each is one ParlInfo search)
+    required: false
+    default: "10"
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const topN = Math.min(Math.max(Number(lensArgs.topN || 10) || 10, 1), 20);
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    const win = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.agencyName AS agencyName,
+               toFloat(r.amount) AS amount, r.description AS description
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window }),
+    });
+    const rows = ((win && win.rows) ? win.rows : (win || []));
+    const warnings = [...((win && win.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+    const top = rows.slice(0, topN);
+    const windowValue = rows.reduce((n, r) => n + (r.amount || 0), 0);
+
+    // ONE combined-record-class search per CN id, batched through a single IN-list query — the
+    // engine fetches each key once and the feed guardrails pace it.
+    const cnIds = top.map(r => r.cnId).filter(Boolean);
+    let mentions = [];
+    if (cnIds.length) {
+      // INLINED literals: an enumerated IN mints one anchor per id (the batch form of a pinned
+      // equality); a `$param` list has nothing to mint at parse time and fetches nothing.
+      const inList = cnIds.map(c => "'" + String(c).replace(/[^A-Za-z0-9]/g, "") + "'").join(", ");
+      const pq = await gateway.kg.query({
+        cypher: `
+          MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:'any'}]->(m:ParliamentMention)
+          WHERE q.phrase IN [${inList}]
+          RETURN q.phrase AS cnId, m.title AS title, m.url AS url, m.publishedAt AS publishedAt
+        `,
+        params: JSON.stringify({}),
+      });
+      warnings.push(...((pq && pq.warnings) || []));
+      mentions = ((pq && pq.rows) ? pq.rows : (pq || []));
+    }
+    const byCn = {};
+    for (const m of mentions) (byCn[m.cnId] = byCn[m.cnId] || []).push(m);
+
+    const checked = top.map(r => ({
+      cnId: r.cnId, amount: r.amount, supplierName: r.supplierName, agencyName: r.agencyName,
+      description: String(r.description || "").slice(0, 140),
+      raised: (byCn[r.cnId] || []).length > 0,
+      mentions: (byCn[r.cnId] || []).map(m => ({
+        title: m.title, url: m.url, date: String(m.publishedAt || "").slice(0, 10) || null,
+      })),
+      austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(r.cnId),
+    }));
+    const raised = checked.filter(c => c.raised);
+    const sum = (xs) => Math.round(xs.reduce((n, x) => n + (x.amount || 0), 0));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-accountability-gap",
+      window: { from, to }, topN,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        checked: checked.length,
+        checkedValue: sum(checked),
+        windowValue: Math.round(windowValue),
+        raisedCount: raised.length,
+        raisedValue: sum(raised),
+        notFoundCount: checked.length - raised.length,
+        notFoundValue: sum(checked) - sum(raised),
+        note: checked.length
+          ? `Of the window's ${checked.length} largest commitments ($${(sum(checked) / 1e6).toFixed(1)}M), ` +
+            `${raised.length} appear somewhere in the parliamentary record by notice id; ` +
+            `${checked.length - raised.length} are not found in any searched record class.`
+          : "No contracts in this window.",
+      },
+      queries: [{
+        title: "Notice ids against the whole parliamentary record",
+        note: "One combined search per CN id (debates + committees + Estimates), via ParlInfo's own feeds.",
+        cypher: "MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:'any'}]->(m:ParliamentMention)\nWHERE q.phrase IN $cnIds RETURN q.phrase, m.title, m.url",
+      }],
+      contracts: checked,
+      interpretation: {
+        factual: ["amounts", "mention presence per record class searched", "links"],
+        judged: [],
+        note: "Arithmetic and register lookups only. 'Not found' is about these record classes and this exact id as the search phrase — a debate that discussed the program without citing the id is invisible to this check.",
+      },
+      limits: [
+        "Questions on Notice are not yet a searchable class, so absence here never supports 'never raised in Parliament' — only 'not found in these records'.",
+        "The id-as-phrase check has high precision and limited recall: Parliament often discusses programs and suppliers without citing notice ids.",
+        "A capped window fetch makes the ranking a sample; the status says so.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) · ParlInfo search feeds (keyless)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

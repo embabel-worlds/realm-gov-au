@@ -24,7 +24,7 @@ function check(name, cond, detail) {
   await page.waitForTimeout(800);
   check('Ask tab is the landing', await page.locator('#pane-ask').isVisible());
   check('Browse hidden until asked for', await page.locator('#pane-explore').isHidden());
-  check('eight question cards', (await page.locator('.qcard').count()) === 8);
+  check('ten question cards', (await page.locator('.qcard').count()) === 10);
   check('no fake chat log', (await page.locator('.chat-log').count()) === 0);
 
   console.log('\n== tabs ==');
@@ -134,6 +134,18 @@ function check(name, cond, detail) {
   await page.fill('#chat-input', 'what was said about robodebt in senate estimates?');
   await page.click('#chat-send'); await page.waitForTimeout(900);
   check('a trailing venue clause is trimmed off the topic', (await page.locator('#pl-phrase').inputValue()) === 'robodebt');
+
+  console.log('\n== integrity + accountability panels ==');
+  // Live-data panels: in demo they must say so honestly rather than render an empty shell.
+  await page.click('#tab-ask'); await page.waitForTimeout(300);
+  await page.fill('#chat-input', 'Screen this month\'s biggest suppliers against the integrity registers');
+  await page.click('#chat-send'); await page.waitForTimeout(900);
+  check('integrity panel appears inline', await page.locator('#integrity-card').isVisible());
+  check('integrity says it needs a world in demo', /running world/i.test(await page.locator('#ig-state-el').innerText()));
+  await page.fill('#chat-input', 'Which of the biggest contracts were never raised in parliament?');
+  await page.click('#chat-send'); await page.waitForTimeout(900);
+  check('accountability panel appears inline', await page.locator('#gap-card').isVisible());
+  check('gap says it needs a world in demo', /running world/i.test(await page.locator('#gp-state-el').innerText()));
 
   console.log('\n== progress banner (idle structure) ==');
   // The banner only SHOWS during live scans (demo mode never fetches), but its structure is

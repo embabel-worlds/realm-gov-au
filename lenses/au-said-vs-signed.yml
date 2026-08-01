@@ -1,0 +1,153 @@
+id: au-said-vs-signed
+name: Said in Estimates vs signed in contracts
+description: >-
+  Rhetoric against procurement, both labelled: what a portfolio's officials said in INDEXED
+  Estimates transcripts (semantic search over hearings you have indexed via au-parliament),
+  beside what its agencies' contracts actually bought in the window. Two summaries, two sources,
+  rendered side by side and never blended — each is a model's reduction of quoted material, and
+  the lens says which material. Requires indexed hearings; without them it says so and stops.
+params:
+  - name: portfolio
+    type: STRING
+    label: Portfolio (as AGOR names it)
+    required: true
+    default: "Defence"
+  - name: from
+    type: DATE
+    label: Contracts window from
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: Contracts window to (exclusive)
+    required: true
+    default: "2026-07-28"
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const portfolio = String(lensArgs.portfolio || "").trim();
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const warnings = [];
+
+    // ---- WHAT WAS SAID: semantic search over INDEXED hearings -----------------------------
+    // referenceDocs searches the user's ingested documents — the transcripts land there via
+    // au-parliament's index step. Empty ≠ "nothing said": it usually means nothing indexed yet.
+    let saidHits = [];
+    let saidUnavailable = false;
+    try {
+      const rs = await gateway.referenceDocs.vectorSearch({
+        query: portfolio + " priorities spending procurement Estimates hearing",
+        topK: 6, threshold: 0.35,
+      });
+      // The search surface returns TEXT (a rendered result list), not JSON — parse defensively and
+      // fall back to treating the whole response as one passage rather than throwing.
+      let list = null;
+      if (typeof rs === "string") {
+        try { const p = JSON.parse(rs); list = Array.isArray(p) ? p : (p && (p.results || p.hits)) || null; }
+        catch (e) { list = null; }
+        if (!list) {
+          const text = String(rs).trim();
+          saidHits = text ? [{ text: text.slice(0, 4000), source: "document search", score: null }] : [];
+        }
+      } else if (rs) {
+        list = Array.isArray(rs) ? rs : (rs.results || rs.hits || null);
+      }
+      if (list) {
+        saidHits = list.map(x => ({
+          text: String(x.text || x.content || x.chunk || "").slice(0, 1500),
+          source: x.title || x.documentTitle || x.uri || null,
+          score: x.score != null ? Math.round(Number(x.score) * 100) / 100 : null,
+        })).filter(x => x.text);
+      }
+    } catch (e) {
+      saidUnavailable = true;
+      warnings.push("document search unavailable: " + String((e && e.message) || e));
+    }
+
+    // ---- WHAT WAS SIGNED: the portfolio's window, via the seeded agency spine --------------
+    const sq = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        MATCH (a:Agency) WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+        MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)
+        WHERE toLower(p.name) CONTAINS toLower($portfolio)
+        RETURN r.description AS description, toFloat(r.amount) AS amount, r.supplierName AS supplierName
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, portfolio }),
+    });
+    const contracts = ((sq && sq.rows) ? sq.rows : (sq || []));
+    warnings.push(...((sq && sq.warnings) || []));
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+
+    // ---- Two labelled reductions — never one blended verdict -------------------------------
+    const crit = portfolio.replace(/['"\\]/g, " ").trim();
+    let saidSummary = null, signedSummary = null;
+    if (saidHits.length) {
+      try {
+        const out = await gateway.ai.complete({
+          prompt: "Summarize, in three plain sentences, what these Estimates hearing passages show being " +
+            "discussed about the " + crit + " portfolio's spending and priorities. Use ONLY what the passages " +
+            "state; if they don't address it, say exactly that.\n\nPassages:\n" +
+            saidHits.map(h => "- " + h.text).join("\n"),
+        });
+        saidSummary = String((out && (out.text || out.content)) || out || "").trim() || null;
+      } catch (e) { warnings.push("said-summary unavailable: " + String((e && e.message) || e)); }
+    }
+    if (contracts.length) {
+      const dq = await gateway.kg.query({
+        cypher: `
+          MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+          MATCH (a:Agency) WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+          MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)
+          WHERE toLower(p.name) CONTAINS toLower($portfolio)
+          RETURN summarize(r.description, 'what this portfolio actually bought this window, in three plain sentences') AS digest
+        `,
+        params: JSON.stringify({ window, portfolio }),
+      });
+      warnings.push(...((dq && dq.warnings) || []));
+      const row = (((dq && dq.rows) ? dq.rows : (dq || []))[0]) || {};
+      signedSummary = row.digest || null;
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-said-vs-signed",
+      portfolio, window: { from, to },
+      status: failed ? "FAILED" : "COMPLETE",
+      warnings,
+      said: {
+        available: !saidUnavailable && saidHits.length > 0,
+        summary: saidSummary,
+        passages: saidHits,
+        note: saidUnavailable
+          ? "Document search could not run — nothing was looked at."
+          : (saidHits.length ? null
+            : "No indexed hearing passages matched. Index hearings first (au-parliament's index step) — this is 'nothing indexed', never 'nothing said'."),
+      },
+      signed: {
+        contracts: contracts.length,
+        value: Math.round(contracts.reduce((n, c) => n + (c.amount || 0), 0)),
+        summary: signedSummary,
+        topContracts: contracts.slice(0, 6).map(c => ({
+          amount: c.amount, supplierName: c.supplierName,
+          description: String(c.description || "").slice(0, 120),
+        })),
+      },
+      interpretation: {
+        factual: ["contract counts and sums", "the quoted passages themselves"],
+        judged: ["said.summary (a model reading INDEXED hearing passages)", "signed.summary (a model reading the window's descriptions)"],
+        note: "Two reductions of two different sources, side by side. Comparing them is the READER's judgment — this lens deliberately renders no verdict on whether words and money align.",
+      },
+      limits: [
+        "The 'said' side covers ONLY hearings someone has indexed — a handful of transcripts, never the portfolio's full record.",
+        "Semantic hits are relevance judgments; a passage may concern the portfolio without being about spending.",
+        "The 'signed' side is one window of first-published contracts.",
+      ],
+      source: "Indexed ParlInfo transcripts (your document store) · AusTender OCDS + AGOR spine (seeded)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

@@ -62,3 +62,15 @@
   # match {key1}: excerpts anchor on the PHRASE part of the composite key, never its dates.
   follow: { maxPages: 3, match: "{key1}", excerptChars: 4000 }
   cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
+
+# ONE search across every record class — for batch screening (the accountability gap lens),
+# where 10 CN ids × 4 classes would be 40 paced requests. One combined query per key instead.
+- name: parliamentAnyMentions
+  kind: feed
+  url: 'https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:hansardr,hansards,commsen,commjnt,estimate Content:"{key}"'
+  redirectMeansEmpty: true
+  keyAs: searchPhrase
+  maxItems: 5
+  userAgent: browser
+  minIntervalMs: 1000
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }

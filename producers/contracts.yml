@@ -80,6 +80,9 @@
   # end-of-financial-year spikes are the case to watch). A single day that still caps surfaces
   # the walker's TRUNCATED warning NAMING that day — lenses must carry it into their status.
   paging: { style: cursor, cursorParam: cursor, cursorPath: "$.links.next", size: 100, sizeParam: pageSize, maxPages: 12 }
+  # AusTender answers an EMPTY day with HTTP 400 "No Records found for Date Range" — with daily
+  # partitioning that is every quiet weekend, and it is an answer, not an error.
+  emptyErrorPatterns: ["No Records found"]
   # The feed returns newest-first and caps per request, so an unpartitioned broad window
   # silently returned only its newest ~1,200 notices — a result that LOOKS like a recent window.
   # Partitioning fetches each UTC day with its own page budget and stamps records back to the
@@ -132,6 +135,9 @@
   # NOTE the completeness caveat: this feed filters on LAST-MODIFIED, a mutable attribute, so a
   # partitioned scan is complete AS OF the scan — a later amendment moves the release forward.
   paging: { style: cursor, cursorParam: cursor, cursorPath: "$.links.next", size: 100, sizeParam: pageSize, maxPages: 12 }
+  # AusTender answers an EMPTY day with HTTP 400 "No Records found for Date Range" — with daily
+  # partitioning that is every quiet weekend, and it is an answer, not an error.
+  emptyErrorPatterns: ["No Records found"]
   partition: { unit: day, maxUnits: 366 }
   project:
     releaseId: id

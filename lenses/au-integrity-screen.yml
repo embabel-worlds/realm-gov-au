@@ -1,0 +1,180 @@
+id: au-integrity-screen
+name: Integrity screen
+description: >-
+  The check no Commonwealth entity can run today: a window's contract winners (or one supplier)
+  against the adverse and disclosure registers — NDIS compliance actions WITH temporal overlap
+  against contract dates, Modern Slavery lodgement, and the ATO tax transparency report. No
+  federal debarment register exists (CPR 6.9 substitutes tenderer self-declaration); these are
+  the closest published substitutes, and every hit is a REGISTER ENTRY to hand a human, never a
+  finding about a contract or a determination about an entity.
+params:
+  - name: from
+    type: DATE
+    label: Window from
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: Window to (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: minAmount
+    type: STRING
+    label: Screen contracts at or above (AUD)
+    required: false
+    default: "1000000"
+  - name: supplier
+    type: STRING
+    label: Or one supplier name (blank = screen the window's winners)
+    required: false
+    default: ""
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const minAmount = Number(lensArgs.minAmount || 0) || 1000000;
+    const supplierFilter = String(lensArgs.supplier || "").trim().toLowerCase();
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const digits = (s) => String(s || "").replace(/\.\d+\s*$/, "").replace(/\D/g, "");
+
+    // ---- WHO gets screened: the window's winners (arithmetic), with their contract dates ----
+    const win = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE toFloat(r.amount) >= $minAmount
+        RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+               toFloat(r.amount) AS amount, r.agencyName AS agencyName,
+               r.startDate AS startDate, r.endDate AS endDate
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, minAmount }),
+    });
+    const rows = ((win && win.rows) ? win.rows : (win || []))
+      .filter(r => !supplierFilter || String(r.supplierName || "").toLowerCase().includes(supplierFilter));
+    const warnings = [...((win && win.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("COULD NOT BE FETCHED"); });
+
+    // Distinct ABNs, keeping each ABN's contracts for the temporal check. Suppliers with no
+    // published ABN CANNOT be screened — reported as such, never silently dropped.
+    const byAbn = {};
+    const unscreenable = [];
+    for (const r of rows) {
+      const a = digits(r.supplierAbn);
+      if (!a) { unscreenable.push(r); continue; }
+      (byAbn[a] = byAbn[a] || { abn: a, supplierName: r.supplierName, contracts: [] }).contracts.push(r);
+    }
+    const abns = Object.keys(byAbn).slice(0, 25); // one file fetch serves the whole batch
+
+    // ---- The registers, one query per register so each silence is qualified precisely -------
+    // The ABN list is INLINED as literals: an enumerated `IN [...]` mints one virtual anchor per
+    // value (the batch form of a pinned equality), whereas a `$param` list has nothing to mint
+    // at parse time and would silently materialize nothing.
+    const inList = abns.map(a => "'" + String(a).replace(/[^0-9]/g, "") + "'").join(", ");
+    const register = async (rel, label, fields) => {
+      if (!abns.length) return [];
+      try {
+        const q = await gateway.kg.query({
+          cypher: `
+            MATCH (q:IntegrityQuery)-[:${rel}]->(x:${label})
+            WHERE q.abn IN [${inList}]
+            RETURN q.abn AS abn, ${fields}
+          `,
+          params: JSON.stringify({}),
+        });
+        warnings.push(...((q && q.warnings) || []));
+        return ((q && q.rows) ? q.rows : (q || []));
+      } catch (e) {
+        // One register failing must degrade THAT register to unknown, never kill the screen.
+        warnings.push(label + " register unavailable: " + String((e && e.message) || e));
+        return [];
+      }
+    };
+    const ndis = abns.length ? await register("HAS_ADVERSE", "AdverseRecord",
+      "x.register AS register, x.name AS name, x.dateFrom AS dateFrom, x.dateTo AS dateTo, x.detail AS detail") : [];
+    const slavery = abns.length ? await register("HAS_STATEMENT", "SlaveryStatement",
+      "x.periodStart AS periodStart, x.periodEnd AS periodEnd, x.kind AS kind, x.link AS link") : [];
+    const tax = abns.length ? await register("HAS_TAX_RECORD", "TaxRecord",
+      "x.name AS name, x.totalIncome AS totalIncome, x.taxableIncome AS taxableIncome, x.taxPayable AS taxPayable, x.incomeYear AS incomeYear") : [];
+
+    // ---- Compose per supplier: hits, temporal overlaps, and QUALIFIED silences --------------
+    const parseAus = (d) => { // register dates arrive as dd/mm/yyyy or ISO
+      const v = String(d || "").trim();
+      if (!v) return null;
+      const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : v.slice(0, 10);
+    };
+    const screened = Object.values(byAbn).map(s => {
+      const nd = ndis.filter(x => x.abn === s.abn).map(x => {
+        const bFrom = parseAus(x.dateFrom), bTo = parseAus(x.dateTo);
+        // The sharpest honest claim: the action's dates overlap a contract's own period.
+        const overlaps = s.contracts.filter(c => {
+          const cFrom = String(c.startDate || "").slice(0, 10), cTo = String(c.endDate || "").slice(0, 10);
+          if (!bFrom || !cFrom) return false;
+          return (bTo === null || bTo === "" || bTo >= cFrom) && (cTo === "" || bFrom <= cTo);
+        }).map(c => c.cnId);
+        return { register: x.register, name: x.name, from: bFrom, to: bTo || null, detail: x.detail || null,
+                 overlapsContracts: overlaps.length ? overlaps : null };
+      });
+      const sl = slavery.filter(x => x.abn === s.abn);
+      const tx = tax.filter(x => x.abn === s.abn)[0] || null;
+      return {
+        supplierName: s.supplierName, abn: s.abn,
+        contracts: s.contracts.length,
+        value: Math.round(s.contracts.reduce((n, c) => n + (c.amount || 0), 0)),
+        ndis: { hits: nd, note: nd.length ? null : "Not in the NDIS compliance-actions snapshot — a fact about that register only." },
+        slavery: {
+          lodged: sl.length > 0,
+          statements: sl.map(x => ({ period: `${x.periodStart} → ${x.periodEnd}`, kind: x.kind, link: x.link })),
+          note: sl.length ? null : "No lodgement matched this ABN — which may mean under the revenue threshold, lodged under a joint statement (packed ABNs cannot be matched), or not lodged.",
+        },
+        tax: tx ? {
+          name: tx.name, incomeYear: tx.incomeYear,
+          totalIncome: tx.totalIncome || null,
+          taxPayable: tx.taxPayable || null,
+          nilOrBelowZero: !String(tx.taxPayable || "").trim(),
+          note: !String(tx.taxPayable || "").trim()
+            ? "Tax payable is BLANK — which means ≤ $0 BY LEGISLATION (amounts of zero or less may not be reported), never 'unknown'." : null,
+        } : { note: "Not in the 2023-24 transparency report — usually total income under the $100M threshold; entity-level, so a group parent may report instead." },
+      };
+    }).sort((a, b) => ((b.ndis.hits.length - a.ndis.hits.length) || (b.value - a.value)));
+
+    const flagged = screened.filter(s => s.ndis.hits.length);
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-integrity-screen",
+      window: { from, to }, minAmount, supplier: supplierFilter || null,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        screened: screened.length,
+        screenedValue: Math.round(screened.reduce((n, s) => n + s.value, 0)),
+        ndisFlagged: flagged.length,
+        unscreenable: unscreenable.length,
+        note: `No federal debarment register exists — CPR 6.9 substitutes tenderer self-declaration. ` +
+              `${screened.length} winner(s) screened against three published registers; ` +
+              `${unscreenable.length} had no published ABN and CANNOT be screened.`,
+      },
+      queries: [{
+        title: "Register joins, per ABN",
+        note: "Three registers, three relationships — each silence is about ONE register.",
+        cypher: "MATCH (q:IntegrityQuery)-[:HAS_ADVERSE|HAS_STATEMENT|HAS_TAX_RECORD]->(x) WHERE q.abn IN $abns RETURN q.abn, x",
+      }],
+      suppliers: screened.slice(0, 30),
+      unscreenable: unscreenable.slice(0, 10).map(r => ({ supplierName: r.supplierName, cnId: r.cnId, amount: r.amount })),
+      interpretation: {
+        factual: ["register entries verbatim", "date overlaps computed from published dates", "lodgement presence"],
+        judged: [],
+        note: "Everything here is arithmetic over register rows. No model touches this lens.",
+      },
+      limits: [
+        "A register entry is about a PROVIDER/ENTITY, matched by ABN — an ABN can be shared across a corporate group or transferred; a hit is a prompt to read the register, never a determination.",
+        "A miss means 'not in THIS register (as at its snapshot)' — never 'clean'. WGEA, ABF sanctions and payment-times registers are NOT yet screened (docs/INTEGRITY-SOURCES.md).",
+        "The NDIS snapshot is dated (06.07.2026 dataset) — a newer action would not appear.",
+        "Blank tax payable = ≤ $0 by legislation; the report is entity-level, not consolidated groups; 2023-24 tax year against current contracts is a timing mismatch.",
+      ],
+      source: "AusTender OCDS · NDIS Commission compliance actions (data.gov.au) · Modern Slavery Register bulk export · ATO corporate tax transparency 2023-24 (CC-BY)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

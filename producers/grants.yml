@@ -1,0 +1,39 @@
+# GrantConnect published grant awards — the LAZY replacement for the deleted 5.7MB reference
+# snapshot (the correction that motivated the whole tabular producer). One XLSX per rolling
+# window, fetched on first traversal, cached deployment-wide, re-downloaded on TTL.
+#
+# Verified live 2026-08-01: 7,064 grants / $4.98B for a 30-day window, 1.3MB.
+# The export wants its dates as 01-Jul-2026 — the {today|date:} token renders them.
+# GOTCHA: the file's criteria banner is ~19 two-cell rows, which defeats modal-width header
+# detection — headerRow is EXPLICIT (row 20, 1-based), pinned to the verified layout.
+- name: grantsPublishedRecently
+  kind: tabular
+  url: "https://www.grants.gov.au/Reports/GaPublishedDownload?AgencyStatus=0&DateType=Publish%20Date&DateStart={today-90d|date:dd-MMM-yyyy}&DateEnd={today|date:dd-MMM-yyyy}"
+  format: xlsx
+  headerRow: 20
+  userAgent: browser
+  # No keyColumn: the whole window IS the answer, stamped back to the (single) anchor key.
+  keyAs: windowKey
+  maxRows: 200000
+  maxRowsPerKey: 100000
+  project:
+    agency: "Agency"
+    gaId: "GA ID"
+    goId: "GO ID"
+    recipient: "Recipient Name"
+    recipientAbn: "Recipient ABN"
+    program: "Grant Program"
+    activity: "Grant Activity"
+    purpose: "Purpose"
+    category: "Category"
+    selectionProcess: "Selection Process"
+    publishDate: "Publish Date"
+    startDate: "Start Date"
+    endDate: "End Date"
+    value: "Value (AUD)"
+    recipientPostcode: "Recipient Postcode"
+    recipientState: "Recipient State/Territory"
+    deliveryState: "Delivery State/Territory"
+    deliveryPostcode: "Delivery Postcode"
+  fileCacheSeconds: 21600
+  cache: { kind: ttl, seconds: 21600 }

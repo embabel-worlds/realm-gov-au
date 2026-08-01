@@ -1,0 +1,114 @@
+id: au-concentration
+name: Where competition is nominal
+description: >-
+  Market concentration in the window, arithmetically: per agency and per category family, the
+  top supplier's share of value, the supplier count, and the pairs where one supplier took
+  everything across several contracts. Concentration is a STRUCTURE observation — specialised
+  markets concentrate for good reasons — so this lens ranks and counts, and never characterises.
+params:
+  - name: from
+    type: DATE
+    label: Window from
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: Window to (exclusive)
+    required: true
+    default: "2026-07-28"
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    const win = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        RETURN r.supplierName AS supplierName, r.agencyName AS agencyName,
+               toFloat(r.amount) AS amount, r.unspscCodes AS unspscCodes
+      `,
+      params: JSON.stringify({ window }),
+    });
+    const rows = ((win && win.rows) ? win.rows : (win || []));
+    const warnings = (win && win.warnings) || [];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+
+    // Category titles from the seeded government codeset — grouped by FAMILY (first two digits),
+    // matched by longest seeded prefix for the label.
+    const cat = await gateway.kg.query({
+      cypher: `MATCH (c:ProcurementCategory) RETURN c.code AS code, c.title AS title`,
+      params: JSON.stringify({}),
+    });
+    const titles = {};
+    for (const c of (((cat && cat.rows) ? cat.rows : (cat || [])))) titles[c.code] = c.title;
+    const familyTitle = (code) => {
+      const fam = String(code || "").slice(0, 2) + "000000";
+      return titles[fam] || ("UNSPSC " + String(code || "").slice(0, 2) + "…");
+    };
+    const normName = (s) => String(s || "(unstated)").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    // One grouping engine for both cuts: share of the top supplier, supplier count, contracts.
+    const concentrate = (keyOf) => {
+      const groups = {};
+      for (const r of rows) {
+        const k = keyOf(r);
+        if (!k) continue;
+        const g = (groups[k] = groups[k] || { key: k, value: 0, contracts: 0, suppliers: {} });
+        g.value += (r.amount || 0); g.contracts++;
+        const sn = normName(r.supplierName);
+        const s = (g.suppliers[sn] = g.suppliers[sn] || { name: r.supplierName, value: 0, contracts: 0 });
+        s.value += (r.amount || 0); s.contracts++;
+      }
+      return Object.values(groups)
+        .filter(g => g.contracts >= 3)  // one contract is not a market
+        .map(g => {
+          const sup = Object.values(g.suppliers).sort((a, b) => b.value - a.value);
+          return {
+            group: g.key, contracts: g.contracts, value: Math.round(g.value),
+            supplierCount: sup.length,
+            topSupplier: sup[0].name,
+            topShareOfValuePct: Math.round((sup[0].value / g.value) * 1000) / 10,
+            soleSupplier: sup.length === 1,
+          };
+        })
+        .sort((a, b) => b.topShareOfValuePct - a.topShareOfValuePct || b.value - a.value);
+    };
+    const byAgency = concentrate(r => r.agencyName);
+    const byFamily = concentrate(r => (r.unspscCodes && r.unspscCodes.length) ? familyTitle(r.unspscCodes[0]) : null);
+    const sole = byAgency.filter(x => x.soleSupplier).concat(byFamily.filter(x => x.soleSupplier));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-concentration",
+      window: { from, to },
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        agenciesMeasured: byAgency.length,
+        familiesMeasured: byFamily.length,
+        soleSupplierGroups: sole.length,
+        note: `${sole.length} group(s) with ≥3 contracts had every dollar go to ONE supplier this window.`,
+      },
+      queries: [{
+        title: "Window rows grouped two ways (arithmetic)",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\nRETURN r.agencyName, r.supplierName, toFloat(r.amount), r.unspscCodes",
+      }],
+      byAgency: byAgency.slice(0, 15),
+      byCategoryFamily: byFamily.slice(0, 15),
+      interpretation: {
+        factual: ["shares, counts and sums over the register's rows; supplier names grouped case-insensitively"],
+        judged: [],
+        note: "Concentration is structure, not verdict: specialised markets concentrate legitimately. Groups under 3 contracts are excluded — one contract is not a market.",
+      },
+      limits: [
+        "ONE window: a market that tenders quarterly can look concentrated in any single week.",
+        "Category families use each contract's FIRST UNSPSC code; multi-category contracts count once.",
+        "A capped window fetch makes every share a sample; the status says so.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) · UNSPSC titles (seeded government codeset)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

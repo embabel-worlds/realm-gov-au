@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers","au-opaque-spend","au-parliament"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers","au-opaque-spend","au-parliament","au-integrity-screen","au-accountability-gap","au-grant-hop","au-concentration","au-evergreen","au-year-end-rush","au-threshold-clusters","au-tax-vs-contracts","au-said-vs-signed"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -323,6 +323,10 @@
           <b>Big money, thin disclosure</b><span>$1bn against the single word “Launchers” — found by construction, then read by a model</span></button>
         <button class="qcard" data-q="Was Snowy Hydro raised in Senate Estimates this year?">
           <b>Was it raised in Parliament?</b><span>Hansard, committees and Estimates — searched directly, grouped by record class</span></button>
+        <button class="qcard" data-q="Screen this month's biggest suppliers against the integrity registers">
+          <b>Integrity screen</b><span>There is no federal debarment register — this is the check that replaces the self-declaration</span></button>
+        <button class="qcard" data-q="Which of the biggest contracts were never raised in parliament?">
+          <b>Does scrutiny follow the money?</b><span>The window's largest commitments against the whole parliamentary record</span></button>
       </div>
       <div class="chat-row">
         <input id="chat-input" type="text" placeholder="e.g. which contracts grew the most, or CN3942784, or where does the money go" aria-label="Ask a question">
@@ -452,6 +456,34 @@
       <div class="qstamp" id="k-stamp" hidden></div>
       <embabel-operation-state id="k-state-el"></embabel-operation-state>
       <div id="k-result" hidden></div>
+    </section>
+
+    <!-- ============ INTEGRITY SCREEN ============ -->
+    <section class="card" id="integrity-card">
+      <h2>Integrity screen</h2>
+      <p class="sub">The window's winners against the adverse and disclosure registers — NDIS compliance actions (with date overlap against the contract's own period), Modern Slavery lodgement, ATO tax transparency. Register entries to hand a human, never findings.</p>
+      <div class="filterbar">
+        <label class="fine" for="ig-min">Screen contracts ≥ (AUD)</label>
+        <input id="ig-min" type="text" value="5000000" size="10" aria-label="Minimum amount">
+        <button class="embabel-button" id="ig-go">Screen the winners</button>
+      </div>
+      <div class="qstamp" id="ig-stamp" hidden></div>
+      <embabel-operation-state id="ig-state-el"></embabel-operation-state>
+      <div id="ig-result" hidden></div>
+    </section>
+
+    <!-- ============ THE ACCOUNTABILITY GAP ============ -->
+    <section class="card" id="gap-card">
+      <h2>Does scrutiny follow the money?</h2>
+      <p class="sub">The window's largest commitments, each searched by notice id across Hansard, committee evidence and Estimates. The coverage rate nobody publishes — and a silence that stays qualified.</p>
+      <div class="filterbar">
+        <label class="fine" for="gp-top">Check the top</label>
+        <input id="gp-top" type="text" value="5" size="4" aria-label="How many contracts">
+        <button class="embabel-button" id="gp-go">Check the record</button>
+      </div>
+      <div class="qstamp" id="gp-stamp" hidden></div>
+      <embabel-operation-state id="gp-state-el"></embabel-operation-state>
+      <div id="gp-result" hidden></div>
     </section>
 
     <!-- ============ THE PARLIAMENTARY RECORD ============ -->
@@ -1268,6 +1300,12 @@
     { id: 'newcomers', test: /\b(new suppl|first.?time|newcomer|never (won|had))\b/i,
       label: 'suppliers appearing for the first time',
       run: function () { return runNewSuppliers(); }, focus: 'newsup-card' },
+    { id: 'integrity', test: /\b(integrity|debar|banned|sanction|screen|adverse|modern slavery|compliance action)\b/i,
+      label: 'the integrity screen',
+      run: function () { return runIntegrity(); }, focus: 'integrity-card' },
+    { id: 'gap', test: /\b(never (raised|mentioned|discussed)|scrutin|accountab|coverage)\b/i,
+      label: 'the accountability gap',
+      run: function () { return runGap(); }, focus: 'gap-card' },
     { id: 'parliament', test: /\b(parliament|hansard|estimates|senate|committee evidence|raised in|question time)\b/i,
       label: function (q) { var n = parliamentPhraseOf(q); return n ? 'the parliamentary record for \u201c' + n + '\u201d' : 'the parliamentary record'; },
       run: function (q) { var n = parliamentPhraseOf(q); if (!n) return null; $('pl-phrase').value = n; return runParliament(); },
@@ -1383,6 +1421,14 @@
         var v = document.querySelectorAll('#pp-result .tile .val');
         return v.length > 2 ? 'Original ' + v[0].innerText.trim() + ' → now ' + v[1].innerText.trim() + '.' : '';
       }
+      if (cardId === 'integrity-card') {
+        var ign = document.querySelectorAll('#ig-result .result').length;
+        return ign ? ign + ' supplier(s) screened against the registers.' : '';
+      }
+      if (cardId === 'gap-card') {
+        var gpn = document.querySelectorAll('#gp-result .result').length;
+        return gpn ? gpn + ' commitment(s) checked against the parliamentary record.' : '';
+      }
       if (cardId === 'parliament-card') {
         var pln = document.querySelectorAll('#pl-result .cov').length;
         return pln ? pln + ' mention(s) on the parliamentary record.' : 'No mentions found in the searched record classes.';
@@ -1453,6 +1499,93 @@
     n.textContent = 'A question runs one of this realm\'s governed queries and shows its panel right here. ' +
       'Not a conversation — each question is answered on its own, and questions the registers cannot answer are refused rather than guessed.';
   })();
+
+  // ---- Integrity screen + the accountability gap ------------------------------
+  var igRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  var gpRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  async function runIntegrity() {
+    var args = { from: $('w-from').value, to: $('w-to').value,
+                 minAmount: String($('ig-min').value || '5000000').replace(/[^0-9]/g, '') || '5000000' };
+    $('ig-result').hidden = true;
+    stamp('ig-stamp', 'Winners ≥ <b>' + esc(aud(Number(args.minAmount), true)) + '</b> over <b>' + windowText() +
+      '</b> · lens <b>au-integrity-screen</b>');
+    try {
+      var d;
+      if (DEMO) { setState($('ig-state-el'), 'error', { message: 'The integrity registers are fetched live — this needs a running world.' }); return; }
+      var env = await withBusy(labelFor('au-integrity-screen'), function () {
+        return igRunner.lens('au-integrity-screen', args, { state: $('ig-state-el'), waitSeconds: 15 });
+      }, 'Three registers, fetched and cached — the first run downloads them.');
+      d = env ? lensData(env) : null;
+      if (d) renderIntegrity(d);
+    } catch (e) { /* the state element shows it */ }
+  }
+  function renderIntegrity(d) {
+    var box = $('ig-result'), h = d.headline || {};
+    var tiles = '<div class="tiles">' +
+      '<div class="tile"><div class="lbl">Screened</div><div class="val">' + (h.screened || 0) + '</div><div class="note">' + esc(aud(h.screenedValue, true)) + ' in contracts</div></div>' +
+      '<div class="tile"><div class="lbl">Adverse-register hits</div><div class="val">' + (h.ndisFlagged || 0) + '</div><div class="note">NDIS compliance actions</div></div>' +
+      '<div class="tile"><div class="lbl">Cannot be screened</div><div class="val">' + (h.unscreenable || 0) + '</div><div class="note">no published ABN</div></div>' +
+      '</div>' + (h.note ? '<p class="fine">' + esc(h.note) + '</p>' : '');
+    var rows = (d.suppliers || []).map(function (s) {
+      var tax = s.tax || {}, sl = s.slavery || {}, nd = s.ndis || {};
+      var flags = [];
+      if ((nd.hits || []).length) flags.push('<span class="pill">' + nd.hits.length + ' NDIS action(s)</span>');
+      if (tax.nilOrBelowZero) flags.push('<span class="pill">nil tax payable 2023-24</span>');
+      if (!sl.lodged) flags.push('<span class="pill">no modern-slavery statement matched</span>');
+      return '<div class="result"><div class="rhead"><b>' + esc(s.supplierName) + '</b> ' +
+        '<span class="fine">ABN ' + esc(s.abn) + ' · ' + esc(aud(s.value, true)) + ' · ' + s.contracts + ' contract(s)</span> ' +
+        flags.join(' ') + '</div>' +
+        ((nd.hits || []).length
+          ? nd.hits.map(function (x) {
+              return '<div class="fine"><b>' + esc(x.register || 'action') + '</b> ' + esc(x.from || '') +
+                (x.to ? ' → ' + esc(x.to) : ' — still in force at the snapshot') +
+                (x.overlapsContracts ? ' · <b>overlaps ' + esc(x.overlapsContracts.join(', ')) + '</b>' : '') + '</div>';
+            }).join('')
+          : '<div class="fine">' + esc(nd.note || '') + '</div>') +
+        '<div class="fine">' + esc(sl.note || 'Modern-slavery statement lodged.') + '</div>' +
+        '<div class="fine">' + esc(tax.note || (tax.taxPayable ? 'Tax payable 2023-24: $' + esc(String(tax.taxPayable)) : '')) + '</div>' +
+        '</div>';
+    }).join('');
+    box.innerHTML = tiles + (rows || '<p class="fine">Nothing at or over the threshold.</p>') +
+      '<p class="fine">' + (d.limits || []).map(esc).join(' ') + '</p>';
+    box.hidden = false;
+  }
+  async function runGap() {
+    var args = { from: $('w-from').value, to: $('w-to').value,
+                 topN: String($('gp-top').value || '5').replace(/[^0-9]/g, '') || '5' };
+    $('gp-result').hidden = true;
+    stamp('gp-stamp', 'Top <b>' + esc(args.topN) + '</b> commitments over <b>' + windowText() + '</b> · lens <b>au-accountability-gap</b>');
+    try {
+      var d;
+      if (DEMO) { setState($('gp-state-el'), 'error', { message: 'The parliamentary record is searched live — this needs a running world.' }); return; }
+      var env = await withBusy(labelFor('au-accountability-gap'), function () {
+        return gpRunner.lens('au-accountability-gap', args, { state: $('gp-state-el'), waitSeconds: 15 });
+      }, 'One parliamentary search per contract, paced politely.');
+      d = env ? lensData(env) : null;
+      if (d) renderGap(d);
+    } catch (e) { /* the state element shows it */ }
+  }
+  function renderGap(d) {
+    var box = $('gp-result'), h = d.headline || {};
+    var pct = h.checkedValue ? Math.round((h.notFoundValue / h.checkedValue) * 100) : 0;
+    var tiles = '<div class="tiles">' +
+      '<div class="tile"><div class="lbl">Checked</div><div class="val">' + esc(aud(h.checkedValue, true)) + '</div><div class="note">' + (h.checked || 0) + ' largest commitments</div></div>' +
+      '<div class="tile"><div class="lbl">Found in the record</div><div class="val">' + (h.raisedCount || 0) + '</div><div class="note">' + esc(aud(h.raisedValue, true)) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Not found</div><div class="val">' + pct + '%</div><div class="note">' + esc(aud(h.notFoundValue, true)) + ' of the checked value</div></div>' +
+      '</div>' + (h.note ? '<p class="fine">' + esc(h.note) + '</p>' : '');
+    var rows = (d.contracts || []).map(function (c) {
+      return '<div class="result"><div class="rhead"><b>' + esc(aud(c.amount)) + '</b> — ' + esc(c.supplierName || '') +
+        ' → ' + esc(c.agencyName || '') + ' ' +
+        (c.raised ? '<span class="pill">raised</span>' : '<span class="pill">not found in these records</span>') + '</div>' +
+        '<div class="fine">' + esc(c.cnId) + ' · ' + esc(c.description || '') +
+        ' · <a href="' + esc(c.austenderUrl) + '" target="_blank" rel="noopener">the notice ↗</a></div>' +
+        (c.mentions || []).map(function (m) {
+          return '<div class="fine"><a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.title) + ' ↗</a> · ' + esc(m.date || '') + '</div>';
+        }).join('') + '</div>';
+    }).join('');
+    box.innerHTML = tiles + rows + '<p class="fine">' + (d.limits || []).map(esc).join(' ') + '</p>';
+    box.hidden = false;
+  }
 
   // ---- The parliamentary record: searched directly, grouped by record class ----
   var plRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
@@ -1856,7 +1989,7 @@
       'au-contract-passport': 'Opening the contract', 'au-supplier-lobbying': 'Checking the lobbyist register',
       'au-agency-profile': 'Profiling the agency', 'au-supplier-profile': 'Profiling the supplier',
       'au-short-dated': 'Finding contracts near their end', 'au-new-suppliers': 'Comparing two windows',
-      'au-ask': 'Writing and running a query', 'au-opaque-spend': 'Reading disclosure quality', 'au-parliament': 'Searching the parliamentary record' })[id] || 'Working';
+      'au-ask': 'Writing and running a query', 'au-opaque-spend': 'Reading disclosure quality', 'au-parliament': 'Searching the parliamentary record', 'au-integrity-screen': 'Screening against the registers', 'au-accountability-gap': 'Checking the parliamentary record' })[id] || 'Working';
   }
   async function runLensInto(runner, id, args, stampId, stampHtml, stateId, resultId, render) {
     $(resultId).hidden = true;
@@ -2214,6 +2347,8 @@
         'au-new-suppliers': { card: 'newsup-card', render: null },
         'au-opaque-spend': { card: 'opaque-card', render: renderOpaque },
         'au-parliament': { card: 'parliament-card', render: renderParliament },
+        'au-integrity-screen': { card: 'integrity-card', render: renderIntegrity },
+        'au-accountability-gap': { card: 'gap-card', render: renderGap },
       };
       var panel = data && KIND_PANEL[data.kind];
       if (panel) {
@@ -2304,6 +2439,8 @@
   $('g-go').addEventListener('click', runGrounds);
   $('op-go').addEventListener('click', runOpaque);
   $('pl-go').addEventListener('click', runParliament);
+  $('ig-go').addEventListener('click', runIntegrity);
+  $('gp-go').addEventListener('click', runGap);
   $('pl-result').addEventListener('click', function (ev) {
     if (ev.target && ev.target.id === 'pl-index') indexParliamentTranscripts();
   });

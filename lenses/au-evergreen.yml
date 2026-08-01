@@ -1,0 +1,112 @@
+id: au-evergreen
+name: Contracts that never re-tender
+description: >-
+  Procurement that has quietly become permanent: contracts amended repeatedly in the change
+  window, with their END DATES moving outward — serial extension instead of re-tender. Distinct
+  from expiry tracking (au-short-dated finds honest endings); this finds the ones that never end.
+  An extension can be entirely proper — this lens counts and dates, and hands a human the list.
+params:
+  - name: from
+    type: DATE
+    label: Change window from
+    required: true
+    default: "2026-07-01"
+  - name: to
+    type: DATE
+    label: Change window to (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: minAmount
+    type: STRING
+    label: Contracts at or above (AUD)
+    required: false
+    default: "500000"
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const minAmount = Number(lensArgs.minAmount || 0) || 500000;
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    // The MODIFIED feed — where amendment releases surface. Completeness caveat: this feed
+    // filters on last-modified, so this is complete AS OF the scan for the chosen window.
+    const q = await gateway.kg.query({
+      cypher: `
+        MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)
+        WHERE toFloat(r.amount) >= $minAmount
+        RETURN r.cnId AS cnId, r.tags AS tags, r.releaseDate AS releaseDate,
+               r.supplierName AS supplierName, r.agencyName AS agencyName,
+               toFloat(r.amount) AS amount, r.startDate AS startDate, r.endDate AS endDate,
+               r.dateSigned AS dateSigned
+      `,
+      params: JSON.stringify({ window, minAmount }),
+    });
+    const rows = ((q && q.rows) ? q.rows : (q || []));
+    const warnings = (q && q.warnings) || [];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+
+    // Group by contract; keep only those whose releases INCLUDE an amendment.
+    const byCn = {};
+    for (const r of rows) {
+      const g = (byCn[r.cnId] = byCn[r.cnId] || { cnId: r.cnId, releases: [] });
+      g.releases.push(r);
+    }
+    const candidates = Object.values(byCn)
+      .filter(g => g.releases.some(r => (r.tags || []).includes("contractAmendment")))
+      .map(g => {
+        const rs = g.releases;
+        const last = rs[rs.length - 1];
+        const ends = rs.map(r => String(r.endDate || "").slice(0, 10)).filter(Boolean).sort();
+        const starts = rs.map(r => String(r.startDate || "").slice(0, 10)).filter(Boolean).sort();
+        const ageDays = starts.length
+          ? Math.round((Date.parse(to) - Date.parse(starts[0])) / 86400000) : null;
+        return {
+          cnId: g.cnId,
+          supplierName: last.supplierName, agencyName: last.agencyName,
+          amount: last.amount,
+          amendmentsInWindow: rs.filter(r => (r.tags || []).includes("contractAmendment")).length,
+          startDate: starts[0] || null,
+          earliestEndSeen: ends[0] || null,
+          latestEndSeen: ends[ends.length - 1] || null,
+          endMovedOutward: ends.length > 1 && ends[0] !== ends[ends.length - 1],
+          contractAgeDays: ageDays,
+          austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(g.cnId),
+        };
+      })
+      .sort((a, b) => (Number(b.endMovedOutward) - Number(a.endMovedOutward)) ||
+                      (b.amendmentsInWindow - a.amendmentsInWindow) || (b.amount - a.amount));
+
+    const extended = candidates.filter(c => c.endMovedOutward);
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-evergreen",
+      window: { from, to }, minAmount,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        amendedContracts: candidates.length,
+        endDateExtended: extended.length,
+        note: `${candidates.length} contract(s) ≥ $${(minAmount / 1000).toFixed(0)}k were amended in the window; ` +
+              `${extended.length} had their END DATE move outward within it — extension, not ending.`,
+      },
+      queries: [{
+        title: "Amendment releases in the change window (arithmetic)",
+        cypher: "MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)\nWHERE 'contractAmendment' IN r.tags RETURN r.cnId, r.endDate, r.releaseDate",
+      }],
+      contracts: candidates.slice(0, 20),
+      interpretation: {
+        factual: ["amendment counts, end-date movement, ages — all from the register's own rows"],
+        judged: [],
+        note: "An outward end-date move within one window is an extension EVENT; the full extension history of a contract needs its passport (au-contract-passport).",
+      },
+      limits: [
+        "One change window: a contract extended last month and untouched this month is invisible here.",
+        "Extensions can be entirely proper (options exercised, transitions bridged) — this is a list for a human, never a finding.",
+        "The modified feed filters on a MUTABLE attribute; completeness is as of this scan.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU), change feed",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

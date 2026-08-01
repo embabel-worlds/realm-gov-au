@@ -93,7 +93,7 @@ spec:
           cypher: `
             MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'estimates'}]->(m:ParliamentMention)
             WHERE m.content IS NOT NULL
-            RETURN summarize(m.content, 'what was discussed concerning ${crit} in these hearing excerpts, and BY WHOM — name the senators and officials speaking') AS discussion,
+            RETURN summarize(m.content, 'in what contexts does ${crit} come up in these hearing excerpts, and which senators or officials are speaking') AS discussion,
                    themes(m.content, 5) AS topics,
                    argmax(m.url, m.content, 'the exchange most substantive about ${crit}') AS startHere
           `,
@@ -217,4 +217,4 @@ spec:
     }) });
     }
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/hansard-room.html

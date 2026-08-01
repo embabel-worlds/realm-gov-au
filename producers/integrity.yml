@@ -1,0 +1,73 @@
+# The integrity registers — the adverse-conduct sources a federal debarment register would hold,
+# if one existed. It does not (CPR 6.9 replaces it with tenderer SELF-DECLARATION), which is why
+# these joins exist. All keyless `tabular` sources, ABN-keyed with `digits` matching because the
+# same ABN is published spaced, unspaced, numeric and float across this estate.
+#
+# Verified live 2026-08-01 (status, size, header) — see docs/INTEGRITY-SOURCES.md for the sources
+# assessed and NOT included yet (WGEA: zip/PDF; ABF: POST-only JSON; Payment Times: scraped
+# filename) and what unblocks each.
+
+# NDIS Commission compliance actions — banning orders, revocations, suspensions. 3,333 rows,
+# 83% with clean ABN, WITH effective-from/to dates: the only adverse register that supports a
+# TEMPORAL overlap check against a contract's own dates.
+# GOTCHA (research-verified): the Commission publishes SNAPSHOT datasets — this URL is the
+# 06.07.2026 snapshot and a newer slug will eventually supersede it. The lens carries the
+# snapshot date so staleness is visible, never silent.
+- name: ndisActionsByAbn
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/4ad8bb94-1982-43ff-a030-d6587b9aa460/resource/8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f/download/ndis-commission-compliance-actions-06.07.2026.csv"
+  keyColumn: "ABN"
+  keyMatch: digits
+  keyAs: abn
+  rowIdAs: recordKey
+  project:
+    register: "Type"
+    name: "Name"
+    dateFrom: "Date effective from"
+    dateTo: "Date no longer in force"
+    state: "State"
+    detail: "Other relevant info"
+  fileCacheSeconds: 86400
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# Modern Slavery Statements Register — the bulk export, re-stamped daily with today's date in the
+# filename ({today} resolves it). PRESENCE here is a lodgement (usually good); the lens's signal
+# is the NEGATIVE join — a threshold-scale supplier with no statement at all.
+# LIMIT: joint statements pack several ABNs into one cell; digits-matching cannot split a packed
+# cell, so a joint-statement member may read as unlodged. Stated in every consuming lens.
+- name: slaveryStatementsByAbn
+  kind: tabular
+  url: "https://modernslaveryregister.gov.au/resources/all-statement-information_{today}.csv"
+  keyColumn: "ABN"
+  keyMatch: digits
+  keyAs: abn
+  project:
+    periodStart: "PeriodStart"
+    periodEnd: "PeriodEnd"
+    kind: "Type"
+    entities: "ReportingEntities"
+    link: "Link"
+  fileCacheSeconds: 86400
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# ATO corporate tax transparency 2023-24 — 4,198 entities with total income ≥ $100M. CC-BY.
+# THE published caveat that every consumer must carry: legislation FORBIDS reporting an amount
+# of zero or less, so a BLANK taxable-income / tax-payable is "≤ 0", never "unknown". And the
+# report is entity-level, NOT consolidated groups — the contracting entity often differs from
+# the reporting entity.
+- name: taxRecordByAbn
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/c2524c87-cea4-4636-acac-599a82048a26/resource/491b366b-aa6f-4b1c-b39d-cebaeeb6f874/download/2023-24-corporate-report-of-entity-tax-information.xlsx"
+  format: xlsx
+  sheet: "Income tax details"
+  keyColumn: "ABN"
+  keyMatch: digits
+  keyAs: abn
+  project:
+    name: "Name"
+    totalIncome: "Total income $"
+    taxableIncome: "Taxable income $"
+    taxPayable: "Tax payable $"
+    incomeYear: "Income year"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }

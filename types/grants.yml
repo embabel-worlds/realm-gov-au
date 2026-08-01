@@ -1,0 +1,50 @@
+# GrantConnect awards as a LAZY window fetch — the whole recent window materializes on first
+# traversal (tabular producer, deployment-cached file), replacing the deleted reference snapshot
+# that went stale the moment it was written.
+
+- name: GrantWindow
+  visibility: internal
+  description: >-
+    The anchor for a recent-grants fetch. One key ('recent') stands for the producer's rolling
+    window (published in the last 90 days); the fetch date and window are shown by every
+    consuming surface, because a rolling window is a moving target.
+  properties:
+    key:
+      metadata: { identity: "true" }
+
+- name: GrantAward
+  visibility: internal
+  description: >-
+    One published grant award from GrantConnect's rolling recent window. Values are commitments
+    as published. The DELIVERY location fields are the only honest geographic basis — the
+    recipient's address is a head office, and this realm never maps money by head office.
+  properties:
+    gaId:
+      metadata: { identity: "true" }
+    agency: "The awarding agency, as published."
+    recipient: "Recipient name, as published."
+    recipientAbn: "Recipient ABN as published (spaced); digits-normalize before joining."
+    program: "Grant program."
+    activity: "Grant activity title."
+    goId: >-
+      Grant OPPORTUNITY id — shared by every award made under one opportunity, so it is NOT the
+      award's identity (using it as such silently MERGEd 10,473 awards down to 261).
+    purpose: "The published purpose text, verbatim."
+    category: "The published category."
+    selectionProcess: "The published selection process (open, targeted, closed, …)."
+    publishDate: "Publish date, as published."
+    startDate: "Grant start date."
+    endDate: "Grant end date."
+    value: "Value (AUD), as published."
+    recipientPostcode: "Recipient postcode — a HEAD OFFICE, never a basis for geographic claims."
+    recipientState: "Recipient state."
+    deliveryState: "Delivery state, as published."
+    deliveryPostcode: "Delivery postcode — the honest geographic basis, where stated."
+    windowKey: "The anchor key this window fetch answered."
+  virtualJoins:
+    - anchorLabel: GrantWindow
+      relationship: PUBLISHED_GRANT
+      keyField: key
+      recordKeyField: windowKey
+      producer: grantsPublishedRecently
+      description: "Every grant award published in the rolling recent window: `MATCH (w:GrantWindow {key:'recent'})-[:PUBLISHED_GRANT]->(g:GrantAward)`."

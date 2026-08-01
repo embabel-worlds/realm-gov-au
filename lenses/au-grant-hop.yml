@@ -1,0 +1,120 @@
+id: au-grant-hop
+name: Grants by electorate margin
+description: >-
+  Where discretionary money LANDS, politically: recent grant awards mapped by their DELIVERY
+  postcode (the only honest geographic basis — recipient addresses are head offices) onto the
+  seeded electorates with their 2025 margins. Grants per dollar into marginal government-held
+  seats vs safe seats. Election facts joined to published awards: it answers WHERE, and
+  establishes nothing about WHY — every surface says so.
+params:
+  - name: minValue
+    type: STRING
+    label: Grants at or above (AUD)
+    required: false
+    default: "100000"
+spec:
+  kind: cypherscript
+  script: |
+    const minValue = Number(lensArgs.minValue || 0) || 100000;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    // The rolling recent window (the producer's own 90 days), lazily fetched + deployment-cached.
+    const gq = await gateway.kg.query({
+      cypher: `
+        MATCH (w:GrantWindow {key:'recent'})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        RETURN g.agency AS agency, g.recipient AS recipient, g.activity AS activity,
+               g.value AS value, g.deliveryPostcode AS deliveryPostcode,
+               g.deliveryState AS deliveryState, g.selectionProcess AS selectionProcess,
+               g.publishDate AS publishDate, g.gaId AS gaId, g.goId AS goId
+      `,
+      params: JSON.stringify({}),
+    });
+    const all = ((gq && gq.rows) ? gq.rows : (gq || []));
+    const warnings = [...((gq && gq.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+
+    const eq = await gateway.kg.query({
+      cypher: `
+        MATCH (e:Electorate)
+        RETURN e.division AS division, e.state AS state, e.marginBand AS marginBand,
+               e.marginPct AS marginPct, e.heldByAbbrev AS heldByAbbrev, e.member AS member,
+               e.postcodes AS postcodes
+      `,
+      params: JSON.stringify({}),
+    });
+    const electorates = ((eq && eq.rows) ? eq.rows : (eq || []));
+    warnings.push(...((eq && eq.warnings) || []));
+
+    // postcode → divisions. Postcodes CROSS boundaries: a grant whose delivery postcode maps to
+    // several divisions cannot be honestly summed into any one of them — those are counted and
+    // reported separately, and MONEY totals use single-division grants only.
+    const pcMap = {};
+    for (const e of electorates) for (const pc of (e.postcodes || [])) (pcMap[pc] = pcMap[pc] || []).push(e);
+
+    const grants = all
+      .map(g => Object.assign({}, g, { valueNum: Number(String(g.value || "").replace(/[^0-9.]/g, "")) || 0 }))
+      .filter(g => g.valueNum >= minValue);
+    let noDelivery = 0, multiDivision = 0, unmatched = 0;
+    const byDivision = {};
+    const bands = {};
+    for (const g of grants) {
+      const pc = String(g.deliveryPostcode || "").trim();
+      if (!pc) { noDelivery++; continue; }
+      const divs = pcMap[pc] || [];
+      if (!divs.length) { unmatched++; continue; }
+      if (divs.length > 1) { multiDivision++; continue; }
+      const e = divs[0];
+      const d = (byDivision[e.division] = byDivision[e.division] || {
+        division: e.division, state: e.state, marginBand: e.marginBand, marginPct: e.marginPct,
+        heldByAbbrev: e.heldByAbbrev, member: e.member, grants: 0, value: 0,
+      });
+      d.grants++; d.value += g.valueNum;
+      const b = (bands[e.marginBand] = bands[e.marginBand] || { band: e.marginBand, grants: 0, value: 0, divisions: new Set() });
+      b.grants++; b.value += g.valueNum; b.divisions.add(e.division);
+    }
+    const bandRows = Object.values(bands).map(b => ({
+      band: b.band, grants: b.grants, value: Math.round(b.value),
+      divisions: b.divisions.size,
+      valuePerDivision: Math.round(b.value / b.divisions.size),
+    })).sort((a, b) => a.band.localeCompare(b.band));
+    const topDivisions = Object.values(byDivision)
+      .map(d => ({ ...d, value: Math.round(d.value) }))
+      .sort((a, b) => b.value - a.value).slice(0, 15);
+    const attributed = Object.values(byDivision).reduce((n, d) => n + d.grants, 0);
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grant-hop",
+      minValue,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        grantsConsidered: grants.length,
+        attributed,
+        noDeliveryPostcode: noDelivery,
+        crossBoundary: multiDivision,
+        unmatchedPostcode: unmatched,
+        note: `${attributed} of ${grants.length} grants ≥ $${(minValue / 1000).toFixed(0)}k in the rolling window map to exactly ONE division by delivery postcode. ` +
+              `${noDelivery} state no delivery postcode, ${multiDivision} cross a boundary, ${unmatched} match no division — all EXCLUDED from money totals, never guessed.`,
+      },
+      queries: [{
+        title: "Grant awards × seeded electorates",
+        note: "Delivery postcode only — recipient addresses are head offices and are never mapped.",
+        cypher: "MATCH (w:GrantWindow {key:'recent'})-[:PUBLISHED_GRANT]->(g:GrantAward)\nMATCH (e:Electorate) WHERE g.deliveryPostcode IN e.postcodes RETURN e.division, e.marginBand, count(g), sum(g.value)",
+      }],
+      byMarginBand: bandRows,
+      topDivisions,
+      interpretation: {
+        factual: ["award rows verbatim", "2025 election margins (seeded AEC facts)", "the postcode→division mapping and its exclusions"],
+        judged: [],
+        note: "Pure arithmetic. This answers WHERE money lands relative to margins; it establishes nothing about why any grant was made.",
+      },
+      limits: [
+        "Delivery postcode is as published; a program delivered nationally from one postcode concentrates falsely — read the top divisions with that in mind.",
+        "Cross-boundary postcodes and blank delivery fields are excluded from totals and counted openly; the mapping is 2025 boundaries.",
+        "The window is the producer's rolling 90 days as of the fetch; the publish dates carry the actual span.",
+      ],
+      source: "GrantConnect published awards (rolling window) · AEC 2025 results + postcodes (seeded reference)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

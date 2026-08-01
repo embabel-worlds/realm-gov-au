@@ -1,0 +1,139 @@
+id: au-tax-vs-contracts
+name: Contracts vs tax paid
+description: >-
+  The window's winners against the ATO corporate tax transparency report: which suppliers taking
+  large Commonwealth commitments reported nil-or-below-zero tax payable. Built-in caveats carried
+  verbatim, because this join is easy to over-read: a BLANK tax payable means ≤ $0 BY LEGISLATION
+  (never 'unknown'); the report is entity-level, not consolidated groups; and 2023-24 tax against
+  this window's contracts is a timing mismatch. A flow worth knowing about — never an allegation.
+params:
+  - name: from
+    type: DATE
+    label: Window from
+    required: true
+    default: "2026-07-21"
+  - name: to
+    type: DATE
+    label: Window to (exclusive)
+    required: true
+    default: "2026-07-28"
+  - name: minAmount
+    type: STRING
+    label: Contracts at or above (AUD)
+    required: false
+    default: "1000000"
+spec:
+  kind: cypherscript
+  script: |
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const minAmount = Number(lensArgs.minAmount || 0) || 1000000;
+    const window = `${from}/${to}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const digits = (s) => String(s || "").replace(/\.\d+\s*$/, "").replace(/\D/g, "");
+
+    const win = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE toFloat(r.amount) >= $minAmount
+        RETURN r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+               toFloat(r.amount) AS amount, r.cnId AS cnId, r.agencyName AS agencyName
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, minAmount }),
+    });
+    const rows = ((win && win.rows) ? win.rows : (win || []));
+    const warnings = [...((win && win.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+
+    const byAbn = {};
+    for (const r of rows) {
+      const a = digits(r.supplierAbn);
+      if (!a) continue;
+      (byAbn[a] = byAbn[a] || { abn: a, supplierName: r.supplierName, value: 0, contracts: 0 });
+      byAbn[a].value += (r.amount || 0); byAbn[a].contracts++;
+    }
+    const abns = Object.keys(byAbn).slice(0, 40);
+
+    // The ABN list is INLINED as literals: an enumerated IN mints one virtual anchor per value;
+    // a `$param` list has nothing to mint at parse time and materializes nothing.
+    let taxRows = [];
+    if (abns.length) {
+      const inList = abns.map(a => "'" + String(a).replace(/[^0-9]/g, "") + "'").join(", ");
+      try {
+        const tq = await gateway.kg.query({
+          cypher: `
+            MATCH (q:IntegrityQuery)-[:HAS_TAX_RECORD]->(x:TaxRecord)
+            WHERE q.abn IN [${inList}]
+            RETURN q.abn AS abn, x.name AS name, x.totalIncome AS totalIncome,
+                   x.taxableIncome AS taxableIncome, x.taxPayable AS taxPayable, x.incomeYear AS incomeYear
+          `,
+          params: JSON.stringify({}),
+        });
+        warnings.push(...((tq && tq.warnings) || []));
+        taxRows = ((tq && tq.rows) ? tq.rows : (tq || []));
+      } catch (e) {
+        warnings.push("tax lookup failed: " + String((e && e.message) || e));
+      }
+    }
+    const taxByAbn = {};
+    for (const t of taxRows) taxByAbn[t.abn] = t;
+
+    const joined = Object.values(byAbn).map(s => {
+      const t = taxByAbn[s.abn] || null;
+      const blankPayable = t ? !String(t.taxPayable || "").trim() : null;
+      return {
+        supplierName: s.supplierName, abn: s.abn,
+        contracts: s.contracts, contractValue: Math.round(s.value),
+        inReport: !!t,
+        reportedName: t ? t.name : null,
+        incomeYear: t ? t.incomeYear : null,
+        totalIncome: t && String(t.totalIncome || "").trim() ? Number(t.totalIncome) : null,
+        taxPayable: t && String(t.taxPayable || "").trim() ? Number(t.taxPayable) : null,
+        nilOrBelowZero: blankPayable,
+        note: !t ? "Not in the 2023-24 report — usually income under the $100M threshold; a group parent may report instead."
+          : (blankPayable ? "Tax payable BLANK = ≤ $0 by legislation (amounts of zero or less may not be reported)." : null),
+      };
+    }).sort((a, b) => {
+      const ka = a.nilOrBelowZero === true ? 0 : (a.inReport ? 1 : 2);
+      const kb = b.nilOrBelowZero === true ? 0 : (b.inReport ? 1 : 2);
+      return ka - kb || b.contractValue - a.contractValue;
+    });
+
+    const nil = joined.filter(x => x.nilOrBelowZero === true);
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-tax-vs-contracts",
+      window: { from, to }, minAmount,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        suppliers: joined.length,
+        inReport: joined.filter(x => x.inReport).length,
+        nilOrBelowZero: nil.length,
+        nilContractValue: Math.round(nil.reduce((n, x) => n + x.contractValue, 0)),
+        note: joined.length
+          ? `${nil.length} of ${joined.length} screened suppliers reported nil-or-below-zero tax payable in 2023-24 ` +
+            `while taking $${(nil.reduce((n, x) => n + x.contractValue, 0) / 1e6).toFixed(1)}M in this window's contracts.`
+          : "Nothing at or over the threshold in this window.",
+      },
+      queries: [{
+        title: "ABNs against the ATO transparency report",
+        cypher: "MATCH (q:IntegrityQuery)-[:HAS_TAX_RECORD]->(x:TaxRecord) WHERE q.abn IN $abns RETURN q.abn, x",
+      }],
+      suppliers: joined.slice(0, 30),
+      interpretation: {
+        factual: ["contract sums (arithmetic)", "report rows verbatim", "the legislated blank-means-≤0 reading"],
+        judged: [],
+        note: "No model touches this lens. The join is by ABN; every caveat is the report's own.",
+      },
+      limits: [
+        "Entity-level, never consolidated groups: the contracting entity often differs from the reporting entity, and a group parent's tax says nothing about a subsidiary's row.",
+        "Nil-or-below-zero tax payable is LAWFUL and common (losses, offsets, timing) — this lens reports a flow, never an allegation.",
+        "2023-24 tax year against a 2026 contract window is a timing mismatch, stated here once and always.",
+        "Suppliers without a published ABN cannot be screened and are absent from these counts.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) · ATO corporate tax transparency 2023-24 (CC-BY)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

@@ -67,3 +67,10 @@
         Senate Estimates transcripts matching the pinned phrase WITHIN A DATE RANGE — the anchor
         phrase is composite: 'phrase|fromIso|toIso'. The temporal join: was this party before
         Estimates during the contract period?
+    - anchorLabel: ParliamentQuery
+      relationship: MENTIONED_IN
+      via: any
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: parliamentAnyMentions
+      description: "ONE search across every record class (debates, committees, Estimates) — the batch-screening path; per-class vias give sharper provenance."
