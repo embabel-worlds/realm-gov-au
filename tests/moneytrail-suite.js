@@ -24,7 +24,7 @@ function check(name, cond, detail) {
   await page.waitForTimeout(800);
   check('Ask tab is the landing', await page.locator('#pane-ask').isVisible());
   check('Browse hidden until asked for', await page.locator('#pane-explore').isHidden());
-  check('seven question cards', (await page.locator('.qcard').count()) === 7);
+  check('eight question cards', (await page.locator('.qcard').count()) === 8);
   check('no fake chat log', (await page.locator('.chat-log').count()) === 0);
 
   console.log('\n== tabs ==');
@@ -105,6 +105,18 @@ function check(name, cond, detail) {
   check('fenced as disclosure, not wrongdoing', /never a finding of wrongdoing/i.test(opText));
   check('model layer honestly absent in demo', /needs a running world|unavailable in the standalone demo/i.test(opText));
 
+
+  console.log('\n== the parliamentary record ==');
+  await page.click('#tab-ask'); await page.waitForTimeout(300);
+  await page.fill('#chat-input', 'Was Snowy Hydro raised in Senate Estimates this year?');
+  await page.click('#chat-send'); await page.waitForTimeout(1200);
+  check('parliament panel appears inline', await page.locator('#parliament-card').isVisible());
+  check('the venue is not mistaken for the subject', (await page.locator('#pl-phrase').inputValue()) === 'Snowy Hydro');
+  const plText = await page.locator('#pl-result').innerText();
+  check('results grouped by record class', /Senate Estimates transcripts/i.test(plText) && /Chamber Hansard/i.test(plText));
+  check('real baked estimates hits render', /Economics Legislation Committee/.test(plText));
+  check('mentions fenced as never-evidence', /never evidence about a contract/i.test(plText));
+  check('QoN gap keeps the conclusion qualified', /cannot be concluded/i.test(plText));
 
   console.log('\n== progress banner (idle structure) ==');
   // The banner only SHOWS during live scans (demo mode never fetches), but its structure is

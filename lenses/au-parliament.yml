@@ -1,0 +1,111 @@
+id: au-parliament
+name: The parliamentary record
+description: >-
+  Search Hansard directly: chamber debates, committee evidence and Senate Estimates transcripts
+  matching a phrase, from ParlInfo's own records — grouped by record class, each hit linking to
+  the transcript with its date, plus a date-scoped Estimates check over the chosen window. A match
+  is a page where the phrase appears, never a finding about anyone; a silence is qualified per
+  record class, and Questions on Notice are not yet searchable, so "never raised in Parliament"
+  is a conclusion this lens refuses to support.
+params:
+  - name: phrase
+    type: STRING
+    label: Search phrase (a supplier, an agency, a program, a contract id)
+    required: true
+    default: "Snowy Hydro"
+  - name: from
+    type: DATE
+    label: Estimates window from (for the date-scoped check)
+    required: false
+    default: "2026-01-01"
+  - name: to
+    type: DATE
+    label: Estimates window to
+    required: false
+    default: "2026-08-01"
+spec:
+  kind: cypherscript
+  script: |
+    const phrase = String(lensArgs.phrase || "").trim();
+    const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
+    const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    if (!phrase) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-parliament", status: "EMPTY", note: "Give a phrase to search for.",
+      }) });
+    } else {
+
+    const warnings = [];
+    // One query per RECORD CLASS — the `via` names which part of the record was searched, so a
+    // result carries its provenance and a silence is qualified precisely.
+    const searchClass = async (via, record, key) => {
+      try {
+        const pq = await gateway.kg.query({
+          cypher: `
+            MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'${via}'}]->(m:ParliamentMention)
+            RETURN m.title AS title, m.url AS url, m.summary AS summary, m.publishedAt AS publishedAt
+            ORDER BY m.publishedAt DESC
+            LIMIT 8
+          `,
+          params: JSON.stringify({ phrase: key }),
+        });
+        warnings.push(...((pq && pq.warnings) || []));
+        const rows = ((pq && pq.rows) ? pq.rows : (pq || [])).map(x => ({
+          title: x.title, url: x.url, summary: x.summary || null,
+          date: String(x.publishedAt || "").slice(0, 10) || null,
+        }));
+        return { record, via, searched: key, results: rows };
+      } catch (e) {
+        warnings.push("class '" + record + "' failed: " + String((e && e.message) || e));
+        return { record, via, searched: key, results: [], failed: true };
+      }
+    };
+
+    const chamber = await searchClass("chamber", "Chamber Hansard (House + Senate debates)", phrase);
+    const committees = await searchClass("committees", "Committee evidence (Senate + joint)", phrase);
+    const estimates = await searchClass("estimates", "Senate Estimates transcripts", phrase);
+    // THE TEMPORAL CHECK: the same phrase against Estimates WITHIN the window — ParlInfo's own
+    // date filter, fed through the composite anchor. Only when both dates are given.
+    const period = (from && to)
+      ? await searchClass("estimates-period", "Estimates within the window", phrase + "|" + from + "|" + to)
+      : null;
+
+    const groups = [chamber, committees, estimates, ...(period ? [period] : [])];
+    const total = groups.reduce((n, g) => n + g.results.length, 0);
+    const failed = groups.some(g => g.failed) ||
+      warnings.some(w => { const t = asText(w);
+        return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("NAMESPACE"); });
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-parliament",
+      phrase, window: (from && to) ? { from, to } : null,
+      status: failed ? "PARTIAL" : "COMPLETE",
+      warnings,
+      totals: { mentions: total },
+      queries: [{
+        title: "Per record class, via ParlInfo's own search",
+        note: "The edge's via picks the dataset; the phrase is the anchor. Each class is a separate, named search.",
+        cypher: "MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'estimates'}]->(m:ParliamentMention)\n" +
+                "RETURN m.title, m.url, m.publishedAt ORDER BY m.publishedAt DESC",
+      }],
+      groups: groups.map(g => ({
+        record: g.record,
+        searched: g.searched,
+        results: g.results,
+        note: g.failed ? "This class could not be searched — its silence means NOTHING."
+          : (g.results.length ? null
+            : "Nothing matched this phrase in this record class — ParlInfo's own records, so a real absence WITHIN this class."),
+      })),
+      method: "The phrase searched per record class through ParlInfo's keyless feeds — chamber debates, " +
+              "committee evidence, Estimates transcripts, and Estimates date-filtered to the window.",
+      limits: [
+        "A match is a page where the phrase appears — it may concern anything about the entity, and it is never evidence about any contract.",
+        "Questions on Notice are not yet a searchable class, so 'never raised in Parliament' cannot be concluded from empty results here — only 'not found in these records'.",
+        "Each class returns at most 8 most-recent matches; a busy entity has more history than one page.",
+      ],
+      source: "ParlInfo search feeds (aph.gov.au, keyless)",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html
