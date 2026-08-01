@@ -1,38 +1,64 @@
-# Parliamentary mentions — Hansard debates, Questions on Notice, committee and Estimates pages.
-# Like press coverage (types/coverage.yml) this is NOT a register record, and it is fenced the
-# same way — but the SOURCE is the parliamentary record itself, which changes what a match and
-# a silence mean:
+# Parliamentary mentions — DIRECT ParlInfo search results (Hansard debates, committee evidence,
+# Senate Estimates transcripts). Like press coverage (types/coverage.yml) this is NOT a register
+# record and is fenced the same way — but the source is now ParlInfo itself, which changes what a
+# silence means:
 #
-#   - A match is a page of Hansard / a QoN / a committee record where the searched phrase
-#     appears. That is a real accountability artefact — but the phrase appearing does not make
-#     the page ABOUT the contract; a large supplier is discussed in Parliament for many reasons.
-#   - A silence is DOUBLY qualified: nothing was found by THIS web index, for THIS phrase — and
-#     the index does not hold everything ParlInfo does. "Never raised in Parliament" cannot be
-#     concluded from an empty result here, and no surface may render it that way.
+#   - A match is a page of the parliamentary record where the searched phrase appears. A real
+#     accountability artefact — but the phrase appearing does not make the page ABOUT any
+#     contract; a large supplier is discussed in Parliament for many reasons.
+#   - A silence is qualified per RECORD CLASS: nothing matched THIS phrase in THAT dataset
+#     (chamber Hansard / committees / Estimates). Questions on Notice are NOT yet a searchable
+#     dataset here (docs/PARLIAMENT.md), so "never raised in Parliament" still cannot be
+#     concluded — only "not found in these records".
 
 - name: ParliamentMention
   visibility: internal
   description: >-
-    A page of the parliamentary record (aph.gov.au — Hansard, Questions on Notice, committee and
-    Estimates material) matching a search phrase. NOT a government procurement record and NOT
-    evidence about any contract: a page where the searched terms appear, carrying its own link so
-    a reader can judge it. Questions on Notice sometimes cite contract notice ids verbatim, which
-    makes a CN-id phrase the sharpest search this type supports.
+    A page of the parliamentary record matching a search phrase, from ParlInfo's own search:
+    chamber Hansard, committee evidence, or a Senate Estimates transcript depending on the edge's
+    `via`. NOT a procurement record and NOT evidence about any contract: a page where the searched
+    terms appear, carrying its own link and date so a reader can judge it. Questions on Notice
+    sometimes cite contract notice ids verbatim, which makes a CN-id phrase the sharpest search
+    this type supports.
   properties:
     url:
       metadata: { identity: "true" }
-    title: "The page's title as the search index reports it."
-    snippet: "The index's snippet. Render as text; never summarise it into a claim about a contract."
-    age: "Human-readable freshness label from the index; absent on undated results."
+    title: "The record's title as ParlInfo reports it (committee, date, and subject line)."
+    summary: "ParlInfo's snippet where present. Render as text; never summarise it into a claim about a contract."
+    publishedAt: "The record's date, ISO-normalized where it parses; the feed's raw string where it does not."
     searchPhrase: "The phrase this result answered — stamped from the anchor, the honest scope of the match."
   virtualJoins:
+    # One anchor, one relationship, four record classes — the query's `via` picks the dataset:
+    #   MATCH (q:ParliamentQuery {phrase:'…'})-[:MENTIONED_IN {via:'estimates'}]->(m:ParliamentMention)
+    # Lenses ALWAYS pin via, so which part of the record was searched is visible in the query.
     - anchorLabel: ParliamentQuery
       relationship: MENTIONED_IN
+      via: chamber
       keyField: phrase
       recordKeyField: searchPhrase
-      producer: parliamentMentions
+      producer: hansardChamberMentions
+      description: "House and Senate Hansard debates matching the pinned phrase (ParlInfo, keyless)."
+    - anchorLabel: ParliamentQuery
+      relationship: MENTIONED_IN
+      via: committees
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: committeeMentions
+      description: "Senate and joint committee evidence matching the pinned phrase (ParlInfo, keyless)."
+    - anchorLabel: ParliamentQuery
+      relationship: MENTIONED_IN
+      via: estimates
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: estimatesMentions
+      description: "Senate Estimates transcripts matching the pinned phrase (ParlInfo, keyless) — the accountability venue for procurement."
+    - anchorLabel: ParliamentQuery
+      relationship: MENTIONED_IN
+      via: estimates-period
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: estimatesMentionsInPeriod
       description: >-
-        Parliamentary-record pages matching a pinned phrase:
-        `MATCH (q:ParliamentQuery {phrase:'CN3942784'})-[:MENTIONED_IN]->(m:ParliamentMention)`.
-        Requires BRAVE_API_KEY in the world; without it the traversal yields nothing, which every
-        lens reports as UNAVAILABLE rather than as "no mentions".
+        Senate Estimates transcripts matching the pinned phrase WITHIN A DATE RANGE — the anchor
+        phrase is composite: 'phrase|fromIso|toIso'. The temporal join: was this party before
+        Estimates during the contract period?

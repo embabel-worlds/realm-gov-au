@@ -1,49 +1,56 @@
-# The parliamentary record: what this realm does, and the verified upgrade path
+# The parliamentary record: direct ParlInfo search
 
-## What ships today
+## What ships (upgraded 2026-08-01 — the `feed` producer closed the XML gap)
 
-`ParliamentMention` (types/parliament.yml) joins contracts and suppliers to pages of the
-parliamentary record — Hansard, Questions on Notice, committee and Estimates material — through a
-web index **scoped to `site:aph.gov.au`** (producers/parliament.yml, riding the existing Brave
-key). Two lenses consume it:
+`ParliamentMention` (types/parliament.yml) joins contracts and suppliers to the parliamentary
+record through **ParlInfo's own keyless RSS search** (producers/parliament.yml), one producer per
+record class, selected by the edge's `via`:
 
-- **`au-contract-deepdive`** Tier 4: two searches, sharpest first — the CN id itself (QoNs cite
-  contract notice ids verbatim, so a hit is close to a direct reference), then supplier+agency
-  (broad by construction).
-- **`au-supplier-profile`**: the supplier's name across the parliamentary record, only when the
-  window actually found contracts.
+| via | dataset | what it holds |
+|---|---|---|
+| `chamber` | `hansardr,hansards` | House + Senate debates |
+| `committees` | `commsen,commjnt` | Senate + joint committee evidence |
+| `estimates` | `estimate` | **Senate Estimates transcripts — the accountability venue** |
+| `estimates-period` | `estimate` + `Date:` | Estimates WITHIN a date range (composite key `phrase|fromIso|toIso`) |
 
-The fencing is the press-coverage discipline plus one addition: a silence here is **doubly**
-qualified — nothing found by THIS index for THIS phrase — because the web index holds less than
-ParlInfo's own search. No surface may render an empty result as "never raised in Parliament".
+Consumers:
 
-## The direct ParlInfo route (verified live 2026-08-01) — the upgrade
+- **`au-contract-deepdive`** Tier 4: the CN id across all three classes (QoNs cite notice ids
+  verbatim; they surface through committee documents), then supplier+agency against Estimates.
+- **`au-supplier-profile`**: the supplier's name against Estimates **date-filtered to the
+  profile's own window** — "was this supplier before Estimates during the period" as a checkable
+  claim.
 
-ParlInfo has a genuinely consumable **keyless search feed**:
+Fencing: a match is a page where the phrase appears, never evidence about a contract. A silence
+is qualified per record class — and because Questions on Notice are NOT yet searchable (below),
+no surface may render an empty result as "never raised in Parliament"; only "not found in these
+records".
 
-```
-https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:hansardr,hansards Content:"<phrase>"
-```
+## Verified source behaviour (live probes 2026-08-01)
 
-- Returns `application/rss+xml`, one `<item>` per match with `title`, `link` (a permalink into the
-  fragment, e.g. `Id:"chamber/hansards/29227/0253"`), and `pubDate`.
-- Verified with a live supplier phrase: **15 items**, House + Senate Hansard.
-- `Dataset:` accepts a comma list; `qon` is also a valid dataset (verified: a three-dataset query
-  returned results).
-- **Gotcha 1 — zero results are a 301, not an empty feed.** A query with no matches redirects to
-  `search/unexpectedError.w3p` (verified with a nonsense term). A client MUST treat that redirect
-  as an honest empty; treating it as a failure makes every no-mention contract look broken, and
-  following it blindly yields an HTML error page.
-- **Gotcha 2 — the gateway cannot parse it yet.** The learned-API client is JSON-only (no XML/RSS
-  mapper) — an ENGINE gap, noted upstream. When it closes, swap `parliamentMentions`' source for
-  the direct feed: recall improves (ParlInfo indexes everything; the web index does not), and the
-  type, joins and lenses stay untouched.
-- OpenAustralia's JSON API was also probed: functional but **registration-gated** (`"No API key
-  provided"`), so not usable keyless.
+- Keyless RSS: `https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:<list> Content:"<phrase>"`
+  — title / link / pubDate per item. 15 items for a live supplier phrase against `estimate`.
+- **Date filter works**: `Date:dd/MM/yyyy >> dd/MM/yyyy` (13 of 15 items in a 7-month range).
+  Percent-encoded slashes accepted.
+- **Zero results are a 301** to `search/unexpectedError.w3p`, not an empty feed — the producer's
+  `redirectMeansEmpty: true` maps it to an honest empty.
+- The engine-encoded URL forms (spaces/quotes/`>>` percent-encoded) verified against the live
+  service: 200 with items, and the zero-result 301, both reproduce exactly.
+- `pubDate` carries numeric offsets (`+1000`); the engine normalizes to ISO instants.
+
+## Open items
+
+- **Questions on Notice as a standalone dataset**: `qon`, `qanda`, `qonsw` all error as sole
+  datasets (probed). QoN citations still surface via committee documents; finding the right
+  dataset name (or confirming QoNs are not in the RSS surface) is the remaining recall gap.
+- **Semantic search over Estimates** — the corpus proposal (`me` repo,
+  specs/CORPUS_INDEXING_PROPOSAL.md): realm-declared vector indexing of transcript pages, for
+  which these feed producers are the fetch layer. Estimates is paraphrase; keyword search
+  structurally misses "advisory services" ≈ "remuneration of external consultants".
 
 ## Why not Acts of Parliament
 
 The Federal Register of Legislation has an API, but contract→Act is a fuzzy name join with no
 sharp question behind it. The real "what authorises this spend" chain is contract → program →
-appropriation, which is the Portfolio Budget Statements join (see docs/TABULAR-SOURCES.md — PBS
-is a `tabular` source).
+appropriation: the Portfolio Budget Statements join (docs/TABULAR-SOURCES.md — PBS is a
+`tabular` source).

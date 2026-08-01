@@ -109,29 +109,34 @@ spec:
     let parliament = null;
     if (rows.length) {
       try {
+        // THE TEMPORAL JOIN: Estimates transcripts matching this supplier WITHIN the profile's own
+        // window — ParlInfo's Date filter, fed through the composite anchor phrase|from|to. "Was
+        // this supplier before Estimates during the period" is a checkable claim, not a vibe.
+        const compositeKey = supplier + "|" + from + "|" + to;
         const pq = await gateway.kg.query({
           cypher: `
-            MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN]->(m:ParliamentMention)
-            RETURN m.title AS title, m.url AS url, m.snippet AS snippet, m.age AS age
+            MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'estimates-period'}]->(m:ParliamentMention)
+            RETURN m.title AS title, m.url AS url, m.summary AS snippet, m.publishedAt AS publishedAt
             LIMIT 8
           `,
-          params: JSON.stringify({ phrase: supplier }),
+          params: JSON.stringify({ phrase: compositeKey }),
         });
         const pRows = ((pq && pq.rows) ? pq.rows : (pq || []));
         const pw = (pq && pq.warnings) || [];
         const unavailable = pw.some(w => { const t = asText(w);
-          return t.includes("BRAVE") || t.includes("NAMESPACE") || t.includes("NOT A WORLD TOOL") ||
-                 t.includes("AUTH") || t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+          return t.includes("NAMESPACE") || t.includes("NOT A WORLD TOOL") ||
+                 t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
         parliament = unavailable
           ? { status: "UNAVAILABLE", results: [],
-              note: "The parliamentary search could not run — whether this supplier was raised is UNKNOWN, not 'no'." }
+              note: "The ParlInfo search could not run — whether this supplier was raised is UNKNOWN, not 'no'." }
           : { status: "COMPLETE",
-              results: pRows.map(x => ({ title: x.title, url: x.url, snippet: x.snippet, age: x.age || null })),
-              basis: "The supplier's name searched across aph.gov.au (Hansard, Questions on Notice, committees). A match may concern anything about this supplier.",
+              results: pRows.map(x => ({ title: x.title, url: x.url, snippet: x.snippet,
+                age: String(x.publishedAt || "").slice(0, 10) || null })),
+              basis: "The supplier's name searched against Senate Estimates transcripts WITHIN this profile's window (ParlInfo's own records, date-filtered). A match may concern anything about this supplier.",
               note: pRows.length ? null
-                : "No indexed parliamentary page matched this name. This index holds less than ParlInfo's own search — 'never raised in Parliament' cannot be concluded from this." };
+                : "No Estimates transcript in this window matched the name — ParlInfo's own records for that class and period. Chamber debates, committee evidence and Questions on Notice are not covered by this check, so 'never raised in Parliament' cannot be concluded." };
       } catch (e) {
-        parliament = { status: "UNAVAILABLE", results: [], note: "The parliamentary search failed — whether this supplier was raised is UNKNOWN." };
+        parliament = { status: "UNAVAILABLE", results: [], note: "The ParlInfo search failed — whether this supplier was raised is UNKNOWN." };
       }
     }
 
@@ -168,9 +173,9 @@ spec:
         "Name matching, not identity: a supplier trading under several names, or sharing a name with another entity, is the register's ambiguity and shows in the entities list.",
         "This is ONE WINDOW, never a supplier's whole history — the register cannot be searched by supplier, only by id and date.",
         "A lobbying relationship is a disclosure, never a finding about a contract.",
-        "Parliamentary mentions come from a web index scoped to aph.gov.au; a match may concern anything about the supplier, and an empty result never supports 'not raised in Parliament'.",
+        "Parliamentary mentions come from ParlInfo's Estimates transcripts, date-filtered to this window; a match may concern anything about the supplier, and an empty result never supports 'not raised in Parliament'.",
       ],
-      source: "AusTender OCDS API (CC BY 3.0 AU) + Register of Lobbyists + aph.gov.au-scoped search (Brave, keyed)",
+      source: "AusTender OCDS API (CC BY 3.0 AU) + Register of Lobbyists + ParlInfo search feeds (keyless)",
     }) });
 presentation:
   href: /apps/moneytrail.html
