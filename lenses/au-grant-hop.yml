@@ -117,4 +117,4 @@ spec:
       source: "GrantConnect published awards (rolling window) · AEC 2025 results + postcodes (seeded reference)",
     }) });
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/grants-atlas.html

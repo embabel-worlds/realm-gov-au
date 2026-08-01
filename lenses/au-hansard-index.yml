@@ -1,0 +1,123 @@
+id: au-hansard-index
+name: Index matching parliamentary records
+description: >-
+  Opt in to fetching and indexing a small, balanced set of ParlInfo records matching a phrase:
+  up to two Chamber Hansard, two committee and two Senate Estimates records. The records are
+  written to the user's document knowledge base under stable parlinfo:// identities so they can
+  subsequently be searched semantically, including with the au-hansard-rag agentic lens.
+params:
+  - name: phrase
+    type: STRING
+    label: Phrase whose matching records should be indexed
+    required: true
+spec:
+  kind: cypherscript
+  script: |
+    const phrase = String(lensArgs.phrase || "").trim();
+    if (!phrase) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-hansard-index", status: "EMPTY", phrase,
+        note: "Give a phrase before indexing parliamentary records.",
+      }) });
+    } else {
+      const warnings = [], candidates = [];
+      const classes = [
+        { via: "chamber", record: "Chamber Hansard" },
+        { via: "committees", record: "Committee evidence" },
+        { via: "estimates", record: "Senate Estimates" },
+      ];
+
+      for (const cls of classes) {
+        try {
+          const out = await gateway.kg.query({
+            cypher: `
+              MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:'${cls.via}'}]->(m:ParliamentMention)
+              RETURN m.title AS title, m.url AS url, m.publishedAt AS publishedAt
+              ORDER BY m.publishedAt DESC
+              LIMIT 2
+            `,
+            params: JSON.stringify({ phrase }),
+          });
+          warnings.push(...((out && out.warnings) || []));
+          const rows = (out && out.rows) ? out.rows : (out || []);
+          for (const row of rows) {
+            if (row && row.url) candidates.push({
+              title: row.title || null,
+              url: row.url,
+              date: String(row.publishedAt || "").slice(0, 10) || null,
+              record: cls.record,
+            });
+          }
+        } catch (e) {
+          warnings.push(cls.record + " search failed: " + String((e && e.message) || e));
+        }
+      }
+
+      const seen = new Set(), targets = candidates.filter(c => {
+        if (seen.has(c.url)) return false;
+        seen.add(c.url);
+        return true;
+      }).slice(0, 6);
+      const documents = [], problems = [];
+      for (const target of targets) {
+        try {
+          let text = "", start = 0;
+          for (let page = 0; page < 3; page++) {
+            const out = await gateway.fetch.fetch({
+              url: target.url, max_length: 100000, start_index: start,
+            });
+            const chunk = typeof out === "string" ? out : String((out && out.content) || out || "");
+            const marker = chunk.match(/\[truncated: \d+ more characters[\s\S]*?start_index=(\d+)/);
+            text += marker ? chunk.slice(0, chunk.lastIndexOf("[truncated:")) : chunk;
+            if (!marker) break;
+            start = Number(marker[1]);
+          }
+          const cut = text.indexOf("## Links on this page");
+          if (cut > 0) text = text.slice(0, cut);
+          if (!text.trim()) throw new Error("the fetched record contained no readable transcript text");
+
+          const idm = String(target.url).match(/Id%3A%22(.+?)%22/i);
+          const fragment = idm ? decodeURIComponent(idm[1]) : String(target.url).replace(/^https?:\/\//, "");
+          const uri = "parlinfo://" + fragment;
+          await gateway.ingest.document({
+            content: text.slice(0, 250000),
+            uri,
+            title: target.title || ("ParlInfo " + fragment),
+            sourceKind: "parlinfo",
+            sourceModifiedAt: target.date ? target.date + "T00:00:00Z" : undefined,
+            publishedByDomain: "aph.gov.au",
+          });
+          documents.push({
+            uri, title: target.title, date: target.date, record: target.record,
+            sourceUrl: target.url,
+          });
+        } catch (e) {
+          problems.push({
+            title: target.title, record: target.record,
+            problem: String((e && e.message) || e),
+          });
+        }
+      }
+
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-hansard-index",
+        phrase,
+        status: problems.length || warnings.length ? "PARTIAL" : "COMPLETE",
+        indexed: { count: documents.length, documents },
+        considered: targets.length,
+        problems,
+        warnings,
+        note: documents.length
+          ? "The indexed records are now available to semantic and agentic document retrieval. Re-indexing the same parlinfo:// record replaces it."
+          : "No matching parliamentary record was indexed.",
+        method: "Up to the two newest matches in each of Chamber Hansard, committee evidence and Senate Estimates were fetched from ParlInfo, then ingested under stable record identities.",
+        limits: [
+          "Indexing is opt-in and writes these public transcripts to your personal document knowledge base.",
+          "This is a bounded working set, not a mirror of all Australian parliamentary proceedings: at most two matches per record class and six records overall.",
+          "A phrase match only selects candidate records. It is not a finding about the topic or any person.",
+        ],
+        source: "ParlInfo search and record pages (aph.gov.au, keyless)",
+      }) });
+    }
+presentation:
+  href: /apps/hansard-room.html

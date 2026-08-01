@@ -96,4 +96,4 @@ spec:
       source: "AusTender OCDS API (CC BY 3.0 AU), day-partitioned complete months",
     }) });
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/pattern-room.html

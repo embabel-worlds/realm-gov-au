@@ -1,0 +1,143 @@
+id: au-hansard-rag
+name: Ask indexed parliamentary records
+description: >-
+  Answer an open-ended question from parliamentary records that the user previously indexed from
+  ParlInfo. A bounded agentic-RAG loop reformulates and judges retrieval against the question, then
+  a second grounded pass writes an answer using only the returned verbatim evidence. Every answer
+  retains numbered evidence and the source record identity. This lens cannot search records that
+  have not been indexed.
+params:
+  - name: question
+    type: STRING
+    label: Question about indexed parliamentary records
+    required: true
+spec:
+  kind: cypherscript
+  script: |
+    const question = String(lensArgs.question || "").trim();
+    if (!question) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-hansard-rag", status: "EMPTY", question,
+        note: "Ask a question about parliamentary records you have indexed.",
+      }) });
+    } else {
+      const warnings = [];
+      let rows = [];
+      try {
+        const out = await gateway.kg.query({
+          cypher: `
+            MATCH (c:Concept {value:$question})-[r:RELEVANT_TO {via:'agentic-rag', intent:'Find Australian parliamentary transcripts previously indexed from ParlInfo that contain direct evidence capable of answering the user question. Reject unrelated personal documents and weak topical similarity.'}]->(d:Document)
+            WHERE d.uri STARTS WITH 'parlinfo://'
+            RETURN d.title AS title, d.uri AS uri, r.snippet AS snippet,
+                   r.score AS score, r.mode AS mode, r.rank AS rank
+            ORDER BY r.score DESC
+            LIMIT 8
+          `,
+          params: JSON.stringify({ question }),
+        });
+        warnings.push(...((out && out.warnings) || []));
+        rows = ((out && out.rows) ? out.rows : (out || [])).filter(r => r && r.uri);
+      } catch (e) {
+        warnings.push("agentic retrieval failed: " + String((e && e.message) || e));
+      }
+
+      // A zero-row agentic verdict is allowed: the judge may decide its first candidates are too
+      // weak. Fail open to ONE bounded semantic pass so an obviously relevant indexed transcript
+      // is still available to the grounded answer step. This mirrors the platform's agentic-RAG
+      // doctrine (precision may degrade; recall must not silently collapse), while retaining the
+      // observed retrieval mode on every excerpt.
+      if (!rows.length) {
+        try {
+          const raw = await gateway.referenceDocs.vectorSearch({
+            query: question, topK: 10, threshold: 0.2,
+          });
+          const rendered = typeof raw === "string" ? raw : JSON.stringify(raw || "");
+          const decode = (s) => String(s || "")
+            .replace(/&#10;/g, "\n").replace(/&#8212;/g, "—")
+            .replace(/&quot;/g, '"').replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+          const seen = new Set();
+          rows = rendered.split(/\n---\n/).map((block, i) => {
+            const uri = (block.match(/# URI:\s*(\S+)/) || [])[1];
+            if (!uri || !uri.startsWith("parlinfo://") || seen.has(uri)) return null;
+            seen.add(uri);
+            const title = (block.match(/# Title:\s*([^\n]+)/) || [])[1];
+            const score = Number((block.match(/^chunkId:\s*\S+\s+([0-9.]+)/m) || [])[1]);
+            const section = block.indexOf("# Section:");
+            const body = section < 0 ? block : block.slice(block.indexOf("\n", section) + 1);
+            return {
+              title: title ? title.replace(/^ParlInfo\s*-\s*/, "") : "Indexed parliamentary record",
+              uri,
+              snippet: decode(body).replace(/\n{3,}/g, "\n\n").trim().slice(0, 1400),
+              score: Number.isFinite(score) ? score : null,
+              mode: "vector-fallback",
+              rank: i + 1,
+            };
+          }).filter(r => r && r.snippet).slice(0, 8);
+        } catch (e) {
+          warnings.push("semantic retrieval fallback failed: " + String((e && e.message) || e));
+        }
+      }
+
+      const evidence = rows.map((r, i) => ({
+        number: i + 1,
+        title: r.title || "Untitled parliamentary record",
+        uri: r.uri,
+        snippet: r.snippet || null,
+        score: r.score == null ? null : Number(r.score),
+        mode: r.mode || null,
+        rank: r.rank == null ? i + 1 : r.rank,
+      }));
+      let answer = null;
+      if (evidence.length) {
+        try {
+          const completion = await gateway.ai.complete({
+            prompt: `Answer the user's question using ONLY the numbered parliamentary evidence below.
+            Do not use outside knowledge. Treat snippets as excerpts, never as complete hearings.
+            If the excerpts do not answer the question, say exactly what remains unsupported.
+            Use compact prose and cite supporting evidence inline as [1], [2], etc.
+            Return STRICT JSON only with this shape:
+            {"answer":"2-5 short paragraphs with inline [n] citations","confidence":"high|medium|low|insufficient","caveat":"one short scope caveat","citations":[1]}
+            Only list citation numbers actually used and never invent a number.
+            Question: ${JSON.stringify(question)}
+            Evidence: ${JSON.stringify(evidence.map(e => ({ number:e.number, title:e.title, excerpt:e.snippet })))}`,
+            role: "best",
+          });
+          if (completion && typeof completion === "object") answer = completion;
+          else {
+            const raw = String(completion || "").replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+            answer = JSON.parse(raw);
+          }
+        } catch (e) {
+          warnings.push("grounded answer generation failed: " + String((e && e.message) || e));
+        }
+      }
+
+      const modes = [...new Set(evidence.map(e => e.mode).filter(Boolean))];
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-hansard-rag",
+        question,
+        status: warnings.length ? "PARTIAL" : "COMPLETE",
+        answer,
+        evidence,
+        retrieval: {
+          mode: "agentic-rag",
+          observedModes: modes,
+          note: evidence.length
+            ? (modes.includes("vector-fallback")
+                ? "The agentic pass returned no qualifying document, so retrieval failed open to one bounded semantic pass. The answer was still written only from the displayed excerpts."
+                : "A bounded retrieval agent reformulated and judged candidates against the question. The answer was then written only from the displayed excerpts.")
+            : "No indexed ParlInfo transcript supplied direct evidence for this question.",
+        },
+        warnings,
+        limits: [
+          "Only ParlInfo records already indexed in your document knowledge base were eligible. This is not a search of all Hansard.",
+          "The evidence shown is excerpted from retrieved transcripts, not the complete proceeding. Open the record before relying on context or attribution.",
+          "Agentic retrieval is model-judged and may fail open to vector retrieval; observed retrieval modes are reported above.",
+          "An empty result means no supporting passage was retrieved from the indexed working set, never that Parliament did not discuss the topic.",
+        ],
+        source: "User-indexed ParlInfo transcripts in the document knowledge base",
+      }) });
+    }
+presentation:
+  href: /apps/hansard-room.html

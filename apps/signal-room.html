@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes","au-supplier-profile","au-agency-profile"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes","au-supplier-profile","au-agency-profile","au-contract-deepdive","au-opaque-spend"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   :root {
@@ -65,6 +65,21 @@
   .status.error .status-dot { background:var(--sr-danger); }
   .pill { border:1px solid var(--sr-line); background:var(--sr-soft); padding:4px 8px; border-radius:999px; font-size:.69rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
 
+  .hansard-door { margin-top:22px; padding:20px 22px; display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,.85fr); gap:24px; align-items:center; border-radius:var(--sr-radius); background:var(--sr-night-2); color:#f5fbf8; box-shadow:var(--sr-shadow); }
+  .hansard-door .section-kicker { color:var(--sr-mint); }
+  .hansard-door h2 { margin:5px 0 6px; font-size:clamp(1.45rem,2.7vw,2rem); }
+  .hansard-door p { margin:0; max-width:620px; color:#c4d9d4; font-size:.82rem; line-height:1.5; }
+  .hansard-form { display:grid; gap:7px; }
+  .hansard-form label { color:var(--sr-mint); font-size:.67rem; font-weight:850; letter-spacing:.09em; text-transform:uppercase; }
+  .hansard-row { display:flex; gap:8px; }
+  .hansard-row input { min-width:0; flex:1; min-height:43px; border:1px solid rgba(255,255,255,.24); border-radius:10px; padding:10px 12px; background:rgba(255,255,255,.09); color:white; }
+  .hansard-row input::placeholder { color:#a9c1bc; }
+  .hansard-row input:focus { outline:3px solid rgba(168,230,207,.25); border-color:var(--sr-mint); }
+  .hansard-row button { flex:0 0 auto; }
+  .hansard-help { color:#acc6c0; font-size:.69rem; line-height:1.4; }
+  .hansard-help a { color:var(--sr-mint); font-weight:850; text-decoration:none; }
+  .hansard-help a:hover { text-decoration:underline; }
+
   .intro { padding:54px 0 13px; display:flex; align-items:end; justify-content:space-between; gap:22px; }
   .section-kicker { color:#397b75; font-size:.73rem; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
   h2 { font-size:clamp(1.65rem,3.5vw,2.75rem); letter-spacing:-.045em; line-height:1.05; margin:7px 0 0; }
@@ -89,6 +104,7 @@
   .placeholder { grid-column:1/-1; border:1px dashed var(--sr-line); border-radius:var(--sr-radius); padding:50px 24px; color:var(--sr-muted); text-align:center; }
 
   .evidence-grid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(270px,.65fr); gap:18px; margin-top:18px; }
+  .evidence-grid[hidden], .profile-panel[hidden] { display:none; }
   .panel { background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:21px; box-shadow:var(--sr-shadow); }
   .panel-head { display:flex; justify-content:space-between; align-items:start; gap:16px; margin-bottom:10px; }
   .panel h3 { margin:0; font-size:1.06rem; }
@@ -103,6 +119,7 @@
   .source-link:hover { text-decoration:underline; }
   .inline-action { appearance:none; border:0; padding:0; color:#28766e; background:none; font:inherit; font-weight:760; cursor:pointer; text-align:left; }
   .inline-action:hover { text-decoration:underline; }
+  .context-action { display:inline-flex; margin-top:6px; padding:4px 8px; border:1px solid color-mix(in srgb,#28766e 35%,var(--sr-line)); border-radius:999px; font-size:.68rem; text-decoration:none; }
   .profile-panel { margin-top:18px; }
   .profile-close { appearance:none; border:1px solid var(--sr-line); background:transparent; border-radius:999px; color:var(--sr-muted); padding:6px 10px; font-size:.72rem; font-weight:800; cursor:pointer; }
   .readout { display:grid; gap:12px; }
@@ -148,27 +165,29 @@
   .ground-code { display:inline-grid; place-items:center; min-width:32px; height:26px; border-radius:7px; background:var(--sr-gold); color:#302716; font-size:.72rem; font-weight:900; margin-right:7px; }
   .ground-text { font-size:.82rem; line-height:1.45; }
   .ground-meta { color:var(--sr-muted); font-size:.72rem; margin-top:6px; }
+  .fact-tag { display:inline-flex; margin:3px 5px 0 0; padding:3px 7px; border-radius:999px; background:color-mix(in srgb,var(--sr-coral) 14%,transparent); color:var(--sr-muted); font-size:.66rem; font-weight:800; }
+  .record-link { display:block; color:#28766e; text-decoration:none; font-weight:800; font-size:.82rem; line-height:1.35; }
+  .record-link:hover { text-decoration:underline; }
   .judgment { border-left:3px solid var(--sr-sky); background:color-mix(in srgb,var(--sr-sky) 12%,transparent); padding:10px 12px; margin-top:8px; color:var(--sr-muted); font-size:.76rem; line-height:1.45; }
   details.notes { margin-top:18px; border-top:1px solid var(--sr-line); padding-top:12px; color:var(--sr-muted); font-size:.76rem; line-height:1.5; }
   details.notes summary { cursor:pointer; color:var(--sr-ink); font-weight:800; }
   details.notes ul { margin-bottom:0; padding-left:18px; }
   .error-box { color:var(--sr-danger); border:1px solid color-mix(in srgb,var(--sr-danger) 35%,var(--sr-line)); background:color-mix(in srgb,var(--sr-danger) 7%,var(--sr-card)); border-radius:12px; padding:14px; font-size:.83rem; }
-  .operation { grid-column:1/-1; min-height:220px; display:grid; align-content:center; background:var(--sr-card); border:1px solid var(--sr-line); border-radius:var(--sr-radius); padding:28px; box-shadow:var(--sr-shadow); text-align:left; }
-  .op-head { display:flex; gap:12px; align-items:center; }
-  .op-spinner { width:18px; height:18px; flex:0 0 auto; border:2px solid var(--sr-line); border-top-color:var(--sr-coral); border-radius:50%; animation:spin .8s linear infinite; }
-  .op-title { font-weight:900; font-size:1.05rem; }
-  .op-detail { color:var(--sr-muted); font-size:.8rem; line-height:1.45; margin:9px 0 0 30px; min-height:1.2em; }
-  .op-track { height:6px; background:var(--sr-soft); border-radius:999px; overflow:hidden; margin:17px 0 0 30px; }
-  .op-fill { width:34%; height:100%; background:linear-gradient(90deg,var(--sr-coral),var(--sr-gold)); border-radius:999px; animation:sweep 1.45s ease-in-out infinite alternate; }
-  .op-fill.determinate { animation:none; transition:width .25s ease; }
-  .op-meta { display:flex; justify-content:space-between; gap:14px; color:var(--sr-muted); font-size:.7rem; margin:8px 0 0 30px; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  @keyframes sweep { from { transform:translateX(-75%); } to { transform:translateX(195%); } }
   .foot { margin-top:60px; padding-top:18px; border-top:1px solid var(--sr-line); display:flex; justify-content:space-between; gap:20px; color:var(--sr-muted); font-size:.73rem; line-height:1.5; }
+  .rooms { margin-top:58px; }
+  .room-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+  .room-link { min-height:150px; display:flex; flex-direction:column; padding:18px; border:1px solid var(--sr-line); border-radius:var(--sr-radius); background:var(--sr-card); box-shadow:var(--sr-shadow); text-decoration:none; }
+  .room-link:hover { border-color:#5d9d91; transform:translateY(-2px); }
+  .room-number { color:#397b75; font-size:.66rem; font-weight:900; letter-spacing:.1em; text-transform:uppercase; }
+  .room-link h3 { margin:14px 0 6px; font-size:1.05rem; }
+  .room-link p { margin:0; color:var(--sr-muted); font-size:.76rem; line-height:1.48; }
+  .room-arrow { margin-top:auto; padding-top:13px; color:#28766e; font-size:.72rem; font-weight:850; }
 
   @media (max-width:880px) {
     .hero { grid-template-columns:1fr; } .hero-rule { border-left:0; border-top:1px solid rgba(255,255,255,.18); padding:18px 0 0; }
     .signal,.signal.hero-signal { grid-column:span 6; } .evidence-grid,.split { grid-template-columns:1fr; }
+    .hansard-door { grid-template-columns:1fr; }
+    .room-grid { grid-template-columns:1fr; }
     .control-note { width:100%; margin-left:0; }
   }
   @media (max-width:600px) {
@@ -177,9 +196,10 @@
     .signal,.signal.hero-signal { grid-column:1/-1; min-height:220px; }
     .intro { align-items:start; flex-direction:column; }
     .commitment { grid-template-columns:36px minmax(0,1fr); } .commitment .money { grid-column:2; }
+    .hansard-row { align-items:stretch; flex-direction:column; }
     .bar { grid-template-columns:110px 1fr 52px; } .foot { flex-direction:column; }
   }
-  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .primary:hover { transform:none; } .op-spinner,.op-fill { animation:none; } }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .primary:hover { transform:none; } }
 </style>
 </head>
 <body>
@@ -209,9 +229,23 @@
       <div class="field"><label for="from">From</label><input id="from" type="date"></div>
       <div class="field"><label for="to">To (exclusive)</label><input id="to" type="date"></div>
       <button class="primary" id="scan">Scan this window</button>
-      <div class="control-note">A one-day scan is usually quick. Wider windows are cursor-paged and can take up to a minute; capped results are labelled as a sample.</div>
+      <div class="control-note" id="scan-note">A one-day scan is usually quick. Wider windows are scanned day by day for complete totals and can take longer.</div>
     </div>
     <div class="status" id="status" role="status" aria-live="polite"><span class="status-dot"></span><span id="status-text">Choose a window to begin.</span></div>
+
+    <section class="hansard-door" aria-labelledby="hansard-heading">
+      <div>
+        <div class="section-kicker">Parliamentary record</div>
+        <h2 id="hansard-heading">Was it raised in Parliament?</h2>
+        <p>Enter a contract notice ID for the sharpest check, or a supplier name to search Hansard, Questions on Notice and committee pages alongside its contracts in the selected window.</p>
+      </div>
+      <form class="hansard-form" id="hansard-form">
+        <label for="hansard-query">Contract ID or supplier name</label>
+        <div class="hansard-row"><input id="hansard-query" type="search" required autocomplete="off" spellcheck="false" placeholder="CN4118426 or a supplier"><button class="primary" id="hansard-go" type="submit">Check the record</button></div>
+        <div class="hansard-help">Supplier checks first match AusTender notices in the selected date window. Results are phrase matches, not findings about a contract. <a href="hansard-room.html">Search any parliamentary topic or ask indexed hearings →</a></div>
+      </form>
+    </section>
+    <div class="profile-panel" id="profile-panel" hidden></div>
 
     <section aria-labelledby="signals-heading">
       <div class="intro">
@@ -220,10 +254,9 @@
       </div>
       <div class="signals" id="signals"><div class="placeholder">Run a scan to turn the register into a short briefing.</div></div>
       <div class="evidence-grid" id="evidence" hidden>
-        <article class="panel"><div class="panel-head"><div><h3>Largest commitments</h3><div class="panel-sub">Click a supplier or agency name for its window profile. Profiles can take up to a minute.</div></div></div><div id="commitments"></div></article>
+        <article class="panel"><div class="panel-head"><div><h3>Largest commitments</h3><div class="panel-sub">Names open window profiles; Parliament &amp; context checks a notice across the other public records.</div></div></div><div id="commitments"></div></article>
         <aside class="panel"><div class="panel-head"><div><h3>Read the result correctly</h3><div class="panel-sub">Coverage and interpretation</div></div></div><div class="readout" id="readout"></div></aside>
       </div>
-      <div class="profile-panel" id="profile-panel" hidden></div>
     </section>
 
     <section class="desk" aria-labelledby="desk-heading">
@@ -233,11 +266,22 @@
         <button class="desk-tab" role="tab" aria-selected="false" data-tab="grounds">Procurement paths</button>
         <button class="desk-tab" role="tab" aria-selected="false" data-tab="categories">Size & categories</button>
         <button class="desk-tab" role="tab" aria-selected="false" data-tab="portfolios">Portfolios</button>
+        <button class="desk-tab" role="tab" aria-selected="false" data-tab="disclosure">Disclosure</button>
       </div>
       <div id="pane-amendments" class="desk-pane"></div>
       <div id="pane-grounds" class="desk-pane" hidden></div>
       <div id="pane-categories" class="desk-pane" hidden></div>
       <div id="pane-portfolios" class="desk-pane" hidden></div>
+      <div id="pane-disclosure" class="desk-pane" hidden></div>
+    </section>
+
+    <section class="rooms" aria-labelledby="rooms-heading">
+      <div class="section-kicker">Focused investigations</div><h2 id="rooms-heading">Open another room only when the question changes</h2>
+      <div class="room-grid">
+        <a class="room-link" href="pattern-room.html"><span class="room-number">Structure</span><h3>Pattern Room</h3><p>Concentration, end-date extensions, threshold clusters and the June timing comparison.</p><span class="room-arrow">Open patterns →</span></a>
+        <a class="room-link" href="scrutiny-room.html"><span class="room-number">Cross-register</span><h3>Scrutiny Room</h3><p>Parliamentary coverage, integrity-register entries and the deliberately qualified tax comparison.</p><span class="room-arrow">Open scrutiny →</span></a>
+        <a class="room-link" href="grants-atlas.html"><span class="room-number">Delivery geography</span><h3>Grants Atlas</h3><p>Recent grants mapped by published delivery postcode, with ambiguous geography excluded and counted.</p><span class="room-arrow">Open grants →</span></a>
+      </div>
     </section>
 
     <footer class="foot">
@@ -258,6 +302,16 @@
   var activeWindow = null;
   var loaded = {};
   var runners = {};
+  var activeOperations = [];
+
+  if (E && E.progress) E.progress.label(function (name) {
+    return /releasesPublishedInWindow/.test(name) ? 'the AusTender publication window'
+      : /releasesModifiedInWindow/.test(name) ? 'the AusTender change window'
+      : /versionsById/.test(name) ? 'contract histories'
+      : /parliament/i.test(name) ? 'the parliamentary record'
+      : /firm|lobby/i.test(name) ? 'the lobbyist register'
+      : String(name || 'the public register');
+  });
 
   var esc = E && E.html ? E.html.escape : function (value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
@@ -284,11 +338,20 @@
     return demoData;
   }
   function controlArgs() { return {from:$('from').value + 'T00:00:00Z',to:$('to').value + 'T00:00:00Z'}; }
+  function windowDays() { return Math.max(0,(Date.parse($('to').value)-Date.parse($('from').value))/86400000); }
+  function updateScanHint() {
+    var days=windowDays(), note=$('scan-note'); if(!note)return;
+    note.textContent=days>366?'Choose at most 366 days per scan.'
+      :days>30?'This '+Math.round(days)+'-day window is scanned day by day for complete totals. Expect several minutes; it will continue as a background run if needed.'
+      :days>3?'This '+Math.round(days)+'-day window is scanned day by day for complete totals and may take a few minutes.'
+      :days>1?'This window is scanned day by day and may take up to a minute.'
+      :'A one-day scan is usually quick; live source progress appears while it runs.';
+  }
   function runnerFor(id) {
-    if (!runners[id] && E) runners[id] = E.createRunner({timeoutMs:300000});
+    if (!runners[id] && E) runners[id] = E.createRunner();
     return runners[id];
   }
-  async function invoke(id, lensArgs) {
+  async function invoke(id, lensArgs, operation) {
     if (DEMO) {
       var d = await ensureDemo();
       if (id === 'au-window-signed') return d.window;
@@ -299,12 +362,24 @@
       if (id === 'au-grounds') return d.grounds;
       if (id === 'au-money-by') return d.moneyBy;
       if (id === 'au-portfolio-themes') return d.themes;
+      if (id === 'au-opaque-spend') return demoOpaque(lensArgs, d.windowRows || []);
+      if (id === 'au-contract-deepdive') return (d.deepdive || {})[String(lensArgs.cnId || '').toUpperCase()] || {
+        kind:id,cnId:lensArgs.cnId,found:false,status:'COMPLETE',warnings:[],
+        note:'This baked demo has no deep dive for that notice. Run against the live world to search the parliamentary record.'
+      };
       if (id === 'au-supplier-profile') return demoProfile('supplier', lensArgs, d.windowRows || []);
       if (id === 'au-agency-profile') return demoProfile('agency', lensArgs, d.windowRows || []);
       return null;
     }
     if (!E) throw new Error('The Embabel app runtime is unavailable. Add ?demo=1 to use the baked data.');
-    var env = await runnerFor(id).lens(id, lensArgs || {});
+    // The host waits briefly, then moves a slow lens to a background run. The shared runtime owns
+    // polling and cancellation; this page simply awaits the same final envelope.
+    var env = await runnerFor(id).lens(id, lensArgs || {}, {
+      waitSeconds:15,
+      state:operation && operation.state,
+      expectation:operation && operation.expectation,
+      message:operation && operation.detail
+    });
     return envelopeData(env);
   }
   function setStatus(kind, message, extra) {
@@ -312,6 +387,22 @@
     $('status-text').innerHTML = esc(message || '');
     var old = box.querySelector('.pill'); if (old) old.remove();
     if (extra) { var p = document.createElement('span'); p.className = 'pill'; p.textContent = extra; box.appendChild(p); }
+  }
+  function beginOperation(container,title,detail,expectation) {
+    activeOperations.filter(function(x){return x.container===container;}).forEach(function(x){x.superseded=true;finishOperation(x);});
+    container.innerHTML='<embabel-operation-state></embabel-operation-state>';
+    var op={container:container,state:container.firstElementChild,detail:detail,expectation:expectation||'This may take a moment.'};
+    if(op.state&&op.state.setProgress)op.state.setProgress({message:detail,expectation:op.expectation,elapsedMs:0});
+    activeOperations.push(op);
+    return op;
+  }
+  function finishOperation(op) {
+    if(!op)return;
+    activeOperations=activeOperations.filter(function(x){return x!==op;});
+  }
+  function cancelOutstanding() {
+    activeOperations.slice().forEach(function(op){op.superseded=true;finishOperation(op);});
+    Object.keys(runners).forEach(function(id){if(runners[id]&&runners[id].cancel)runners[id].cancel();});
   }
   function demoProfile(kind, lensArgs, rows) {
     var term = String(lensArgs[kind] || '').toLowerCase();
@@ -330,12 +421,32 @@
       topSuppliers:kind === 'agency' ? grouped('supplierName') : undefined,
       contracts:hits.sort(function(a,b){return Number(b.amount||0)-Number(a.amount||0);}).slice(0,8),
       topContracts:hits.sort(function(a,b){return Number(b.amount||0)-Number(a.amount||0);}).slice(0,8),
+      parliament:kind === 'supplier' && hits.length ? {status:'UNAVAILABLE',results:[],
+        note:'The baked demo cannot search the parliamentary index. Whether this supplier appears is unknown.'} : null,
       limits:['This is a name-contains slice of the selected publication window, not the entity\'s complete history.'],
     };
   }
+  function demoOpaque(lensArgs, rows) {
+    var threshold=Number(lensArgs.minAmount||10000000)||10000000;
+    var screened=rows.filter(function(x){return Number(x.amount||0)>=threshold;}).map(function(x){
+      var desc=String(x.description||'').trim(), signals=[];
+      if(!desc)signals.push('no description');
+      else if(desc.toLowerCase()===String(x.title||'').trim().toLowerCase())signals.push('description merely repeats the title');
+      else if(desc.length<60)signals.push('description under 60 characters');
+      return Object.assign({},x,{descriptionChars:desc.length,signals:signals,disclosureScore:null,judgedThin:null,
+        austenderUrl:'https://www.tenders.gov.au/Search/KeywordSearch?keyword='+encodeURIComponent(x.cnId||'')});
+    }).sort(function(a,b){return b.signals.length-a.signals.length||Number(b.amount||0)-Number(a.amount||0);});
+    var flagged=screened.filter(function(x){return x.signals.length;}), sum=function(xs){return Math.round(xs.reduce(function(n,x){return n+Number(x.amount||0);},0));};
+    return {kind:'au-opaque-spend',status:'PARTIAL',warnings:[],headline:{contractsOverThreshold:screened.length,
+      valueOverThreshold:sum(screened),flaggedCount:flagged.length,flaggedValue:sum(flagged),judgedThinCount:0,judgedThinValue:0,
+      note:'Deterministic disclosure screen over the baked register slice. The model reading needs a running world.'},contracts:screened.slice(0,40),
+      interpretation:{note:'Factual signals are shown separately from the unavailable model assessment.'},
+      limits:['This measures what was published, not what was procured.','Legitimate confidentiality exists; a flag is a prompt to read the record, never a finding of wrongdoing.'],
+      source:'AusTender OCDS API (baked demo slice)'};
+  }
   function resetDeepViews() {
     loaded = {};
-    ['amendments','grounds','categories','portfolios'].forEach(function (name) { renderLazy(name); });
+    ['amendments','grounds','categories','portfolios','disclosure'].forEach(function (name) { renderLazy(name); });
   }
   function currentWindowLabel() {
     var w = activeWindow || controlArgs();
@@ -379,7 +490,8 @@
       return '<div class="commitment"><div class="rank">' + (i+1) + '</div><div><div class="desc">' + esc(x.description || x.title || x.cnId) + '</div>' +
         '<div class="meta"><a class="source-link" target="_blank" rel="noopener" href="' + esc(url) + '">' + esc(x.cnId) + ' ↗</a> · ' +
         '<button class="inline-action" data-profile="supplier" data-name="' + esc(x.supplierName || '') + '">' + esc(x.supplierName || 'supplier unstated') + '</button> · ' +
-        '<button class="inline-action" data-profile="agency" data-name="' + esc(x.agencyName || '') + '">' + esc(x.agencyName || 'agency unstated') + '</button></div></div>' +
+        '<button class="inline-action" data-profile="agency" data-name="' + esc(x.agencyName || '') + '">' + esc(x.agencyName || 'agency unstated') + '</button></div>' +
+        '<button class="inline-action context-action" data-contract-context="' + esc(x.cnId || '') + '">Parliament &amp; context</button></div>' +
         '<div class="money">' + esc(aud(x.amount,true)) + '</div></div>';
     }).join('') || '<div class="panel-sub">No commitments matched this window.</div>';
 
@@ -400,29 +512,41 @@
     if (!$('from').value || !$('to').value || $('from').value >= $('to').value) {
       setStatus('error','Choose a From date earlier than the exclusive To date.','date window'); return;
     }
+    if(windowDays()>366){setStatus('error','Choose a window of 366 days or fewer.','date window');return;}
+    // A new date window invalidates every in-flight drill-down. Their runners are cancelled so a
+    // late result from the old window cannot repaint a freshly reset panel.
+    cancelOutstanding();
     $('scan').disabled = true; setStatus('','Scanning the publication window…','au-window-signed');
-    $('signals').innerHTML = '<div class="placeholder">Fetching and shaping notices from the governed window lens…</div>';
     $('evidence').hidden = true; $('profile-panel').hidden = true; resetDeepViews();
+    var days=Math.max(1,Math.round(windowDays()));
+    var op=beginOperation($('signals'),'Scanning '+days+' day'+(days===1?'':'s'),'Contacting AusTender…',
+      days>3?'Fetching each day separately for complete totals; you can keep this page open while it runs.':'This is usually quick.');
+    if(window.matchMedia&&window.matchMedia('(max-width:600px)').matches){
+      setTimeout(function(){$('signals').scrollIntoView({behavior:'smooth',block:'center'});},40);
+    }
     try {
       activeWindow = controlArgs();
-      var data = await invoke('au-window-signed', Object.assign({},activeWindow,{minAmount:'0'}));
+      var data = await invoke('au-window-signed', Object.assign({},activeWindow,{minAmount:'0'}),op);
       if (!data) throw new Error('The lens returned no readable result.');
+      finishOperation(op);
       renderSnapshot(data);
     } catch (e) {
+      finishOperation(op);
       $('signals').innerHTML = '<div class="error-box">' + esc(e && e.message || e) + '</div>';
       setStatus('error','Could not complete the scan.','failed');
     } finally { $('scan').disabled = false; }
   }
 
   var lazyCopy = {
-    amendments:['Which commitments changed?','This uses the change-window anchor, then fetches each notice\'s complete version chain.','Load amendment signals','au-amended-up'],
-    grounds:['Why was competition limited?','Decode the register\'s reason codes and compare their count and value. Recorded reasons are not assessments.','Load procurement paths','au-grounds'],
-    categories:['Is activity or value driving the window?','Compare fixed size bands and the government\'s UNSPSC category titles. No model classification is requested.','Load size & categories','au-money-by'],
-    portfolios:['Which portfolios are visible?','Join agency names to the seeded AGOR portfolio spine and show any value that could not be placed.','Load portfolio context','au-portfolio-themes']
+    amendments:['Which commitments changed?','This uses the change-window anchor, then fetches each notice\'s complete version chain.','Load amendment signals','au-amended-up','Usually the slowest view: it may fetch up to 20 separate contract histories. Wide windows can take several minutes.'],
+    grounds:['Why was competition limited?','Decode the register\'s reason codes and compare their count and value. Recorded reasons are not assessments.','Load procurement paths','au-grounds','This re-fetches the selected window day by day. Wide windows can take several minutes.'],
+    categories:['Is activity or value driving the window?','Compare fixed size bands and the government\'s UNSPSC category titles. No model classification is requested.','Load size & categories','au-money-by','This re-fetches the window and resolves category codes. Wide windows can take several minutes.'],
+    portfolios:['Which portfolios are visible?','Join agency names to the seeded AGOR portfolio spine and show any value that could not be placed.','Load portfolio context','au-portfolio-themes','This re-fetches the window, joins agency reference data and generates summaries. Wide windows can take several minutes.'],
+    disclosure:['Which large notices say very little?','Screen large commitments whose published description is absent, extremely short, or merely repeats a title or category; model judgments remain separately labelled.','Load disclosure signals','au-opaque-spend','This re-fetches the window, then may read up to 40 descriptions with a model. Wide windows can take several minutes.']
   };
   function renderLazy(name) {
     var c = lazyCopy[name], pane = $('pane-' + name); if (!pane) return;
-    pane.innerHTML = '<div class="lazy"><div class="lazy-inner"><h3>' + esc(c[0]) + '</h3><p>' + esc(c[1]) + '</p><button class="secondary" data-load="' + esc(name) + '">' + esc(c[2]) + '</button></div></div>';
+    pane.innerHTML = '<div class="lazy"><div class="lazy-inner"><h3>' + esc(c[0]) + '</h3><p>' + esc(c[1]) + '</p><div class="slow-note">' + esc(c[4]) + '</div><br><button class="secondary" data-load="' + esc(name) + '">' + esc(c[2]) + '</button></div></div>';
   }
   function notes(d) {
     var list = d && d.limits || [];
@@ -477,30 +601,94 @@
       (hasSummaries?'<div class="judgment" style="margin-bottom:8px"><strong>Generated summary</strong><br>Short summaries below are generated from the contract descriptions for orientation.</div>':'') + body +
       (un.contracts ? '<div class="judgment"><strong>Unresolved-value ledger:</strong> ' + un.contracts + ' notices / ' + esc(aud(un.committed,true)) + ' could not be placed. ' + esc(un.note||'') + '</div>' : '') + notes(d) + '</div>';
   }
+  function plainSnippet(value) { return String(value||'').replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim(); }
+  function sourceHost(value) { try { return new URL(value).hostname.replace(/^www\./,''); } catch(e) { return 'source page'; } }
+  function mentionRows(rows) {
+    return (rows||[]).map(function(r){return '<div class="ground"><a class="record-link" href="'+esc(r.url||'#')+'" target="_blank" rel="noopener">'+esc(r.title||'Parliamentary record')+' ↗</a>'+
+      '<div class="ground-meta">'+esc(r.age||'undated')+' · '+esc(sourceHost(r.url))+'</div>'+(r.snippet?'<div class="ground-meta">'+esc(plainSnippet(r.snippet))+'</div>':'')+'</div>';}).join('');
+  }
+  function supplierParliament(p) {
+    if(!p)return '<div style="margin-top:22px"><div class="section-kicker">Hansard · questions on notice · committees</div><h3 style="margin:5px 0 4px">Parliamentary record</h3><div class="judgment"><strong>Not searched.</strong> This supplier name matched no contract notice in the selected window, so the lens did not run an unanchored parliamentary search.</div></div>';
+    var body=p.status==='UNAVAILABLE'
+      ?'<div class="judgment"><strong>Not looked at.</strong> '+esc(p.note||'The parliamentary search was unavailable.')+'</div>'
+      :(p.results||[]).length?mentionRows(p.results)
+      :'<div class="judgment"><strong>No indexed match.</strong> '+esc(p.note||'This does not mean the supplier was never raised in Parliament.')+'</div>';
+    return '<div style="margin-top:22px"><div class="section-kicker">Hansard · questions on notice · committees</div><h3 style="margin:5px 0 4px">Parliamentary record</h3>'+
+      '<div class="panel-sub">'+esc(p.basis||'Pages matching this supplier name. A mention may concern anything about the supplier and is not evidence about a contract.')+'</div>'+body+'</div>';
+  }
+  function parliamentGroup(group,title) {
+    if(!group||!group.searchPhrase)return '';
+    return '<div style="margin-top:14px"><strong>'+esc(title)+'</strong><div class="ground-meta">Searched “'+esc(group.searchPhrase)+'”. '+esc(group.basis||'')+'</div>'+
+      ((group.results||[]).length?mentionRows(group.results):'<div class="judgment"><strong>No indexed match.</strong></div>')+'</div>';
+  }
+  function contractParliament(p) {
+    if(!p)return '<div class="judgment">The lens returned no parliamentary-search result.</div>';
+    if(p.status==='UNAVAILABLE')return '<div class="judgment"><strong>Not looked at.</strong> '+esc(p.note||'The parliamentary search was unavailable.')+'</div>';
+    return parliamentGroup(p.byContractId,'By contract notice id')+parliamentGroup(p.byNames,'By party names')+
+      (p.note?'<div class="judgment">'+esc(p.note)+'</div>':'');
+  }
+  function renderDisclosure(d) {
+    var h=d.headline||{}, rows=(d.contracts||[]).filter(function(x){return (x.signals||[]).length||x.judgedThin;});
+    var modelUsed=(d.contracts||[]).some(function(x){return x.disclosureScore!=null;});
+    var body=rows.map(function(x){
+      var facts=(x.signals||[]).map(function(s){return '<span class="fact-tag">Factual · '+esc(s)+'</span>';}).join('');
+      var judged=x.judgedThin?'<span class="fact-tag">Model assessment · disclosure '+esc(x.disclosureScore)+'</span>':'';
+      return '<div class="ground"><div><a class="source-link" target="_blank" rel="noopener" href="'+esc(x.austenderUrl||'#')+'">'+esc(x.cnId)+' ↗</a><strong style="float:right">'+esc(aud(x.amount,true))+'</strong></div>'+
+        '<div class="ground-meta">'+esc(x.supplierName||'supplier unstated')+' · '+esc(x.agencyName||'agency unstated')+'</div><div style="margin-top:7px;font-size:.83rem">The register’s entire description ('+Number(x.descriptionChars||0)+' chars): <strong>“'+esc(x.description||'(none)')+'”</strong></div>'+facts+judged+'</div>';
+    }).join('');
+    return '<div class="deep-result">'+deepHead('Big money, thin disclosure',d,'Published descriptions only; a disclosure finding is never a finding about the procurement.')+
+      '<div class="split"><div class="readout"><div class="readout-row"><div class="readout-label">Over threshold</div><div class="readout-value">'+esc(aud(h.valueOverThreshold,true))+'</div><div class="readout-note">'+Number(h.contractsOverThreshold||0)+' large notice(s)</div></div>'+
+      '<div class="readout-row"><div class="readout-label">Adds nothing by construction</div><div class="readout-value">'+esc(aud(h.flaggedValue,true))+'</div><div class="readout-note">'+Number(h.flaggedCount||0)+' absent, near-empty, or repeated descriptions</div></div></div>'+
+      '<div class="judgment"><strong>'+(modelUsed?'Model assessment':'Model assessment unavailable')+'</strong><br>'+(modelUsed
+        ?Number(h.judgedThinCount||0)+' additional descriptions were read as essentially uninformative. This is generated judgment, labelled separately from the factual screen.'
+        :'The deterministic screen still runs. No model score is implied.')+'</div></div>'+
+      (h.note?'<p class="panel-sub">'+esc(h.note)+'</p>':'')+(body||'<div class="panel-sub">No thin-disclosure signal was found at the threshold in this window.</div>')+notes(d)+'</div>';
+  }
+  function renderContractContext(d,cnId) {
+    if(!d.found)return '<div class="deep-result"><div class="result-head"><div><div class="section-kicker">Contract context</div><h3>'+esc(cnId)+'</h3></div><button class="profile-close" data-close-profile>Close</button></div><div class="judgment">'+esc(d.note||'No contract record was found.')+'</div>'+notes(d)+'</div>';
+    var c=d.context||{}, r=d.register||{}, contextRows=[['Portfolio',c.portfolio],['Agency legal name',c.agencyLegalName],['Agency ABN',c.agencyAbn],['Body type',c.bodyType],['Recorded ground',c.groundText],['Recorded exemption',c.exemptionText]].filter(function(x){return x[1];});
+    var context=contextRows.length?contextRows.map(function(x){return '<div class="readout-row"><div class="readout-label">'+esc(x[0])+'</div><div class="readout-note">'+esc(x[1])+'</div></div>';}).join(''):'<div class="panel-sub">No cross-register context resolved.</div>';
+    var cov=d.coverage||{}, covBody=cov.status==='UNAVAILABLE'||cov.status==='SKIPPED'
+      ?'<div class="judgment"><strong>Not looked at.</strong> '+esc(cov.note||'')+'</div>'
+      :(cov.results||[]).length?mentionRows(cov.results)
+      :'<div class="judgment"><strong>No indexed match.</strong> '+esc(cov.note||'')+'</div>';
+    return '<div class="deep-result"><div class="result-head"><div><div class="section-kicker">Contract context</div><h3>'+esc(cnId)+'</h3><div class="panel-sub">'+esc(r.supplierName||'')+(r.agencyName?' · '+esc(r.agencyName):'')+'</div></div><button class="profile-close" data-close-profile>Close</button></div>'+
+      '<div class="split"><div><h3>Other government registers</h3><div class="readout">'+context+'</div>'+(c.unresolvedNote?'<div class="judgment">'+esc(c.unresolvedNote)+'</div>':'')+'</div>'+
+      '<div><div class="section-kicker">Hansard · questions on notice · committees</div><h3 style="margin:5px 0">Parliamentary record</h3><div class="panel-sub">Matches are accountability artefacts, but a mention is not evidence about this contract.</div>'+contractParliament(d.parliament)+'</div></div>'+
+      '<details class="notes"><summary>Related press search — not evidence</summary><div class="panel-sub">Searched “'+esc(cov.searchPhrase||'')+'”. '+esc(cov.phraseBasis||'')+'</div>'+covBody+'</details>'+notes(d)+'</div>';
+  }
   async function loadDeep(name) {
     if (loaded[name]) return;
     var pane=$('pane-'+name), btn=pane.querySelector('[data-load]'); if (btn) btn.disabled=true;
-    pane.innerHTML='<div class="lazy"><div class="lazy-inner"><h3>Loading ' + esc(name) + '…</h3><p>The governed lens may page a public register and materialize virtual records for this window.</p></div></div>';
     var c=lazyCopy[name];
+    var op=beginOperation(pane,c[2],'Asking the registers and preparing the first page…',c[4]);
     try {
       var lensArgs=Object.assign({},activeWindow || controlArgs());
       if (name==='amendments') Object.assign(lensArgs,{state:'',rankBy:'growthPct'});
       if (name==='categories') Object.assign(lensArgs,{sectors:''});
       if (name==='portfolios') Object.assign(lensArgs,{portfolio:''});
-      var d=await invoke(c[3],lensArgs); if(!d) throw new Error('The lens returned no readable result.');
-      pane.innerHTML=name==='amendments'?renderAmendments(d):name==='grounds'?renderGrounds(d):name==='categories'?renderCategories(d):renderPortfolios(d);
+      if (name==='disclosure') Object.assign(lensArgs,{minAmount:'10000000'});
+      var d=await invoke(c[3],lensArgs,op); if(!d) throw new Error('The lens returned no readable result.');
+      if(op.superseded)return;
+      finishOperation(op);
+      pane.innerHTML=name==='amendments'?renderAmendments(d):name==='grounds'?renderGrounds(d):name==='categories'?renderCategories(d):name==='portfolios'?renderPortfolios(d):renderDisclosure(d);
       loaded[name]=true;
-    } catch(e) { pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
+    } catch(e) { if(op.superseded)return; finishOperation(op); pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
   }
   async function loadProfile(kind,name) {
     if (!name) return;
     var pane=$('profile-panel'); pane.hidden=false;
-    pane.innerHTML='<div class="lazy"><div class="lazy-inner"><h3>Reading this ' + esc(kind) + ' slice…</h3><p>Same publication window, narrowed by the register\'s name.</p></div></div>';
+    var profileDays=Math.max(1,Math.round(windowDays()));
+    var op=beginOperation(pane,'Reading this '+kind+' window profile','Re-fetching the selected window, then narrowing by the register\'s name…',profileDays>3
+      ?'AusTender cannot filter by this name, so all '+profileDays+' days are fetched first; allow several minutes.'
+      :'AusTender cannot filter by this name, so the selected window is fetched first.');
     try {
       var lensId=kind==='supplier'?'au-supplier-profile':'au-agency-profile';
       var lensArgs=Object.assign({},activeWindow || controlArgs()); lensArgs[kind]=name;
       if(kind==='supplier') lensArgs.checkLobbying=false;
-      var d=await invoke(lensId,lensArgs); if(!d) throw new Error('The profile lens returned no readable result.');
+      var d=await invoke(lensId,lensArgs,op); if(!d) throw new Error('The profile lens returned no readable result.');
+      if(op.superseded)return;
+      finishOperation(op);
       var peers=kind==='supplier'?(d.byAgency||[]):(d.topSuppliers||[]);
       var peerTotal=peers.reduce(function(n,x){return n+Number(x.value||0);},0);
       peers=peers.map(function(x){return Object.assign({},x,{shareOfValuePct:x.shareOfValuePct!=null?x.shareOfValuePct:(peerTotal?Number(x.value||0)/peerTotal*100:null)});});
@@ -509,9 +697,31 @@
         '<div class="result-head"><div><div class="section-kicker">Window profile · ' + esc(kind) + '</div><h3>' + esc(name) + '</h3><div class="panel-sub">' + esc(currentWindowLabel()) + ' · name match inside the fetched window</div></div><button class="profile-close" data-close-profile>Close</button></div>' +
         '<div class="split"><div><div class="signal-value" style="font-size:2.2rem;margin:4px 0 6px">' + esc(aud(d.totals&&d.totals.value,true)) + '</div><div class="panel-sub">' + Number(d.totals&&d.totals.contracts||0) + ' matching notice(s) · ' + esc(d.totals&&d.totals.coverage||d.status||'') + '</div>' +
         '<div class="panel-sub" style="margin-top:18px">Largest matching notices</div>' + contracts.map(function(x){return '<div class="ground"><a class="source-link" target="_blank" rel="noopener" href="' + esc(x.austenderUrl||('https://www.tenders.gov.au/Search/KeywordSearch?keyword='+encodeURIComponent(x.cnId||''))) + '">' + esc(x.cnId) + ' ↗</a><strong style="float:right">' + esc(aud(x.amount,true)) + '</strong><div class="ground-meta">' + esc(x.description||'') + '</div></div>';}).join('') + '</div>' +
-        '<div><div class="panel-sub">' + (kind==='supplier'?'Agencies in this slice':'Suppliers in this slice') + '</div>' + bars(peers.slice(0,8),'name') + '<div class="judgment">This profile fetches the selected date window and narrows by name. It is not the entity\'s complete procurement history.</div></div></div>' + notes(d) + '</div>';
+        '<div><div class="panel-sub">' + (kind==='supplier'?'Agencies in this slice':'Suppliers in this slice') + '</div>' + bars(peers.slice(0,8),'name') + '<div class="judgment">This profile fetches the selected date window and narrows by name. It is not the entity\'s complete procurement history.</div></div></div>' +
+        (kind==='supplier'?supplierParliament(d.parliament):'') + notes(d) + '</div>';
       pane.scrollIntoView({behavior:'smooth',block:'start'});
-    } catch(e) { pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
+    } catch(e) { if(op.superseded)return; finishOperation(op); pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
+  }
+  async function loadContractContext(cnId) {
+    if(!cnId)return;
+    var pane=$('profile-panel');pane.hidden=false;
+    var op=beginOperation(pane,'Checking '+cnId+' across public records','Opening the contract history, government context and parliamentary search…','The parliamentary lookup uses a scoped web index and may take up to a minute.');
+    try {
+      var d=await invoke('au-contract-deepdive',{cnId:cnId,searchPhrase:''},op);if(!d)throw new Error('The deep-dive lens returned no readable result.');
+      if(op.superseded)return;finishOperation(op);pane.innerHTML=renderContractContext(d,cnId);pane.scrollIntoView({behavior:'smooth',block:'start'});
+    } catch(e){if(op.superseded)return;finishOperation(op);pane.innerHTML='<div class="error-box">'+esc(e&&e.message||e)+'</div>';}
+  }
+  async function openHansard(query) {
+    var value=String(query||'').trim();if(!value)return;
+    var isContract=/^CN[0-9A-Z-]+$/i.test(value), button=$('hansard-go');
+    if(!isContract&&(!$('from').value||!$('to').value||windowDays()<=0||windowDays()>366)){
+      setStatus('error','Choose a valid window of 366 days or fewer before checking a supplier.','date window');return;
+    }
+    button.disabled=true;
+    try {
+      if(isContract)await loadContractContext(value.toUpperCase());
+      else await loadProfile('supplier',value);
+    } finally {button.disabled=false;}
   }
 
   document.addEventListener('click',function(e){
@@ -519,23 +729,28 @@
     if(tab){ var name=tab.dataset.tab; document.querySelectorAll('.desk-tab').forEach(function(x){x.setAttribute('aria-selected',String(x===tab));}); document.querySelectorAll('.desk-pane').forEach(function(x){x.hidden=x.id!=='pane-'+name;}); return; }
     var load=e.target.closest('[data-load]'); if(load) loadDeep(load.dataset.load);
     var profile=e.target.closest('[data-profile]'); if(profile) loadProfile(profile.dataset.profile,profile.dataset.name);
+    var contract=e.target.closest('[data-contract-context]');if(contract)loadContractContext(contract.dataset.contractContext);
     if(e.target.closest('[data-close-profile]')) $('profile-panel').hidden=true;
   });
+  $('hansard-form').addEventListener('submit',function(e){e.preventDefault();openHansard($('hansard-query').value);});
   $('scan').addEventListener('click',scan);
+  $('from').addEventListener('change',updateScanHint);
+  $('to').addEventListener('change',updateScanHint);
 
-  function iso(d){return d.toISOString().slice(0,10);}
+  function iso(d){var p=function(n){return String(n).padStart(2,'0');};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
   async function start(){
     resetDeepViews();
     var now=new Date(), before=new Date(now.getTime()-24*60*60*1000);
     $('from').value=iso(before); $('to').value=iso(now);
     if(DEMO){
       $('mode-label').textContent='Baked real-register demo';
-      try { var d=await ensureDemo(); $('from').value=String(d.window.window.from).slice(0,10); $('to').value=String(d.window.window.to).slice(0,10); await scan(); }
+      try { var d=await ensureDemo(); $('from').value=String(d.window.window.from).slice(0,10); $('to').value=String(d.window.window.to).slice(0,10); updateScanHint(); await scan(); }
       catch(e){ setStatus('error','Could not load the baked demo data.','failed'); }
     } else if(!E) {
       $('mode-label').textContent='Runtime unavailable';
       setStatus('error','The app runtime is unavailable. Add ?demo=1 for the standalone demo.','offline');
     }
+    updateScanHint();
   }
   start();
 })();

@@ -27,6 +27,7 @@ lead demo of the AU-government suite (`target-customers/demos/au-government/`).
 | AusTender OCDS API (`api.tenders.gov.au/ocds`) | by CN id and by date window; cursor-paged 100/page; amendments first-class | CC BY 3.0 AU |
 | Register of Lobbyists (`api.lobbyists.ag.gov.au`) | whole-register index + per-firm profiles (the two GETs that answer anonymously) | AGD site CC BY 4.0; API subdomain unverified |
 | Parliamentary Handbook (`handbookapi.aph.gov.au`) | current House members with party + division, one OData call | aph.gov.au; API terms unverified |
+| ParlInfo (`parlinfo.aph.gov.au`) | Chamber Hansard, committee evidence and Senate Estimates phrase search; selected records can be fetched and indexed on demand | aph.gov.au; keyless |
 | AGOR via seeded reference data | 17 portfolios + 195 agencies (ABN, body type, staffing, appropriations) — the portfolio spine AusTender has no field for | CC BY 3.0 AU |
 | **Brave Search** (`api.search.brave.com`) — the ONLY non-government source, and the only keyed one | press coverage for a composed phrase; absent key ⇒ the lens reports UNAVAILABLE, never "no coverage" | third-party, `BRAVE_API_KEY` |
 | Geo assets (build-time, `scripts/build-geo-assets.py`) | Natural Earth outline (PD) · GeoNames postcode centroids (CC BY 4.0) · AEC March-2025 boundaries (CC BY) → postcode→division by **centroid-in-polygon** (approximate on straddling postcodes — every surface says so) | mixed, attributed in file headers |
@@ -58,6 +59,19 @@ list; amendment, procurement-ground, category and portfolio lenses load only whe
 `?demo=1` uses the same baked real-register data. The product rationale and next insight ideas are
 in [`INSIGHTS.md`](INSIGHTS.md).
 
+`apps/hansard-room.html` — a separate parliamentary front door for any topic. It searches the live
+ParlInfo record by class, offers an explicit bounded transcript-indexing step, then answers open
+questions over only those indexed records with agentic RAG and numbered verbatim evidence. A
+portfolio bridge places a generated reading of indexed Estimates passages beside a separate
+generated reading of contracts signed in the selected window. `?demo=1` shows a small real
+ParlInfo slice; indexing, comparison and agentic retrieval require a running world.
+
+Three smaller apps keep the new lenses out of the already broad workbenches. `apps/scrutiny-room.html`
+contains parliamentary-coverage, integrity-register and tax-report checks; `apps/pattern-room.html`
+contains concentration, extension, threshold-cluster and June-timing patterns; and
+`apps/grants-atlas.html` maps recent grants by their published delivery postcode, counting every
+ambiguous or missing geographic row rather than guessing.
+
 ## Discipline
 
 This realm reports what the registers record and never characterises it. Amounts are commitments,
@@ -74,7 +88,7 @@ types/             ContractVersion, ContractRelease, LobbyistFirm, RegisteredLob
 producers/         versionsById, releases{Published,Modified}InWindow, firm{Summary,Lobbyists}ById
 lenses/            au-contract-passport, au-window-signed, au-supplier-lobbying
 sources.yml        collection shapes and the live-vs-mirror reasoning
-apps/              moneytrail.html + baked demo data
+apps/              Money Trail, Signal Room, Hansard Room + focused scrutiny/pattern/grant apps
 ```
 
 ## v2 candidates
@@ -108,20 +122,9 @@ Everything anchored purely on the live feeds (the contract passport, window scan
 league, lobbying) works with or without seeding; the portfolio and reason-code joins need it, and
 return *nothing* rather than something wrong until it happens.
 
-## The grants hop — blocked on a producer kind, not on data
+## The grants hop
 
-GrantConnect is the highest-value unbuilt hop, because a grant record carries **DELIVERY postcode
-and state** — where money is actually spent — which a contract notice never does. Measured on the
-July 2026 export: delivery differs from the recipient's own address in **99.4%** of 7,067 grants.
-That is the only basis on which this realm could make a geographic or electoral claim honestly, and
-`reference/electorates.yml` (150 divisions, AEC 2025 margins and members) is seeded ready for it.
-
-**What blocks it:** GrantConnect publishes no API. Its only machine-readable surface is an XLSX
-report download, and no producer kind can consume tabular data — the twelve kinds are all JSON-,
-SQL-, file- or model-shaped. The gap is a **tabular producer** (CSV/XLSX → records), not missing
-data or missing licence.
-
-**What we will NOT do:** bake a snapshot into `reference/`. Reference data is for small static
-catalogues; a live feed seeded as reference goes stale immediately, bloats the pack, and bypasses
-the TTL-cache and mirror machinery built for exactly this. (A 5.7MB attempt also proved SnakeYAML
-rejects a document over ~3MB, dropping the whole file with one terse loading problem.)
+GrantConnect is now read lazily through the tabular producer: a rolling XLSX window is fetched on
+first traversal and cached deployment-wide. Geographic claims use only the published DELIVERY
+postcode—never the recipient's head-office address—and postcodes that cross electorate boundaries
+are excluded from money totals and counted explicitly.
