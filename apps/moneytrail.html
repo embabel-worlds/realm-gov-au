@@ -162,6 +162,19 @@
   svg.ozmap .bub { fill:color-mix(in srgb, var(--embabel-accent) 55%, transparent); stroke:var(--embabel-surface); stroke-width:1.5; cursor:pointer; }
   svg.ozmap .bub:hover { fill:var(--embabel-accent); }
 
+  /* The Ask landing */
+  .ask-hero { padding:1.7rem 1.8rem 1.5rem; }
+  .ask-hero h2 { font-size:1.5rem; letter-spacing:-.02em; }
+  .ask-hero .sub { font-size:.98rem; max-width:64ch; }
+  .qgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:.6rem; margin:1.1rem 0 1rem; }
+  .qcard { text-align:left; cursor:pointer; font:inherit; color:var(--embabel-text);
+    background:var(--embabel-surface-subtle); border:1px solid var(--embabel-border);
+    border-radius:var(--embabel-radius-sm); padding:.75rem .85rem; display:grid; gap:.2rem; }
+  .qcard:hover { border-color:var(--embabel-accent); background:color-mix(in srgb, var(--embabel-accent) 8%, transparent); }
+  .qcard b { font-size:.9rem; font-weight:700; line-height:1.35; }
+  .qcard span { font-size:.78rem; color:var(--embabel-text-muted); line-height:1.4; }
+  .ask-hero .chat-row input { padding:.85rem 1rem; font-size:1rem; }
+
   /* Chat panel */
   .chat-examples { display:flex; flex-wrap:wrap; gap:.45rem; margin:.2rem 0 .9rem; }
   .chat-log { max-height:420px; overflow-y:auto; display:grid; gap:.6rem; padding:.9rem;
@@ -233,12 +246,43 @@
         <span class="chip">Commitments as published — never expenditure</span>
       </div>
       <nav class="tabs" role="tablist" aria-label="App sections">
-        <button class="tab" id="tab-explore" role="tab" aria-selected="true" aria-controls="pane-explore">Explore</button>
+        <button class="tab" id="tab-ask" role="tab" aria-selected="true" aria-controls="pane-ask">Ask</button>
+        <button class="tab" id="tab-explore" role="tab" aria-selected="false" aria-controls="pane-explore">Browse the data</button>
         <button class="tab" id="tab-how" role="tab" aria-selected="false" aria-controls="pane-how">How this works</button>
       </nav>
     </header>
 
-    <div id="pane-explore" role="tabpanel" aria-labelledby="tab-explore">
+    <div id="pane-ask" role="tabpanel" aria-labelledby="tab-ask">
+    <!-- ============ ASK ANYTHING ============ -->
+    <section class="card ask-hero" id="chat-card">
+      <h2>Ask a question about Commonwealth spending</h2>
+      <p class="sub">Answered over the live registers with sources on every figure, judgments labelled as judgments, and “unknown” when a lookup fails. Or <span class="linky" id="go-browse">browse the data yourself →</span></p>
+      <div class="qgrid" id="chat-examples">
+        <button class="qcard" data-q="Which ground do agencies use most to skip open tender this month, and what did it cost?">
+          <b>Which ground do agencies use most to skip open tender?</b><span>Joins the register's own reason codes to what they cost</span></button>
+        <button class="qcard" data-q="What did the Defence portfolio sign last month, and which agencies inside it?">
+          <b>What did a whole portfolio sign?</b><span>AusTender has no portfolio field — this joins one in</span></button>
+        <button class="qcard" data-q="Which contracts grew the most past their original commitment this month?">
+          <b>Which contracts grew the most after signing?</b><span>Every published version, original vs current</span></button>
+        <button class="qcard" data-q="Tell me the story of contract CN3942784">
+          <b>Tell me the story of one contract</b><span>$402.5M → $736.3M through three amendments</span></button>
+        <button class="qcard" data-q="Is IBM Australia a client of a registered lobbyist, and do those firms employ former government representatives?">
+          <b>Is a supplier a lobbying client?</b><span>The federal register's own declarations</span></button>
+        <button class="qcard" data-q="Show me contracts where the agency recorded that it did not comply with the procurement rules">
+          <b>Where did an agency record non-compliance?</b><span>A code the register publishes and nobody surfaces</span></button>
+      </div>
+      <div class="chat-log" id="chat-log" hidden></div>
+      <div class="chat-row">
+        <input id="chat-input" type="text" placeholder="e.g. which suppliers in Queensland won contracts over $1M this month?" aria-label="Ask a question">
+        <button class="embabel-button" id="chat-send">Ask</button>
+      </div>
+      <div class="fine" id="chat-note" hidden></div>
+    </section>
+
+    </div><!-- /pane-ask -->
+
+    <div id="pane-explore" role="tabpanel" aria-labelledby="tab-explore" hidden>
+
 
     <!-- ============ CONTRACT PASSPORT ============ -->
     <section class="card" id="passport-card">
@@ -319,25 +363,6 @@
       <embabel-operation-state id="w-state"></embabel-operation-state>
       <embabel-warning-panel id="w-warnings" hidden></embabel-warning-panel>
       <div id="w-result" hidden></div>
-    </section>
-
-    <!-- ============ ASK ANYTHING ============ -->
-    <section class="card" id="chat-card">
-      <h2>Ask anything about this data</h2>
-      <p class="sub">Your world's assistant, right here — it answers over the same registers with the same rules: sourced figures, disclosed judgments, and "unknown" when a fetch fails. Same session as your main chat.</p>
-      <div class="chat-examples" id="chat-examples">
-        <button class="sample" data-q="Which contracts grew the most through amendments this month?">Which contracts grew the most through amendments this month?</button>
-        <button class="sample" data-q="What did the Department of Defence sign last week?">What did the Department of Defence sign last week?</button>
-        <button class="sample" data-q="Is IBM Australia a client of a registered lobbyist?">Is IBM Australia a client of a registered lobbyist?</button>
-        <button class="sample" data-q="Show the biggest limited tenders this month and their stated reasons">Biggest limited tenders this month, with their stated reasons</button>
-        <button class="sample" data-q="Tell me the story of contract CN3942784">Tell me the story of contract CN3942784</button>
-      </div>
-      <div class="chat-log" id="chat-log" hidden></div>
-      <div class="chat-row">
-        <input id="chat-input" type="text" placeholder="e.g. which suppliers in Queensland won contracts over $1M this month?" aria-label="Ask a question">
-        <button class="embabel-button" id="chat-send">Ask</button>
-      </div>
-      <div class="fine" id="chat-note" hidden></div>
     </section>
 
     </div><!-- /pane-explore -->
@@ -1063,9 +1088,23 @@
     $('chat-input').disabled = true; $('chat-send').disabled = true;
     var n = $('chat-note'); n.hidden = false; n.textContent = note;
   }
+  // The POST is rejected with 409 until an SSE stream is registered server-side ("No active
+  // session. Open GET /api/v1/chat/stream first."), so sending must WAIT for the stream rather
+  // than race it. Resolves on the server's `connected` event, with onopen as a fallback and a
+  // bounded wait so a dead stream surfaces as an error instead of hanging the box.
+  var chatReady = null;
   function chatEnsureStream() {
-    if (chatStream) return;
+    if (chatReady) return chatReady;
     chatStream = new EventSource('/api/v1/chat/stream');
+    chatReady = new Promise(function (resolve, reject) {
+      var settled = false;
+      var done = function () { if (!settled) { settled = true; resolve(); } };
+      chatStream.addEventListener('connected', done);
+      chatStream.onopen = function () { setTimeout(done, 150); }; // give `connected` a beat to land first
+      setTimeout(function () {
+        if (!settled) { settled = true; reject(new Error('the chat stream did not open')); }
+      }, 15000);
+    });
     chatStream.addEventListener('message', function (ev) {
       var data; try { data = JSON.parse(ev.data); } catch (e) { return; }
       if (data && data.role === 'assistant' && String(data.content || '').trim()) {
@@ -1077,22 +1116,28 @@
     chatStream.onerror = function () {
       if (chatThinkingEl) { chatThinkingEl.textContent = 'Connection to your world dropped — retrying…'; }
     };
+    return chatReady;
   }
   async function chatSend(q) {
     q = String(q || $('chat-input').value || '').trim();
     if (!q || chatBusy) return;
-    chatEnsureStream();
     chatAppend('user', q);
     $('chat-input').value = '';
     chatBusy = true; $('chat-send').disabled = true;
     chatThinkingEl = chatAppend('assistant', 'Asking your world…', true);
     try {
+      await chatEnsureStream();   // 409 otherwise: the server needs the stream registered first
       var res = await fetch('/api/v1/chat', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: q }),
       });
-      if (!res.ok) throw new Error('chat POST ' + res.status);
+      if (!res.ok) {
+        throw new Error(res.status === 409
+          ? 'the chat stream was not ready (409) — try again'
+          : res.status === 401 ? 'you are signed out (401) — reload and sign in'
+          : 'chat POST ' + res.status);
+      }
     } catch (e) {
       if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
       chatAppend('assistant', 'Could not reach your world (' + (e && e.message || e) + '). Sign in and reload, or use the main chat.');
@@ -1102,13 +1147,30 @@
   $('chat-send').addEventListener('click', function () { chatSend(); });
   $('chat-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') chatSend(); });
   $('chat-examples').addEventListener('click', function (e) {
-    var b = e.target.closest('.sample');
+    var b = e.target.closest('.qcard');
     if (!b) return;
-    if (DEMO || !E) { $('chat-input').value = b.dataset.q; return; }
+    // No host to answer (standalone demo): put the question in the box and send the user to the
+    // panel that answers it, rather than pretending a reply is coming.
+    if (DEMO || !E) {
+      $('chat-input').value = b.dataset.q;
+      selectTab('explore');
+      var q = b.dataset.q.toLowerCase();
+      var target = q.indexOf('portfolio') >= 0 ? 'themes-card'
+        : q.indexOf('grew') >= 0 ? 'league-card'
+        : q.indexOf('lobbyist') >= 0 ? 'lobby-card'
+        : q.indexOf('cn3942784') >= 0 ? 'passport-card'
+        : q.indexOf('ground') >= 0 || q.indexOf('comply') >= 0 ? 'search-card'
+        : 'window-card';
+      setTimeout(function () {
+        var el = $(target);
+        if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
+      return;
+    }
     chatSend(b.dataset.q);
   });
   if (DEMO || !E) {
-    chatDisable('Chat needs a running Embabel world — this standalone demo has no host. The example questions show what the assistant answers when the gov-au realm is loaded; every answer follows the same rules as the panels above.');
+    chatDisable('Chat needs a running Embabel world — this standalone demo has no host. Pick a question above and it opens the panel that answers it under “Browse the data”; with a world loaded, the assistant answers it directly under the same rules.');
   }
 
   // ---- Deep dive: three tiers that never blend -------------------------------
@@ -1208,15 +1270,25 @@
   }
 
   // Tabs: Explore ↔ How this works.
+  // Three panes: Ask is the landing, Browse is the drill-in, How explains the machinery.
+  // Browse loads LAZILY on first open — the landing must not pay for panels nobody asked for.
+  var browseLoaded = false;
   function selectTab(which) {
-    var explore = which === 'explore';
-    $('tab-explore').setAttribute('aria-selected', String(explore));
-    $('tab-how').setAttribute('aria-selected', String(!explore));
-    $('pane-explore').hidden = !explore;
-    $('pane-how').hidden = explore;
+    ['ask', 'explore', 'how'].forEach(function (t) {
+      var tabId = t === 'ask' ? 'tab-ask' : t === 'explore' ? 'tab-explore' : 'tab-how';
+      var paneId = t === 'ask' ? 'pane-ask' : t === 'explore' ? 'pane-explore' : 'pane-how';
+      var on = t === which;
+      $(tabId).setAttribute('aria-selected', String(on));
+      $(paneId).hidden = !on;
+    });
+    if (which === 'explore' && !browseLoaded) { browseLoaded = true; loadBrowse(); }
   }
+  $('tab-ask').addEventListener('click', function () { selectTab('ask'); });
   $('tab-explore').addEventListener('click', function () { selectTab('explore'); });
   $('tab-how').addEventListener('click', function () { selectTab('how'); });
+  $('go-browse').addEventListener('click', function () {
+    selectTab('explore'); window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
 
   $('cn-go').addEventListener('click', function () { loadPassport($('cn-input').value); });
   $('cn-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadPassport($('cn-input').value); });
@@ -1255,10 +1327,14 @@
       }
     }
     loadMembers(); // fire-and-forget: electorate lines upgrade in place when the fresh chamber lands
-    // Land on the story: the $402.5M → $736.3M chain, with the window scan one click away.
-    loadPassport('CN3942784');
+    if (DEMO) { $('w-from').value = '2026-07-28'; $('w-to').value = '2026-07-29'; }
+    // Land on Ask. Nothing else runs until the user drills in.
+  }
+
+  /** Populate the Browse pane the first time it is opened. */
+  function loadBrowse() {
+    loadPassport('CN3942784');   // the $402.5M → $736.3M chain
     if (DEMO) {
-      $('w-from').value = '2026-07-28'; $('w-to').value = '2026-07-29';
       loadWindow(); runLeague();
       $('q-input').value = 'security'; runSearch();
     }
