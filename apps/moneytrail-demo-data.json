@@ -1397,7 +1397,14 @@
    "supplierPostcode": "2041",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:55:22Z"
+   "releaseDate": "2026-07-28T23:55:22Z",
+   "unspscCodes": [
+    "25101700"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264829",
@@ -1411,7 +1418,14 @@
    "supplierPostcode": "388001",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:50:57Z"
+   "releaseDate": "2026-07-28T23:50:57Z",
+   "unspscCodes": [
+    "93131703"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264826",
@@ -1425,7 +1439,14 @@
    "supplierPostcode": "2611",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:33:53Z"
+   "releaseDate": "2026-07-28T23:33:53Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264823",
@@ -1439,7 +1460,14 @@
    "supplierPostcode": "1670",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:24:33Z"
+   "releaseDate": "2026-07-28T23:24:33Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264822",
@@ -1453,7 +1481,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:18:16Z"
+   "releaseDate": "2026-07-28T23:18:16Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264821",
@@ -1467,7 +1502,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:10:14Z"
+   "releaseDate": "2026-07-28T23:10:14Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264820",
@@ -1481,7 +1523,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:09:51Z"
+   "releaseDate": "2026-07-28T23:09:51Z",
+   "unspscCodes": [
+    "83121604"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264811",
@@ -1495,7 +1544,14 @@
    "supplierPostcode": "4066",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T23:03:28Z"
+   "releaseDate": "2026-07-28T23:03:28Z",
+   "unspscCodes": [
+    "43200000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264459",
@@ -1509,7 +1565,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:45:33Z"
+   "releaseDate": "2026-07-28T06:45:33Z",
+   "unspscCodes": [
+    "81112100"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264800",
@@ -1523,7 +1586,14 @@
    "supplierPostcode": "3102",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:40:49Z"
+   "releaseDate": "2026-07-28T06:40:49Z",
+   "unspscCodes": [
+    "72100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264808",
@@ -1537,7 +1607,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:49Z"
+   "releaseDate": "2026-07-28T06:39:49Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264805",
@@ -1551,7 +1628,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:48Z"
+   "releaseDate": "2026-07-28T06:39:48Z",
+   "unspscCodes": [
+    "43200000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264806",
@@ -1565,7 +1649,14 @@
    "supplierPostcode": "2604",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:48Z"
+   "releaseDate": "2026-07-28T06:39:48Z",
+   "unspscCodes": [
+    "81110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264807",
@@ -1579,7 +1670,14 @@
    "supplierPostcode": "2612",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:48Z"
+   "releaseDate": "2026-07-28T06:39:48Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264802",
@@ -1593,7 +1691,14 @@
    "supplierPostcode": "4000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:47Z"
+   "releaseDate": "2026-07-28T06:39:47Z",
+   "unspscCodes": [
+    "81110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264803",
@@ -1607,7 +1712,14 @@
    "supplierPostcode": "2914",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:47Z"
+   "releaseDate": "2026-07-28T06:39:47Z",
+   "unspscCodes": [
+    "81110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264804",
@@ -1621,7 +1733,14 @@
    "supplierPostcode": "2604",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:47Z"
+   "releaseDate": "2026-07-28T06:39:47Z",
+   "unspscCodes": [
+    "81110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264801",
@@ -1635,7 +1754,14 @@
    "supplierPostcode": "2617",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:39:46Z"
+   "releaseDate": "2026-07-28T06:39:46Z",
+   "unspscCodes": [
+    "81110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264799",
@@ -1649,7 +1775,14 @@
    "supplierPostcode": "4001",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:29:19Z"
+   "releaseDate": "2026-07-28T06:29:19Z",
+   "unspscCodes": [
+    "86101803"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264798",
@@ -1663,7 +1796,14 @@
    "supplierPostcode": "S11 8FT",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:26:31Z"
+   "releaseDate": "2026-07-28T06:26:31Z",
+   "unspscCodes": [
+    "80101600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264796",
@@ -1677,7 +1817,14 @@
    "supplierPostcode": "4068",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:21:53Z"
+   "releaseDate": "2026-07-28T06:21:53Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264795",
@@ -1691,7 +1838,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:20:07Z"
+   "releaseDate": "2026-07-28T06:20:07Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264792",
@@ -1705,7 +1859,14 @@
    "supplierPostcode": "4068",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T06:06:43Z"
+   "releaseDate": "2026-07-28T06:06:43Z",
+   "unspscCodes": [
+    "81112200"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264791",
@@ -1719,7 +1880,14 @@
    "supplierPostcode": "4068",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:53:30Z"
+   "releaseDate": "2026-07-28T05:53:30Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264788",
@@ -1733,7 +1901,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:43:45Z"
+   "releaseDate": "2026-07-28T05:43:45Z",
+   "unspscCodes": [
+    "80100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264787",
@@ -1747,7 +1922,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:41:02Z"
+   "releaseDate": "2026-07-28T05:41:02Z",
+   "unspscCodes": [
+    "80100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264786",
@@ -1761,7 +1943,14 @@
    "supplierPostcode": "2060",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:36:51Z"
+   "releaseDate": "2026-07-28T05:36:51Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264783",
@@ -1775,7 +1964,14 @@
    "supplierPostcode": "2001",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:32:00Z"
+   "releaseDate": "2026-07-28T05:32:00Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264784",
@@ -1789,7 +1985,14 @@
    "supplierPostcode": "2001",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:32:00Z"
+   "releaseDate": "2026-07-28T05:32:00Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264782",
@@ -1803,7 +2006,14 @@
    "supplierPostcode": "3008",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:31:59Z"
+   "releaseDate": "2026-07-28T05:31:59Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264780",
@@ -1817,7 +2027,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:31:20Z"
+   "releaseDate": "2026-07-28T05:31:20Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264781",
@@ -1831,7 +2048,14 @@
    "supplierPostcode": "3205",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:31:20Z"
+   "releaseDate": "2026-07-28T05:31:20Z",
+   "unspscCodes": [
+    "78111800"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264778",
@@ -1845,7 +2069,14 @@
    "supplierPostcode": "2602",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:18:47Z"
+   "releaseDate": "2026-07-28T05:18:47Z",
+   "unspscCodes": [
+    "80100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264777",
@@ -1859,7 +2090,14 @@
    "supplierPostcode": "2067",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:16:38Z"
+   "releaseDate": "2026-07-28T05:16:38Z",
+   "unspscCodes": [
+    "86101803"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4259784",
@@ -1873,7 +2111,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:15:15Z"
+   "releaseDate": "2026-07-28T05:15:15Z",
+   "unspscCodes": [
+    "84120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264775",
@@ -1887,7 +2132,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T05:02:51Z"
+   "releaseDate": "2026-07-28T05:02:51Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264771",
@@ -1901,7 +2153,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:52:10Z"
+   "releaseDate": "2026-07-28T04:52:10Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264769",
@@ -1915,7 +2174,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:40:23Z"
+   "releaseDate": "2026-07-28T04:40:23Z",
+   "unspscCodes": [
+    "81110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264767",
@@ -1929,7 +2195,14 @@
    "supplierPostcode": "5010",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:56Z"
+   "releaseDate": "2026-07-28T04:31:56Z",
+   "unspscCodes": [
+    "26110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264765",
@@ -1943,7 +2216,14 @@
    "supplierPostcode": "6163",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:55Z"
+   "releaseDate": "2026-07-28T04:31:55Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264766",
@@ -1957,7 +2237,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:55Z"
+   "releaseDate": "2026-07-28T04:31:55Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264763",
@@ -1971,7 +2258,14 @@
    "supplierPostcode": "3677",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:54Z"
+   "releaseDate": "2026-07-28T04:31:54Z",
+   "unspscCodes": [
+    "78101604"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264764",
@@ -1985,7 +2279,14 @@
    "supplierPostcode": "6163",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:54Z"
+   "releaseDate": "2026-07-28T04:31:54Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264761",
@@ -1999,7 +2300,14 @@
    "supplierPostcode": "5008",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:53Z"
+   "releaseDate": "2026-07-28T04:31:53Z",
+   "unspscCodes": [
+    "43191510"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264762",
@@ -2013,7 +2321,14 @@
    "supplierPostcode": "3677",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:53Z"
+   "releaseDate": "2026-07-28T04:31:53Z",
+   "unspscCodes": [
+    "78101604"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264759",
@@ -2027,7 +2342,14 @@
    "supplierPostcode": "5095",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:52Z"
+   "releaseDate": "2026-07-28T04:31:52Z",
+   "unspscCodes": [
+    "43200000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264760",
@@ -2041,7 +2363,14 @@
    "supplierPostcode": "5008",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:52Z"
+   "releaseDate": "2026-07-28T04:31:52Z",
+   "unspscCodes": [
+    "43191510"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264756",
@@ -2055,7 +2384,14 @@
    "supplierPostcode": "3919",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:51Z"
+   "releaseDate": "2026-07-28T04:31:51Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264757",
@@ -2069,7 +2405,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:51Z"
+   "releaseDate": "2026-07-28T04:31:51Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264758",
@@ -2083,7 +2426,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:51Z"
+   "releaseDate": "2026-07-28T04:31:51Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264754",
@@ -2097,7 +2447,14 @@
    "supplierPostcode": "3125",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:50Z"
+   "releaseDate": "2026-07-28T04:31:50Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264755",
@@ -2111,7 +2468,14 @@
    "supplierPostcode": "2021",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:50Z"
+   "releaseDate": "2026-07-28T04:31:50Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264752",
@@ -2125,7 +2489,14 @@
    "supplierPostcode": "5118",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:49Z"
+   "releaseDate": "2026-07-28T04:31:49Z",
+   "unspscCodes": [
+    "49120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264753",
@@ -2139,7 +2510,14 @@
    "supplierPostcode": "4000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:49Z"
+   "releaseDate": "2026-07-28T04:31:49Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264749",
@@ -2153,7 +2531,14 @@
    "supplierPostcode": "2911",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:48Z"
+   "releaseDate": "2026-07-28T04:31:48Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264750",
@@ -2167,7 +2552,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:48Z"
+   "releaseDate": "2026-07-28T04:31:48Z",
+   "unspscCodes": [
+    "47130000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264751",
@@ -2181,7 +2573,14 @@
    "supplierPostcode": "",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:48Z"
+   "releaseDate": "2026-07-28T04:31:48Z",
+   "unspscCodes": [
+    "90100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264747",
@@ -2195,7 +2594,14 @@
    "supplierPostcode": "4225",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:47Z"
+   "releaseDate": "2026-07-28T04:31:47Z",
+   "unspscCodes": [
+    "78141501"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264748",
@@ -2209,7 +2615,14 @@
    "supplierPostcode": "6090",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:47Z"
+   "releaseDate": "2026-07-28T04:31:47Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264745",
@@ -2223,7 +2636,14 @@
    "supplierPostcode": "4558",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:46Z"
+   "releaseDate": "2026-07-28T04:31:46Z",
+   "unspscCodes": [
+    "81111500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264746",
@@ -2237,7 +2657,14 @@
    "supplierPostcode": "4225",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:46Z"
+   "releaseDate": "2026-07-28T04:31:46Z",
+   "unspscCodes": [
+    "78141501"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264743",
@@ -2251,7 +2678,14 @@
    "supplierPostcode": "2019",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:45Z"
+   "releaseDate": "2026-07-28T04:31:45Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264744",
@@ -2265,7 +2699,14 @@
    "supplierPostcode": "6163",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:45Z"
+   "releaseDate": "2026-07-28T04:31:45Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264741",
@@ -2279,7 +2720,14 @@
    "supplierPostcode": "2011",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:44Z"
+   "releaseDate": "2026-07-28T04:31:44Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264742",
@@ -2293,7 +2741,14 @@
    "supplierPostcode": "4225",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:44Z"
+   "releaseDate": "2026-07-28T04:31:44Z",
+   "unspscCodes": [
+    "78141501"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264738",
@@ -2307,7 +2762,14 @@
    "supplierPostcode": "4306",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:43Z"
+   "releaseDate": "2026-07-28T04:31:43Z",
+   "unspscCodes": [
+    "12140000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264739",
@@ -2321,7 +2783,14 @@
    "supplierPostcode": "2145",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:43Z"
+   "releaseDate": "2026-07-28T04:31:43Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264740",
@@ -2335,7 +2804,14 @@
    "supplierPostcode": "0830",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:43Z"
+   "releaseDate": "2026-07-28T04:31:43Z",
+   "unspscCodes": [
+    "72100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264736",
@@ -2349,7 +2825,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:42Z"
+   "releaseDate": "2026-07-28T04:31:42Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264737",
@@ -2363,7 +2846,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:42Z"
+   "releaseDate": "2026-07-28T04:31:42Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264733",
@@ -2377,7 +2867,14 @@
    "supplierPostcode": "2033",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:41Z"
+   "releaseDate": "2026-07-28T04:31:41Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264734",
@@ -2391,7 +2888,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:41Z"
+   "releaseDate": "2026-07-28T04:31:41Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264735",
@@ -2405,7 +2909,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:41Z"
+   "releaseDate": "2026-07-28T04:31:41Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264730",
@@ -2419,7 +2930,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:40Z"
+   "releaseDate": "2026-07-28T04:31:40Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264731",
@@ -2433,7 +2951,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:40Z"
+   "releaseDate": "2026-07-28T04:31:40Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264732",
@@ -2447,7 +2972,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:40Z"
+   "releaseDate": "2026-07-28T04:31:40Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264727",
@@ -2461,7 +2993,14 @@
    "supplierPostcode": "4306",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:39Z"
+   "releaseDate": "2026-07-28T04:31:39Z",
+   "unspscCodes": [
+    "12140000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264728",
@@ -2475,7 +3014,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:39Z"
+   "releaseDate": "2026-07-28T04:31:39Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264729",
@@ -2489,7 +3035,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:39Z"
+   "releaseDate": "2026-07-28T04:31:39Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264726",
@@ -2503,7 +3056,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:38Z"
+   "releaseDate": "2026-07-28T04:31:38Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264723",
@@ -2517,7 +3077,14 @@
    "supplierPostcode": "2073",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:37Z"
+   "releaseDate": "2026-07-28T04:31:37Z",
+   "unspscCodes": [
+    "81112200"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264724",
@@ -2531,7 +3098,14 @@
    "supplierPostcode": "6054",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:37Z"
+   "releaseDate": "2026-07-28T04:31:37Z",
+   "unspscCodes": [
+    "42300000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264725",
@@ -2545,7 +3119,14 @@
    "supplierPostcode": "0836",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:37Z"
+   "releaseDate": "2026-07-28T04:31:37Z",
+   "unspscCodes": [
+    "90120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264720",
@@ -2559,7 +3140,14 @@
    "supplierPostcode": "2609",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:36Z"
+   "releaseDate": "2026-07-28T04:31:36Z",
+   "unspscCodes": [
+    "39120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264721",
@@ -2573,7 +3161,14 @@
    "supplierPostcode": "3123",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:36Z"
+   "releaseDate": "2026-07-28T04:31:36Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264722",
@@ -2587,7 +3182,14 @@
    "supplierPostcode": "0822",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:36Z"
+   "releaseDate": "2026-07-28T04:31:36Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264717",
@@ -2601,7 +3203,14 @@
    "supplierPostcode": "2612",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:35Z"
+   "releaseDate": "2026-07-28T04:31:35Z",
+   "unspscCodes": [
+    "43210000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264718",
@@ -2615,7 +3224,14 @@
    "supplierPostcode": "2143",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:35Z"
+   "releaseDate": "2026-07-28T04:31:35Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264719",
@@ -2629,7 +3245,14 @@
    "supplierPostcode": "2162",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:35Z"
+   "releaseDate": "2026-07-28T04:31:35Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264715",
@@ -2643,7 +3266,14 @@
    "supplierPostcode": "2175",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:34Z"
+   "releaseDate": "2026-07-28T04:31:34Z",
+   "unspscCodes": [
+    "47121800"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264716",
@@ -2657,7 +3287,14 @@
    "supplierPostcode": "2607",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:34Z"
+   "releaseDate": "2026-07-28T04:31:34Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264712",
@@ -2671,7 +3308,14 @@
    "supplierPostcode": "3912",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:33Z"
+   "releaseDate": "2026-07-28T04:31:33Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264713",
@@ -2685,7 +3329,14 @@
    "supplierPostcode": "LL21 9QX",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:33Z"
+   "releaseDate": "2026-07-28T04:31:33Z",
+   "unspscCodes": [
+    "53100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264714",
@@ -2699,7 +3350,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:33Z"
+   "releaseDate": "2026-07-28T04:31:33Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264709",
@@ -2713,7 +3371,14 @@
    "supplierPostcode": "6000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:32Z"
+   "releaseDate": "2026-07-28T04:31:32Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264710",
@@ -2727,7 +3392,14 @@
    "supplierPostcode": "35-309",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:32Z"
+   "releaseDate": "2026-07-28T04:31:32Z",
+   "unspscCodes": [
+    "43222800"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264711",
@@ -2741,7 +3413,14 @@
    "supplierPostcode": "",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:32Z"
+   "releaseDate": "2026-07-28T04:31:32Z",
+   "unspscCodes": [
+    "95122100"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264705",
@@ -2755,7 +3434,14 @@
    "supplierPostcode": "2010",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:31Z"
+   "releaseDate": "2026-07-28T04:31:31Z",
+   "unspscCodes": [
+    "43190000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264706",
@@ -2769,7 +3455,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:31Z"
+   "releaseDate": "2026-07-28T04:31:31Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264707",
@@ -2783,7 +3476,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:31Z"
+   "releaseDate": "2026-07-28T04:31:31Z",
+   "unspscCodes": [
+    "80131600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264708",
@@ -2797,7 +3497,14 @@
    "supplierPostcode": "2145",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:31Z"
+   "releaseDate": "2026-07-28T04:31:31Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264702",
@@ -2811,7 +3518,14 @@
    "supplierPostcode": "4810",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:30Z"
+   "releaseDate": "2026-07-28T04:31:30Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264703",
@@ -2825,7 +3539,14 @@
    "supplierPostcode": "2033",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:30Z"
+   "releaseDate": "2026-07-28T04:31:30Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264704",
@@ -2839,7 +3560,14 @@
    "supplierPostcode": "0828",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:30Z"
+   "releaseDate": "2026-07-28T04:31:30Z",
+   "unspscCodes": [
+    "30190000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264698",
@@ -2853,7 +3581,14 @@
    "supplierPostcode": "3173",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:29Z"
+   "releaseDate": "2026-07-28T04:31:29Z",
+   "unspscCodes": [
+    "27000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264699",
@@ -2867,7 +3602,14 @@
    "supplierPostcode": "4000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:29Z"
+   "releaseDate": "2026-07-28T04:31:29Z",
+   "unspscCodes": [
+    "90111601"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264700",
@@ -2881,7 +3623,14 @@
    "supplierPostcode": "2145",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:29Z"
+   "releaseDate": "2026-07-28T04:31:29Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264701",
@@ -2895,7 +3644,14 @@
    "supplierPostcode": "2204",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:29Z"
+   "releaseDate": "2026-07-28T04:31:29Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264694",
@@ -2909,7 +3665,14 @@
    "supplierPostcode": "0820",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:28Z"
+   "releaseDate": "2026-07-28T04:31:28Z",
+   "unspscCodes": [
+    "78141501"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264695",
@@ -2923,7 +3686,14 @@
    "supplierPostcode": "2611",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:28Z"
+   "releaseDate": "2026-07-28T04:31:28Z",
+   "unspscCodes": [
+    "43210000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264696",
@@ -2937,7 +3707,14 @@
    "supplierPostcode": "2607",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:28Z"
+   "releaseDate": "2026-07-28T04:31:28Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264697",
@@ -2951,7 +3728,14 @@
    "supplierPostcode": "4053",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:28Z"
+   "releaseDate": "2026-07-28T04:31:28Z",
+   "unspscCodes": [
+    "26120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264690",
@@ -2965,7 +3749,14 @@
    "supplierPostcode": "3170",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:27Z"
+   "releaseDate": "2026-07-28T04:31:27Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264691",
@@ -2979,7 +3770,14 @@
    "supplierPostcode": "4009",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:27Z"
+   "releaseDate": "2026-07-28T04:31:27Z",
+   "unspscCodes": [
+    "45111900"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264692",
@@ -2993,7 +3791,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:27Z"
+   "releaseDate": "2026-07-28T04:31:27Z",
+   "unspscCodes": [
+    "93151505"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264693",
@@ -3007,7 +3812,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:27Z"
+   "releaseDate": "2026-07-28T04:31:27Z",
+   "unspscCodes": [
+    "43190000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264687",
@@ -3021,7 +3833,14 @@
    "supplierPostcode": "4350",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:26Z"
+   "releaseDate": "2026-07-28T04:31:26Z",
+   "unspscCodes": [
+    "78100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264688",
@@ -3035,7 +3854,14 @@
    "supplierPostcode": "0852",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:26Z"
+   "releaseDate": "2026-07-28T04:31:26Z",
+   "unspscCodes": [
+    "50190000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264689",
@@ -3049,7 +3875,14 @@
    "supplierPostcode": "2011",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:26Z"
+   "releaseDate": "2026-07-28T04:31:26Z",
+   "unspscCodes": [
+    "53100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264684",
@@ -3063,7 +3896,14 @@
    "supplierPostcode": "4350",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:25Z"
+   "releaseDate": "2026-07-28T04:31:25Z",
+   "unspscCodes": [
+    "78100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264685",
@@ -3077,7 +3917,14 @@
    "supplierPostcode": "0800",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:25Z"
+   "releaseDate": "2026-07-28T04:31:25Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264686",
@@ -3091,7 +3938,14 @@
    "supplierPostcode": "0800",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:31:25Z"
+   "releaseDate": "2026-07-28T04:31:25Z",
+   "unspscCodes": [
+    "50000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264682",
@@ -3105,7 +3959,14 @@
    "supplierPostcode": "1515",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:27:07Z"
+   "releaseDate": "2026-07-28T04:27:07Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264669",
@@ -3119,7 +3980,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:38Z"
+   "releaseDate": "2026-07-28T04:26:38Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": "GE",
+   "exemptionText": "App A: 2. From another Commonwealth, state, territory or local government entity."
   },
   {
    "cnId": "CN4264666",
@@ -3133,7 +4001,14 @@
    "supplierPostcode": "2602",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:37Z"
+   "releaseDate": "2026-07-28T04:26:37Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264667",
@@ -3147,7 +4022,14 @@
    "supplierPostcode": "2620",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:37Z"
+   "releaseDate": "2026-07-28T04:26:37Z",
+   "unspscCodes": [
+    "43220000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264668",
@@ -3161,7 +4043,14 @@
    "supplierPostcode": "3041",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:37Z"
+   "releaseDate": "2026-07-28T04:26:37Z",
+   "unspscCodes": [
+    "92121504"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264663",
@@ -3175,7 +4064,14 @@
    "supplierPostcode": "3008",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:36Z"
+   "releaseDate": "2026-07-28T04:26:36Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264664",
@@ -3189,7 +4085,14 @@
    "supplierPostcode": "2913",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:36Z"
+   "releaseDate": "2026-07-28T04:26:36Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264665",
@@ -3203,7 +4106,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:36Z"
+   "releaseDate": "2026-07-28T04:26:36Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264660",
@@ -3217,7 +4127,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:35Z"
+   "releaseDate": "2026-07-28T04:26:35Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264661",
@@ -3231,7 +4148,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:35Z"
+   "releaseDate": "2026-07-28T04:26:35Z",
+   "unspscCodes": [
+    "80131500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": "LP",
+   "exemptionText": "App A: 1. Leasing of immovable property or any associated rights."
   },
   {
    "cnId": "CN4264662",
@@ -3245,7 +4169,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T04:26:35Z"
+   "releaseDate": "2026-07-28T04:26:35Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264656",
@@ -3259,7 +4190,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:51:37Z"
+   "releaseDate": "2026-07-28T03:51:37Z",
+   "unspscCodes": [
+    "80120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264589",
@@ -3273,7 +4211,14 @@
    "supplierPostcode": "28401",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
-   "releaseDate": "2026-07-28T03:39:26Z"
+   "releaseDate": "2026-07-28T03:39:26Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": "TR",
+   "groundText": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264587",
@@ -3287,7 +4232,14 @@
    "supplierPostcode": "3008",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:25Z"
+   "releaseDate": "2026-07-28T03:39:25Z",
+   "unspscCodes": [
+    "15120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264588",
@@ -3301,7 +4253,14 @@
    "supplierPostcode": "2612",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:25Z"
+   "releaseDate": "2026-07-28T03:39:25Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264584",
@@ -3315,7 +4274,14 @@
    "supplierPostcode": "2170",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:24Z"
+   "releaseDate": "2026-07-28T03:39:24Z",
+   "unspscCodes": [
+    "26120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264585",
@@ -3329,7 +4295,14 @@
    "supplierPostcode": "2064",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:24Z"
+   "releaseDate": "2026-07-28T03:39:24Z",
+   "unspscCodes": [
+    "41110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264586",
@@ -3343,7 +4316,14 @@
    "supplierPostcode": "2116",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:24Z"
+   "releaseDate": "2026-07-28T03:39:24Z",
+   "unspscCodes": [
+    "72101500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264582",
@@ -3357,7 +4337,14 @@
    "supplierPostcode": "3207",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:23Z"
+   "releaseDate": "2026-07-28T03:39:23Z",
+   "unspscCodes": [
+    "43191510"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264583",
@@ -3371,7 +4358,14 @@
    "supplierPostcode": "5042",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
-   "releaseDate": "2026-07-28T03:39:23Z"
+   "releaseDate": "2026-07-28T03:39:23Z",
+   "unspscCodes": [
+    "39120000"
+   ],
+   "groundCode": "TR",
+   "groundText": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264579",
@@ -3385,7 +4379,14 @@
    "supplierPostcode": "2609",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:22Z"
+   "releaseDate": "2026-07-28T03:39:22Z",
+   "unspscCodes": [
+    "39120000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264580",
@@ -3399,7 +4400,14 @@
    "supplierPostcode": "6007",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:22Z"
+   "releaseDate": "2026-07-28T03:39:22Z",
+   "unspscCodes": [
+    "41110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264581",
@@ -3413,7 +4421,14 @@
    "supplierPostcode": "2116",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:22Z"
+   "releaseDate": "2026-07-28T03:39:22Z",
+   "unspscCodes": [
+    "25111900"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264576",
@@ -3427,7 +4442,14 @@
    "supplierPostcode": "3170",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:21Z"
+   "releaseDate": "2026-07-28T03:39:21Z",
+   "unspscCodes": [
+    "41110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264577",
@@ -3441,7 +4463,14 @@
    "supplierPostcode": "4124",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:21Z"
+   "releaseDate": "2026-07-28T03:39:21Z",
+   "unspscCodes": [
+    "10100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264578",
@@ -3455,7 +4484,14 @@
    "supplierPostcode": "59348",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:21Z"
+   "releaseDate": "2026-07-28T03:39:21Z",
+   "unspscCodes": [
+    "10100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264573",
@@ -3469,7 +4505,14 @@
    "supplierPostcode": "3194",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:20Z"
+   "releaseDate": "2026-07-28T03:39:20Z",
+   "unspscCodes": [
+    "81100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264574",
@@ -3483,7 +4526,14 @@
    "supplierPostcode": "2304",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:20Z"
+   "releaseDate": "2026-07-28T03:39:20Z",
+   "unspscCodes": [
+    "41110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264575",
@@ -3497,7 +4547,14 @@
    "supplierPostcode": "2145",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:20Z"
+   "releaseDate": "2026-07-28T03:39:20Z",
+   "unspscCodes": [
+    "31150000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264570",
@@ -3511,7 +4568,14 @@
    "supplierPostcode": "2107",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:19Z"
+   "releaseDate": "2026-07-28T03:39:19Z",
+   "unspscCodes": [
+    "82121800"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264571",
@@ -3525,7 +4589,14 @@
    "supplierPostcode": "2615",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:19Z"
+   "releaseDate": "2026-07-28T03:39:19Z",
+   "unspscCodes": [
+    "41110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264572",
@@ -3539,7 +4610,14 @@
    "supplierPostcode": "4504",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
-   "releaseDate": "2026-07-28T03:39:19Z"
+   "releaseDate": "2026-07-28T03:39:19Z",
+   "unspscCodes": [
+    "40160000"
+   ],
+   "groundCode": "AD",
+   "groundText": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264567",
@@ -3553,7 +4631,14 @@
    "supplierPostcode": "4810",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:18Z"
+   "releaseDate": "2026-07-28T03:39:18Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": "FA",
+   "exemptionText": "App A: 5. Direct purpose of providing foreign assistance."
   },
   {
    "cnId": "CN4264568",
@@ -3567,7 +4652,14 @@
    "supplierPostcode": "5000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:18Z"
+   "releaseDate": "2026-07-28T03:39:18Z",
+   "unspscCodes": [
+    "26100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264569",
@@ -3581,7 +4673,14 @@
    "supplierPostcode": "5000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:18Z"
+   "releaseDate": "2026-07-28T03:39:18Z",
+   "unspscCodes": [
+    "46180000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264564",
@@ -3595,7 +4694,14 @@
    "supplierPostcode": "2164",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:17Z"
+   "releaseDate": "2026-07-28T03:39:17Z",
+   "unspscCodes": [
+    "31210000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264565",
@@ -3609,7 +4715,14 @@
    "supplierPostcode": "2164",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:17Z"
+   "releaseDate": "2026-07-28T03:39:17Z",
+   "unspscCodes": [
+    "25111900"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264566",
@@ -3623,7 +4736,14 @@
    "supplierPostcode": "4303",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:17Z"
+   "releaseDate": "2026-07-28T03:39:17Z",
+   "unspscCodes": [
+    "25131700"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264561",
@@ -3637,7 +4757,14 @@
    "supplierPostcode": "93117-2807",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
-   "releaseDate": "2026-07-28T03:39:16Z"
+   "releaseDate": "2026-07-28T03:39:16Z",
+   "unspscCodes": [
+    "25202500"
+   ],
+   "groundCode": "AD",
+   "groundText": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264562",
@@ -3651,7 +4778,14 @@
    "supplierPostcode": "4078",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:16Z"
+   "releaseDate": "2026-07-28T03:39:16Z",
+   "unspscCodes": [
+    "25170000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264563",
@@ -3665,7 +4799,14 @@
    "supplierPostcode": "4072",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:16Z"
+   "releaseDate": "2026-07-28T03:39:16Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264558",
@@ -3679,7 +4820,14 @@
    "supplierPostcode": "2229",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:15Z"
+   "releaseDate": "2026-07-28T03:39:15Z",
+   "unspscCodes": [
+    "72100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264559",
@@ -3693,7 +4841,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:15Z"
+   "releaseDate": "2026-07-28T03:39:15Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264560",
@@ -3707,7 +4862,14 @@
    "supplierPostcode": "4223",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:15Z"
+   "releaseDate": "2026-07-28T03:39:15Z",
+   "unspscCodes": [
+    "24110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264555",
@@ -3721,7 +4883,14 @@
    "supplierPostcode": "2322",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
-   "releaseDate": "2026-07-28T03:39:14Z"
+   "releaseDate": "2026-07-28T03:39:14Z",
+   "unspscCodes": [
+    "81112201"
+   ],
+   "groundCode": "TR",
+   "groundText": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264556",
@@ -3735,7 +4904,14 @@
    "supplierPostcode": "759657",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:14Z"
+   "releaseDate": "2026-07-28T03:39:14Z",
+   "unspscCodes": [
+    "25110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264557",
@@ -3749,7 +4925,14 @@
    "supplierPostcode": "126800",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:14Z"
+   "releaseDate": "2026-07-28T03:39:14Z",
+   "unspscCodes": [
+    "25110000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264552",
@@ -3763,7 +4946,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:13Z"
+   "releaseDate": "2026-07-28T03:39:13Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264553",
@@ -3777,7 +4967,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:13Z"
+   "releaseDate": "2026-07-28T03:39:13Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264554",
@@ -3791,7 +4988,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:13Z"
+   "releaseDate": "2026-07-28T03:39:13Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264549",
@@ -3805,7 +5009,14 @@
    "supplierPostcode": "3207",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:12Z"
+   "releaseDate": "2026-07-28T03:39:12Z",
+   "unspscCodes": [
+    "25100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264550",
@@ -3819,7 +5030,14 @@
    "supplierPostcode": "6058",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:12Z"
+   "releaseDate": "2026-07-28T03:39:12Z",
+   "unspscCodes": [
+    "25180000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264551",
@@ -3833,7 +5051,14 @@
    "supplierPostcode": "3041",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:12Z"
+   "releaseDate": "2026-07-28T03:39:12Z",
+   "unspscCodes": [
+    "78100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264547",
@@ -3847,7 +5072,14 @@
    "supplierPostcode": "2600",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:11Z"
+   "releaseDate": "2026-07-28T03:39:11Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264548",
@@ -3861,7 +5093,14 @@
    "supplierPostcode": "4008",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:11Z"
+   "releaseDate": "2026-07-28T03:39:11Z",
+   "unspscCodes": [
+    "81112201"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264545",
@@ -3875,7 +5114,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
-   "releaseDate": "2026-07-28T03:39:10Z"
+   "releaseDate": "2026-07-28T03:39:10Z",
+   "unspscCodes": [
+    "43230000"
+   ],
+   "groundCode": "AD",
+   "groundText": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264546",
@@ -3889,7 +5135,14 @@
    "supplierPostcode": "4007",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:10Z"
+   "releaseDate": "2026-07-28T03:39:10Z",
+   "unspscCodes": [
+    "25131900"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264541",
@@ -3903,7 +5156,14 @@
    "supplierPostcode": "4006",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:09Z"
+   "releaseDate": "2026-07-28T03:39:09Z",
+   "unspscCodes": [
+    "32130000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264542",
@@ -3917,7 +5177,14 @@
    "supplierPostcode": "13400",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:09Z"
+   "releaseDate": "2026-07-28T03:39:09Z",
+   "unspscCodes": [
+    "76121500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264543",
@@ -3931,7 +5198,14 @@
    "supplierPostcode": "3149",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:09Z"
+   "releaseDate": "2026-07-28T03:39:09Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264544",
@@ -3945,7 +5219,14 @@
    "supplierPostcode": "2557",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:09Z"
+   "releaseDate": "2026-07-28T03:39:09Z",
+   "unspscCodes": [
+    "46180000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264539",
@@ -3959,7 +5240,14 @@
    "supplierPostcode": "5000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:08Z"
+   "releaseDate": "2026-07-28T03:39:08Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264540",
@@ -3973,7 +5261,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:39:08Z"
+   "releaseDate": "2026-07-28T03:39:08Z",
+   "unspscCodes": [
+    "80161500"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264535",
@@ -3987,7 +5282,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:37:07Z"
+   "releaseDate": "2026-07-28T03:37:07Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264530",
@@ -4001,7 +5303,14 @@
    "supplierPostcode": "2601",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:21:01Z"
+   "releaseDate": "2026-07-28T03:21:01Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264529",
@@ -4015,7 +5324,14 @@
    "supplierPostcode": "4128",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:21:00Z"
+   "releaseDate": "2026-07-28T03:21:00Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264528",
@@ -4029,7 +5345,14 @@
    "supplierPostcode": "2913",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:18:57Z"
+   "releaseDate": "2026-07-28T03:18:57Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264521",
@@ -4043,7 +5366,14 @@
    "supplierPostcode": "3000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:15:23Z"
+   "releaseDate": "2026-07-28T03:15:23Z",
+   "unspscCodes": [
+    "72100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264522",
@@ -4057,7 +5387,14 @@
    "supplierPostcode": "2128",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:15:23Z"
+   "releaseDate": "2026-07-28T03:15:23Z",
+   "unspscCodes": [
+    "72100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264523",
@@ -4071,7 +5408,14 @@
    "supplierPostcode": "3690",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:15:23Z"
+   "releaseDate": "2026-07-28T03:15:23Z",
+   "unspscCodes": [
+    "72100000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264502",
@@ -4085,7 +5429,14 @@
    "supplierPostcode": "6106",
    "procurementMethod": "limited",
    "limitedTenderReason": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
-   "releaseDate": "2026-07-28T03:01:40Z"
+   "releaseDate": "2026-07-28T03:01:40Z",
+   "unspscCodes": [
+    "24100000"
+   ],
+   "groundCode": "AD",
+   "groundText": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264503",
@@ -4099,7 +5450,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T03:01:40Z"
+   "releaseDate": "2026-07-28T03:01:40Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264488",
@@ -4113,7 +5471,14 @@
    "supplierPostcode": "2000",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T01:14:35Z"
+   "releaseDate": "2026-07-28T01:14:35Z",
+   "unspscCodes": [
+    "80161601"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264484",
@@ -4127,7 +5492,14 @@
    "supplierPostcode": "2615",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T01:14:04Z"
+   "releaseDate": "2026-07-28T01:14:04Z",
+   "unspscCodes": [
+    "80160000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264486",
@@ -4141,7 +5513,14 @@
    "supplierPostcode": "2160",
    "procurementMethod": "open",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T01:02:40Z"
+   "releaseDate": "2026-07-28T01:02:40Z",
+   "unspscCodes": [
+    "80111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264482",
@@ -4155,7 +5534,14 @@
    "supplierPostcode": "6053",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T00:42:04Z"
+   "releaseDate": "2026-07-28T00:42:04Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264483",
@@ -4169,7 +5555,14 @@
    "supplierPostcode": "2612",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T00:41:45Z"
+   "releaseDate": "2026-07-28T00:41:45Z",
+   "unspscCodes": [
+    "84111600"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   },
   {
    "cnId": "CN4264481",
@@ -4183,7 +5576,14 @@
    "supplierPostcode": "6230",
    "procurementMethod": "limited",
    "limitedTenderReason": null,
-   "releaseDate": "2026-07-28T00:33:35Z"
+   "releaseDate": "2026-07-28T00:33:35Z",
+   "unspscCodes": [
+    "86000000"
+   ],
+   "groundCode": null,
+   "groundText": null,
+   "exemptionCode": null,
+   "exemptionText": null
   }
  ],
  "league": {
@@ -4714,5 +6114,318 @@
    "A capped window fetch makes every figure a sample."
   ],
   "source": "AusTender OCDS API (CC BY 3.0 AU) + AGOR (CC BY 3.0 AU, seeded)"
+ },
+ "grounds": {
+  "kind": "au-grounds",
+  "window": {
+   "from": "2026-07-28T00:00:00Z",
+   "to": "2026-07-29T00:00:00Z"
+  },
+  "status": "PARTIAL",
+  "warnings": [
+   "Baked demo over 200 releases \u2014 a sample, not the period."
+  ],
+  "totals": {
+   "contracts": 200,
+   "value": 92156418,
+   "coverage": "the fetched releases only"
+  },
+  "byMethod": {
+   "open": {
+    "contracts": 68,
+    "value": 83871096,
+    "shareOfWindowPct": 91.0
+   },
+   "limited": {
+    "contracts": 132,
+    "value": 8285322,
+    "shareOfWindowPct": 9.0
+   }
+  },
+  "limitedTenderGrounds": [
+   {
+    "code": "TR",
+    "kind": "limited-tender",
+    "text": "10.3.d.iii. Supply by particular business: due to an absence of competition for technical reasons.",
+    "contracts": 3,
+    "value": 1356557,
+    "shareOfWindowPct": 1.5,
+    "topAgencies": [
+     {
+      "name": "Department of Defence",
+      "value": 1356557
+     }
+    ]
+   },
+   {
+    "code": "AD",
+    "kind": "limited-tender",
+    "text": "10.3.e. Additional deliveries by original supplier intended as replacement parts, extensions, or continuation for existing goods or services for compatibility.",
+    "contracts": 4,
+    "value": 1116029,
+    "shareOfWindowPct": 1.2,
+    "topAgencies": [
+     {
+      "name": "Department of Defence",
+      "value": 801239
+     },
+     {
+      "name": "Department of Infrastructure, Transport, Regional Development, Communications, Sport and the Arts",
+      "value": 314790
+     }
+    ]
+   }
+  ],
+  "exemptions": [
+   {
+    "code": "LP",
+    "kind": "exemption",
+    "text": "App A: 1. Leasing of immovable property or any associated rights.",
+    "contracts": 1,
+    "value": 1090784,
+    "shareOfWindowPct": 1.2,
+    "topAgencies": [
+     {
+      "name": "Department of Finance",
+      "value": 1090784
+     }
+    ]
+   },
+   {
+    "code": "FA",
+    "kind": "exemption",
+    "text": "App A: 5. Direct purpose of providing foreign assistance.",
+    "contracts": 1,
+    "value": 1041502,
+    "shareOfWindowPct": 1.1,
+    "topAgencies": [
+     {
+      "name": "Department of Defence",
+      "value": 1041502
+     }
+    ]
+   },
+   {
+    "code": "GE",
+    "kind": "exemption",
+    "text": "App A: 2. From another Commonwealth, state, territory or local government entity.",
+    "contracts": 1,
+    "value": 250000,
+    "shareOfWindowPct": 0.3,
+    "topAgencies": [
+     {
+      "name": "Department of Finance",
+      "value": 250000
+     }
+    ]
+   }
+  ],
+  "limits": [
+   "A ground or exemption is the AGENCY'S STATED REASON as published \u2014 this counts use and cost, and asserts nothing about appropriateness.",
+   "Shares are of the fetched window's value.",
+   "A capped fetch is a sample and is labelled PARTIAL."
+  ],
+  "source": "AusTender OCDS API (CC BY 3.0 AU)"
+ },
+ "moneyBy": {
+  "kind": "au-money-by",
+  "window": {
+   "from": "2026-07-28T00:00:00Z",
+   "to": "2026-07-29T00:00:00Z"
+  },
+  "status": "PARTIAL",
+  "warnings": [],
+  "totals": {
+   "contracts": 200,
+   "value": 92156418,
+   "coverage": "the fetched releases only"
+  },
+  "bySize": [
+   {
+    "band": "under $100k",
+    "contracts": 136,
+    "value": 3671869,
+    "shareOfValuePct": 4.0
+   },
+   {
+    "band": "$100k \u2013 $1M",
+    "contracts": 47,
+    "value": 14600575,
+    "shareOfValuePct": 15.8
+   },
+   {
+    "band": "$1M \u2013 $10M",
+    "contracts": 15,
+    "value": 41739610,
+    "shareOfValuePct": 45.3
+   },
+   {
+    "band": "$10M \u2013 $100M",
+    "contracts": 2,
+    "value": 32144363,
+    "shareOfValuePct": 34.9
+   },
+   {
+    "band": "$100M and over",
+    "contracts": 0,
+    "value": 0,
+    "shareOfValuePct": 0.0
+   }
+  ],
+  "byCategory": [
+   {
+    "title": "Vocational rehabilitation services",
+    "matchedOn": "exact code",
+    "contracts": 2,
+    "value": 22440000,
+    "shareOfValuePct": 24.3
+   },
+   {
+    "title": "Software",
+    "matchedOn": "exact code",
+    "contracts": 8,
+    "value": 18076545,
+    "shareOfValuePct": 19.6
+   },
+   {
+    "title": "Building construction and support and maintenance and repair services",
+    "matchedOn": "exact code",
+    "contracts": 6,
+    "value": 11477505,
+    "shareOfValuePct": 12.5
+   },
+   {
+    "title": "Components for information technology or broadcasting or telecommunications",
+    "matchedOn": "exact code",
+    "contracts": 3,
+    "value": 7311690,
+    "shareOfValuePct": 7.9
+   },
+   {
+    "title": "Management support services",
+    "matchedOn": "exact code",
+    "contracts": 7,
+    "value": 4516032,
+    "shareOfValuePct": 4.9
+   },
+   {
+    "title": "Safety and rescue vehicles",
+    "matchedOn": "exact code",
+    "contracts": 1,
+    "value": 3848362,
+    "shareOfValuePct": 4.2
+   },
+   {
+    "title": "Temporary personnel services",
+    "matchedOn": "exact code",
+    "contracts": 14,
+    "value": 3639655,
+    "shareOfValuePct": 3.9
+   },
+   {
+    "title": "Software maintenance and support",
+    "matchedOn": "exact code",
+    "contracts": 2,
+    "value": 3313181,
+    "shareOfValuePct": 3.6
+   },
+   {
+    "title": "Legal services",
+    "matchedOn": "exact code",
+    "contracts": 12,
+    "value": 2076667,
+    "shareOfValuePct": 2.3
+   },
+   {
+    "title": "Computer services",
+    "matchedOn": "exact code",
+    "contracts": 6,
+    "value": 1895720,
+    "shareOfValuePct": 2.1
+   },
+   {
+    "title": "Education and Training Services",
+    "matchedOn": "exact code",
+    "contracts": 24,
+    "value": 1620689,
+    "shareOfValuePct": 1.8
+   },
+   {
+    "title": "Security guard services",
+    "matchedOn": "exact code",
+    "contracts": 1,
+    "value": 1473163,
+    "shareOfValuePct": 1.6
+   },
+   {
+    "title": "Personal safety and protection",
+    "matchedOn": "exact code",
+    "contracts": 2,
+    "value": 1280000,
+    "shareOfValuePct": 1.4
+   },
+   {
+    "title": "Property management services",
+    "matchedOn": "exact code",
+    "contracts": 1,
+    "value": 1235542,
+    "shareOfValuePct": 1.3
+   },
+   {
+    "title": "Lease and rental of property or building",
+    "matchedOn": "exact code",
+    "contracts": 1,
+    "value": 1090784,
+    "shareOfValuePct": 1.2
+   },
+   {
+    "title": "Maintenance or support fees",
+    "matchedOn": "exact code",
+    "contracts": 2,
+    "value": 954985,
+    "shareOfValuePct": 1.0
+   },
+   {
+    "title": "Passenger road transportation",
+    "matchedOn": "exact code",
+    "contracts": 1,
+    "value": 740000,
+    "shareOfValuePct": 0.8
+   },
+   {
+    "title": "Management advisory services",
+    "matchedOn": "exact code",
+    "contracts": 3,
+    "value": 528281,
+    "shareOfValuePct": 0.6
+   },
+   {
+    "title": "Food and Beverage Products",
+    "matchedOn": "exact code",
+    "contracts": 25,
+    "value": 438731,
+    "shareOfValuePct": 0.5
+   },
+   {
+    "title": "Industrial filtering and purification",
+    "matchedOn": "exact code",
+    "contracts": 1,
+    "value": 387876,
+    "shareOfValuePct": 0.4
+   }
+  ],
+  "uncategorised": {
+   "contracts": 0,
+   "value": 0,
+   "exampleCodes": [],
+   "note": "Codes absent from the published codeset, or contracts with no code. Reported rather than folded into a category."
+  },
+  "bySector": null,
+  "sectorNote": "Skipped in this standalone demo \u2014 the sector cut runs the engine's classify() aggregation and needs a live world.",
+  "limits": [
+   "Category titles are the government's own; the match level (exact/family/segment) is stated per row.",
+   "Values are commitments as published, not expenditure."
+  ],
+  "source": "AusTender OCDS API (CC BY 3.0 AU) + AusTender UNSPSC codeset (CC BY, seeded)"
  }
 }

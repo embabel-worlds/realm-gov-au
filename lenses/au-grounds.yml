@@ -1,0 +1,107 @@
+id: au-grounds
+name: How contracts avoided open tender
+description: >-
+  Which reason codes agencies used to go to limited tender or claim an exemption in a window,
+  what they cost, and which agencies used them — with the register's OWN verbatim text for each
+  code. Pure arithmetic over published fields; a stated ground is a recorded reason, never an
+  assessment of one.
+params:
+  - name: from
+    type: STRING
+    label: Window start (ISO instant)
+    required: true
+    default: "2026-07-21T00:00:00Z"
+  - name: to
+    type: STRING
+    label: Window end (ISO instant, exclusive)
+    required: true
+    default: "2026-07-28T00:00:00Z"
+spec:
+  kind: cypherscript
+  script: |
+    const from = String(lensArgs.from || "").trim();
+    const to = String(lensArgs.to || "").trim();
+    const window = `${from}/${to}`;
+
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.agencyName AS agencyName,
+               r.supplierName AS supplierName, r.procurementMethod AS procurementMethod,
+               r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
+               r.exemptionCode AS exemptionCode, r.exemption AS exemptionText
+      `,
+      params: JSON.stringify({ window }),
+    });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = (r && r.warnings) || [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("COULD NOT BE FETCHED"); });
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+
+    const total = rows.reduce((a, x) => a + (x.amount || 0), 0);
+    // Group by code. The register supplies the TEXT alongside the code on every row, so the
+    // answer is quotable even in a world where the ProcurementGround nodes were never seeded —
+    // the seeded catalogue adds the codes' meaning, it is not load-bearing for this count.
+    const group = (codeField, textField, kind) => {
+      const g = {};
+      for (const x of rows) {
+        const code = x[codeField];
+        if (!code) continue;
+        g[code] = g[code] || { code, kind, text: x[textField] || null, contracts: 0, value: 0, agencies: {} };
+        g[code].contracts++; g[code].value += (x.amount || 0);
+        const a = x.agencyName || "(unstated)";
+        g[code].agencies[a] = (g[code].agencies[a] || 0) + (x.amount || 0);
+      }
+      return Object.values(g).map(e => ({
+        code: e.code, kind: e.kind, text: e.text, contracts: e.contracts,
+        value: Math.round(e.value),
+        shareOfWindowPct: total > 0 ? Math.round((e.value / total) * 1000) / 10 : null,
+        topAgencies: Object.entries(e.agencies).sort((a, b) => b[1] - a[1]).slice(0, 3)
+          .map(([name, v]) => ({ name, value: Math.round(v) })),
+      })).sort((a, b) => b.value - a.value);
+    };
+
+    const byMethod = {};
+    for (const x of rows) {
+      const m = x.procurementMethod || "unstated";
+      byMethod[m] = byMethod[m] || { contracts: 0, value: 0 };
+      byMethod[m].contracts++; byMethod[m].value += (x.amount || 0);
+    }
+    for (const k of Object.keys(byMethod)) {
+      byMethod[k].value = Math.round(byMethod[k].value);
+      byMethod[k].shareOfWindowPct = total > 0 ? Math.round((byMethod[k].value / total) * 1000) / 10 : null;
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grounds",
+      window: { from, to },
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [{
+        title: "Reason codes in the window",
+        note: "Counts and sums are arithmetic over published fields; each code's text is the register's own.",
+        cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)\n" +
+                "RETURN r.limitedTenderReasonCode, r.exemptionCode, r.amount, r.agencyName",
+      }],
+      joins: [{ source: "AusTender OCDS API", role: "Contract notices published in the window",
+                licence: "CC BY 3.0 AU, keyless", ok: !failed,
+                detail: `${rows.length} release(s)${truncated ? " (CAPPED — a sample)" : ""}` }],
+      totals: { contracts: rows.length, value: Math.round(total),
+                coverage: truncated ? "the fetched releases only — the window has more" : "the whole window" },
+      byMethod,
+      limitedTenderGrounds: group("groundCode", "groundText", "limited-tender"),
+      exemptions: group("exemptionCode", "exemptionText", "exemption"),
+      method: "Every contract notice in the window, grouped by the reason code it carries. A notice " +
+              "with no code appears only in the method split.",
+      limits: [
+        "A ground or exemption is the AGENCY'S STATED REASON as published — this counts how often each is used and what it cost, and asserts nothing about whether any use of it was appropriate.",
+        "Shares are of the fetched window's value, not of all Commonwealth spending.",
+        "A capped fetch is a sample and is labelled PARTIAL.",
+        "Notices under $10,000 are not required to be published and are absent by design.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

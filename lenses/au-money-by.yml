@@ -1,0 +1,175 @@
+id: au-money-by
+name: Where the money goes
+description: >-
+  One window's committed value cut three ways: by CONTRACT SIZE (arithmetic bands), by
+  CATEGORY using the government's own UNSPSC titles (deterministic — no model guesses what a
+  code means), and by SECTOR using an LLM to classify each description into labels you supply
+  ("weapons, software, health, transport"), which is the only cut a model is needed for and is
+  labelled as a judgment throughout.
+params:
+  - name: from
+    type: STRING
+    label: Window start (ISO instant)
+    required: true
+    default: "2026-07-21T00:00:00Z"
+  - name: to
+    type: STRING
+    label: Window end (ISO instant, exclusive)
+    required: true
+    default: "2026-07-28T00:00:00Z"
+  - name: sectors
+    type: STRING
+    label: Sector labels for the LLM cut (comma-separated; blank = skip the model entirely)
+    required: false
+    default: "weapons and defence materiel, software and IT, health and medical, transport and logistics, construction and property, professional and consulting services, education and training, other"
+spec:
+  kind: cypherscript
+  script: |
+    const from = String(lensArgs.from || "").trim();
+    const to = String(lensArgs.to || "").trim();
+    const sectors = String(lensArgs.sectors || "").trim();
+    const window = `${from}/${to}`;
+
+    // ---- Facts: size bands and category titles ------------------------------------------
+    // The category join is LONGEST-PREFIX against the seeded codeset: a contract's code may be
+    // finer than any published row. A code that matches nothing is reported unmatched, never
+    // bucketed into a guess.
+    const r = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+               r.supplierName AS supplierName, r.agencyName AS agencyName,
+               r.unspscCodes AS unspscCodes
+      `,
+      params: JSON.stringify({ window }),
+    });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = [...((r && r.warnings) || [])];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("COULD NOT BE FETCHED"); });
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+    const total = rows.reduce((a, x) => a + (x.amount || 0), 0);
+
+    // SIZE: fixed bands, so two runs are comparable. Government contracting is extremely
+    // top-heavy, which the band table shows directly rather than asserting.
+    const BANDS = [
+      { label: "under $100k", min: 0, max: 1e5 },
+      { label: "$100k – $1M", min: 1e5, max: 1e6 },
+      { label: "$1M – $10M", min: 1e6, max: 1e7 },
+      { label: "$10M – $100M", min: 1e7, max: 1e8 },
+      { label: "$100M and over", min: 1e8, max: Infinity },
+    ];
+    const bySize = BANDS.map(b => {
+      const inBand = rows.filter(x => (x.amount || 0) >= b.min && (x.amount || 0) < b.max);
+      const v = inBand.reduce((a, x) => a + (x.amount || 0), 0);
+      return { band: b.label, contracts: inBand.length, value: Math.round(v),
+               shareOfValuePct: total > 0 ? Math.round((v / total) * 1000) / 10 : null };
+    });
+
+    // CATEGORY: resolve each contract's first code against the seeded titles by longest prefix.
+    const codes = Array.from(new Set(rows.flatMap(x => (x.unspscCodes || []).slice(0, 1)).filter(Boolean)));
+    let titleByCode = {};
+    if (codes.length) {
+      const cr = await gateway.kg.query({
+        cypher: `MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code AS code, c.title AS title`,
+        params: JSON.stringify({ codes }),
+      });
+      ((cr && cr.rows) ? cr.rows : (cr || [])).forEach(x => { titleByCode[x.code] = x.title; });
+      warnings.push(...((cr && cr.warnings) || []));
+    }
+    // Longest-prefix fallback: 8-digit exact, then family (xxxx0000), then segment (xx000000).
+    const prefixes = Array.from(new Set(codes.flatMap(c => [c.slice(0, 4) + "0000", c.slice(0, 2) + "000000"])));
+    if (prefixes.length) {
+      const pr = await gateway.kg.query({
+        cypher: `MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code AS code, c.title AS title`,
+        params: JSON.stringify({ codes: prefixes }),
+      });
+      ((pr && pr.rows) ? pr.rows : (pr || [])).forEach(x => { titleByCode[x.code] = titleByCode[x.code] || x.title; });
+    }
+    const resolve = (code) => {
+      if (!code) return null;
+      return titleByCode[code] ? { title: titleByCode[code], matchedOn: "exact code" }
+        : titleByCode[code.slice(0, 4) + "0000"] ? { title: titleByCode[code.slice(0, 4) + "0000"], matchedOn: "code family" }
+        : titleByCode[code.slice(0, 2) + "000000"] ? { title: titleByCode[code.slice(0, 2) + "000000"], matchedOn: "code segment" }
+        : null;
+    };
+    const catAgg = {}; let uncategorised = { contracts: 0, value: 0, codes: {} };
+    for (const x of rows) {
+      const code = (x.unspscCodes || [])[0];
+      const hit = resolve(code);
+      if (!hit) {
+        uncategorised.contracts++; uncategorised.value += (x.amount || 0);
+        if (code) uncategorised.codes[code] = (uncategorised.codes[code] || 0) + 1;
+        continue;
+      }
+      const k = hit.title;
+      catAgg[k] = catAgg[k] || { title: k, matchedOn: hit.matchedOn, contracts: 0, value: 0 };
+      catAgg[k].contracts++; catAgg[k].value += (x.amount || 0);
+    }
+    const byCategory = Object.values(catAgg).map(e => ({
+      ...e, value: Math.round(e.value),
+      shareOfValuePct: total > 0 ? Math.round((e.value / total) * 1000) / 10 : null,
+    })).sort((a, b) => b.value - a.value).slice(0, 20);
+
+    // ---- Judgment: sector classification, only if asked for -------------------------------
+    // `classify` folds a GROUP of text to ONE label from a caller-supplied closed set. This is
+    // the ONLY model-produced cut here, it is opt-in (blank sectors skips it entirely), and it
+    // is reported under its own heading so it can never be read as the register's own taxonomy.
+    let bySector = null, sectorNote = null;
+    if (sectors) {
+      const sr = await gateway.kg.query({
+        cypher: `
+          MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+          RETURN classify(r.description, $sectors) AS sector,
+                 count(r) AS contracts, sum(toFloat(r.amount)) AS value
+        `,
+        params: JSON.stringify({ window, sectors }),
+      });
+      const srows = ((sr && sr.rows) ? sr.rows : (sr || []));
+      warnings.push(...((sr && sr.warnings) || []));
+      bySector = srows.map(x => ({
+        sector: x.sector, contracts: Number(x.contracts || 0), value: Math.round(Number(x.value || 0)),
+        shareOfValuePct: total > 0 ? Math.round((Number(x.value || 0) / total) * 1000) / 10 : null,
+      })).sort((a, b) => b.value - a.value);
+      sectorNote = "A model assigned each contract's DESCRIPTION to one of the labels you supplied. " +
+                   "It is a reading of the agencies' prose, not a government classification, and a " +
+                   "different label set would produce a different split.";
+    } else {
+      sectorNote = "Skipped — no sector labels supplied, so no model ran.";
+    }
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-money-by",
+      window: { from, to }, sectorLabels: sectors || null,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      joins: [
+        { source: "AusTender OCDS API", role: "Contract notices published in the window",
+          licence: "CC BY 3.0 AU, keyless", ok: !failed, detail: `${rows.length} release(s)` },
+        { source: "AusTender UNSPSC codeset (seeded)", role: "Category titles for the codes contracts carry",
+          licence: "CC BY", ok: Object.keys(titleByCode).length > 0,
+          detail: `${Object.keys(titleByCode).length} code(s) resolved` },
+      ],
+      totals: { contracts: rows.length, value: Math.round(total),
+                coverage: truncated ? "the fetched releases only" : "the whole window" },
+      bySize,
+      byCategory,
+      uncategorised: { contracts: uncategorised.contracts, value: Math.round(uncategorised.value),
+                       exampleCodes: Object.keys(uncategorised.codes).slice(0, 6),
+                       note: "Codes absent from the published codeset, or contracts with no code. " +
+                             "Reported rather than folded into a category." },
+      bySector, sectorNote,
+      interpretation: {
+        factual: ["bySize", "byCategory", "uncategorised", "totals"],
+        judged: ["bySector"],
+      },
+      limits: [
+        "Category titles are the government's own for the codes it publishes; a contract's code can be broader than the work, and the match level (exact/family/segment) is stated per row.",
+        "Sector labels are a reading of description prose by a model, and are opt-in — a different label set gives a different answer.",
+        "Values are commitments as published, not expenditure, and shares are of the fetched window.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) + AusTender UNSPSC codeset (CC BY, seeded)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

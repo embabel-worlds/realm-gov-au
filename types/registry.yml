@@ -65,3 +65,21 @@
       description: "Two-letter code as published, e.g. 'AD', 'DC'. Identity key."
     kind: "limited-tender | exemption."
     text: "The register's verbatim description of the ground."
+
+- name: ProcurementCategory
+  userAnchor: false
+  description: |
+    A UNSPSC code and the government's own title for it, from AusTender's published codeset
+    (CC BY). Contracts carry the CODE only — '80111600' is not an answer to "what was bought" —
+    so these give spending a name without a model guessing what a number means.
+
+    MATCH BY LONGEST PREFIX and disclose it: a contract's code may be finer than any published
+    row, and a code absent from the codeset is reported unmatched rather than bucketed into a
+    guess.
+      MATCH (c:ProcurementCategory {code: r.unspscCodes[0]}) RETURN c.title
+  properties:
+    code:
+      identity: true
+      description: "8-digit UNSPSC code as published. Identity key."
+    title: "The government's own title for the code."
+    kind: "Goods | Services, where the codeset states it."
