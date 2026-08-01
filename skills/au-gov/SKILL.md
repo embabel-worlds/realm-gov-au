@@ -26,6 +26,16 @@ description: >-
   from a capped window.
 - **Lobbying** ("is Acme a client of a lobbyist", "former officials at their lobbying firm"):
   `au-supplier-lobbying` lens. It matches by NAME (the register has no client ABNs) and says so.
+- **Text search** ("contracts about cyber security"): `au-contract-search` lens — mode=keyword is
+  deterministic containment; mode=semantic uses ai_relevant/ai_score and MUST be disclosed as a
+  model judgment. Optional state param filters the supplier's registered state.
+- **Growth** ("which contracts grew the most", "amended over the original"): `au-amended-up` lens
+  — change window × version chains, ranked by growthPct or delta. NEVER phrase as "over budget":
+  AusTender records commitments; a budget is a different document.
+- **Members** ("who represents the division a supplier is registered in"): `au-current-members`
+  lens gives the House; the postcode→division correspondence is centroid-based and approximate on
+  boundary-straddling postcodes. THE GEOGRAPHY RULE IS ABSOLUTE: a supplier registered in an
+  electorate says NOTHING about the member — never imply involvement, awareness or benefit.
 
 ## Discipline (non-negotiable)
 

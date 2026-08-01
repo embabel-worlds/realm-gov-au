@@ -1,0 +1,28 @@
+# The Parliamentary Handbook producer: one call, the whole current House. The anchor key is the
+# literal 'house' (a singleton container fetch, like a point lookup with one point); echoKeyAs
+# stamps it back so the join matches. OData quirks are pinned in the vendored spec: the filter
+# is a STRING comparison ('True'), senators have no Electorate and are excluded by it.
+
+- name: currentMembers
+  kind: remote
+  operation: currentHouseMembers
+  records: "$.value[*]"
+  args:
+    $filter: "InCurrentParliament eq 'True' and Electorate ne ''"
+    $select: "PHID,DisplayName,Party,PartyAbbrev,Electorate,StateAbbrev"
+  keyTemplate: "{key}"   # key unused by the operation; one call regardless
+  echoKeyAs: parliamentKey
+  project:
+    phid: PHID
+    name: DisplayName
+    party: Party
+    partyAbbrev: PartyAbbrev
+    division: Electorate
+    state: StateAbbrev
+  # Membership changes on elections and by-elections, not by the hour. A day's TTL keeps the
+  # chamber snapshot instant; a by-election result appears within a day of the Handbook.
+  cache: { kind: ttl, seconds: 86400 }
+  cost:
+    bucket: "aph-handbook"
+    rate: "2/sec"
+    yield: high

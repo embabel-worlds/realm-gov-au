@@ -20,12 +20,18 @@ lead demo of the AU-government suite (`target-customers/demos/au-government/`).
   conservative name match (the register publishes no client ABNs; the lens says so and shows the
   matched strings), with the register's own former-government-representative declarations.
 
-## Sources (both keyless, verified live 2026-08-01)
+## Sources (all keyless, verified live 2026-08-01)
 
 | Source | Access | Licence |
 |---|---|---|
 | AusTender OCDS API (`api.tenders.gov.au/ocds`) | by CN id and by date window; cursor-paged 100/page; amendments first-class | CC BY 3.0 AU |
 | Register of Lobbyists (`api.lobbyists.ag.gov.au`) | whole-register index + per-firm profiles (the two GETs that answer anonymously) | AGD site CC BY 4.0; API subdomain unverified |
+| Parliamentary Handbook (`handbookapi.aph.gov.au`) | current House members with party + division, one OData call | aph.gov.au; API terms unverified |
+| Geo assets (build-time, `scripts/build-geo-assets.py`) | Natural Earth outline (PD) · GeoNames postcode centroids (CC BY 4.0) · AEC March-2025 boundaries (CC BY) → postcode→division by **centroid-in-polygon** (approximate on straddling postcodes — every surface says so) | mixed, attributed in file headers |
+
+**The geography rule**, stated once here and rendered wherever the join renders: locating a
+supplier's registered address in an electorate is geography. It says NOTHING about the member —
+not involvement, not awareness, not benefit.
 
 What the OCDS API does NOT serve (measured, documented in `apis/austender-ocds.yaml`): any
 search besides id/date — agency and supplier cuts happen after the fetch; and the website's
@@ -34,10 +40,15 @@ consultancy/confidentiality flags, which exist only in AusTender's XLSX exports.
 ## The app
 
 `apps/moneytrail.html` — single-file app on the shared Embabel app runtime
-(`/api/v1/apps-runtime/v1/embabel.js` + theme): contract passport with the amendment value
-curve, the description-vs-value needle panel, window scan with method split and top tables, and
-the lobbyist check with an honest name-match basis. `?demo=1` renders from
-`apps/moneytrail-demo-data.json` — REAL register data baked 2026-08-01 — with no host required.
+(`/api/v1/apps-runtime/v1/embabel.js` + theme): contract passport with the amendment value curve
+and the description-vs-value needle; keyword/semantic search over descriptions (semantic =
+`ai_relevant`/`ai_score`, disclosed as a model judgment) with a supplier-state filter; the
+grew-through-amendments league (change window × version chains, sign-honest); the map of
+Australia (bubbles at supplier-postcode centroids, tooltips carrying division + member + party);
+per-record and per-supplier AusTender links; and the lobbyist check with an honest name-match
+basis. `?demo=1` renders from `apps/moneytrail-demo-data.json` — REAL register data baked
+2026-08-01 — with no host required. Explore/How tabs; the How tab explains the joins and the
+extension roadmap.
 
 ## Discipline
 

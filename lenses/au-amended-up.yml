@@ -1,0 +1,132 @@
+id: au-amended-up
+name: Contracts that grew through amendments
+description: >-
+  The contracts whose value was amended UPWARD in a period, ranked by growth over the original
+  commitment — the register's own before/after, computed from each notice's version chain. Two
+  hops over the live feed: the change window finds WHICH contracts amended, then each notice's
+  full chain gives original vs current. AusTender records commitments, so this measures a
+  contract growing past what was first agreed — which is not a budget, and is never presented
+  as one.
+params:
+  - name: from
+    type: STRING
+    label: Window start (ISO instant)
+    required: true
+    default: "2026-07-21T00:00:00Z"
+  - name: to
+    type: STRING
+    label: Window end (ISO instant, exclusive)
+    required: true
+    default: "2026-07-28T00:00:00Z"
+  - name: state
+    type: STRING
+    label: Supplier state filter (NSW/VIC/QLD/SA/WA/TAS/NT/ACT; blank = all)
+    required: false
+    default: ""
+  - name: rankBy
+    type: STRING
+    label: growthPct | delta
+    required: false
+    default: growthPct
+spec:
+  kind: cypherscript
+  script: |
+    const from = String(lensArgs.from || "").trim();
+    const to = String(lensArgs.to || "").trim();
+    const state = String(lensArgs.state || "").trim().toUpperCase();
+    const rankBy = String(lensArgs.rankBy || "growthPct") === "delta" ? "delta" : "growthPct";
+    const window = `${from}/${to}`;
+    const CAP = 20; // version-chain fetches per run — disclosed below
+
+    // Hop 1: which contracts amended in the window (the change feed carries the marker).
+    const w1 = await gateway.kg.query({
+      cypher: `
+        MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)
+        WHERE 'contractAmendment' IN r.tags
+          AND ($state = '' OR toUpper(coalesce(r.supplierRegion,'')) = $state)
+        RETURN DISTINCT r.cnId AS cnId, toFloat(r.amount) AS amount
+        ORDER BY amount DESC
+      `,
+      params: JSON.stringify({ window, state }),
+    });
+    const amended = ((w1 && w1.rows) ? w1.rows : (w1 || []));
+    const warnings = [...((w1 && w1.warnings) || [])];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncatedWindow = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+
+    // Hop 2: each notice's version chain — original vs current. Capped and SAID to be capped.
+    const cnIds = amended.map(x => x.cnId).slice(0, CAP);
+    const league = [];
+    for (const cnId of cnIds) {
+      const r = await gateway.kg.query({
+        cypher: `
+          MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
+          RETURN v.releaseDate AS releaseDate, toFloat(v.amount) AS amount,
+                 v.supplierName AS supplierName, v.agencyName AS agencyName,
+                 v.supplierRegion AS supplierRegion, v.supplierPostcode AS supplierPostcode,
+                 v.description AS description, v.endDate AS endDate
+          ORDER BY v.releaseDate ASC
+        `,
+        params: JSON.stringify({ cnId }),
+      });
+      const vs = ((r && r.rows) ? r.rows : (r || []));
+      const w = (r && r.warnings) || [];
+      if (w.length) warnings.push({ cnId, warnings: w });
+      if (vs.length < 2) continue; // one version = nothing grew; a failed chain is in warnings
+      const orig = vs[0].amount, cur = vs[vs.length - 1].amount;
+      if (!(orig > 0)) continue;
+      const head = vs[vs.length - 1];
+      league.push({
+        cnId,
+        originalAmount: orig, currentAmount: cur,
+        delta: Math.round((cur - orig) * 100) / 100,
+        growthPct: Math.round(((cur - orig) / orig) * 1000) / 10,
+        amendments: vs.length - 1,
+        supplierName: head.supplierName, agencyName: head.agencyName,
+        supplierRegion: head.supplierRegion || null, supplierPostcode: head.supplierPostcode || null,
+        description: String(head.description || "").slice(0, 180),
+        endDate: head.endDate || null,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId),
+      });
+    }
+    league.sort((a, b) => (b[rankBy] || 0) - (a[rankBy] || 0));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-amended-up",
+      window: { from, to }, state: state || null, rankBy,
+      status: failed ? "FAILED" : ((truncatedWindow || amended.length > CAP) ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [
+        { title: "Which contracts amended in the window",
+          cypher: "MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)\n" +
+                  "WHERE 'contractAmendment' IN r.tags RETURN DISTINCT r.cnId" },
+        { title: "Each notice's before/after",
+          cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)\n" +
+                  "RETURN v.amount ORDER BY v.releaseDate  // growth = last over first" },
+      ],
+      joins: [
+        { source: "AusTender OCDS API (change window)", role: "Amendment releases in the period",
+          licence: "CC BY 3.0 AU, keyless", ok: !failed,
+          detail: `${amended.length} amended notice(s)${truncatedWindow ? " over a CAPPED fetch" : ""}` },
+        { source: "AusTender OCDS API (version chains)", role: "Original vs current value per notice",
+          licence: "CC BY 3.0 AU, keyless", ok: true,
+          detail: `${league.length} chains fetched` + (amended.length > CAP ? ` of ${amended.length} — top ${CAP} by current value` : "") },
+      ],
+      coverage: amended.length > CAP
+        ? `Ranked over the ${CAP} largest amended contracts (by current value) of ${amended.length} that amended in the window — narrow the window or filter by state to rank them all.`
+        : "Every contract that amended in the fetched window is ranked.",
+      league,
+      method: "The change feed marks which notices amended; each notice's version chain gives the " +
+              "register's own original and current values. Growth is arithmetic; no model touches a number.",
+      limits: [
+        "AusTender records contract COMMITMENTS — growth is a contract amended past what was first agreed, NOT a budget overrun; budgets are a different document this register does not hold.",
+        "Downward and administrative amendments exist too; this lens ranks growth because that is what was asked, and says so.",
+        "State is the SUPPLIER'S registered state, not where work is delivered.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

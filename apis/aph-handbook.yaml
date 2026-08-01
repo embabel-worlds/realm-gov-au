@@ -1,0 +1,64 @@
+openapi: 3.0.3
+info:
+  title: Parliamentary Handbook API
+  version: "0.1.0"
+  description: >-
+    Vendored spec for the Parliamentary Handbook's OData surface (handbookapi.aph.gov.au) —
+    the authoritative record of members and senators, keyed by PHID. Pinned to the one query
+    this realm uses: current House members with electorate and party (150 rows, one call,
+    verified keyless 2026-08-01).
+
+    OData details that matter: `InCurrentParliament` is a STRING ('True'/'False'), not a
+    boolean; senators carry an empty `Electorate`, which is why the filter excludes them; field
+    names are PascalCase.
+
+    The discipline this source demands sits on the TYPE, but bears repeating at the seam:
+    joining a supplier's registered postcode to an electorate and its member is GEOGRAPHY.
+    It says nothing about the member, and no surface built on this join may imply otherwise.
+
+    Licence: aph.gov.au content is generally CC BY-NC-ND; the Handbook API's own terms are
+    UNVERIFIED — fine for a demo surface, confirm before commercial use.
+servers:
+  - url: https://handbookapi.aph.gov.au/api
+    description: Parliamentary Handbook (production)
+paths:
+  /individuals:
+    get:
+      operationId: currentHouseMembers
+      summary: >-
+        Current members of the House of Representatives with electorate, party and PHID.
+        One page, 150 rows — the whole chamber.
+      parameters:
+        - name: $filter
+          in: query
+          required: true
+          description: OData filter; the realm pins "InCurrentParliament eq 'True' and Electorate ne ''".
+          schema:
+            type: string
+            default: "InCurrentParliament eq 'True' and Electorate ne ''"
+        - name: $select
+          in: query
+          required: true
+          description: Field projection to keep the payload honest and small.
+          schema:
+            type: string
+            default: "PHID,DisplayName,Party,PartyAbbrev,Electorate,StateAbbrev"
+      responses:
+        '200':
+          description: OData envelope; members under `value`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  value:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        PHID: { type: string, description: "Stable person id across parliaments." }
+                        DisplayName: { type: string, description: "e.g. 'ALBANESE, the Hon. Anthony Norman'." }
+                        Party: { type: string }
+                        PartyAbbrev: { type: string, description: "May carry trailing whitespace — trim." }
+                        Electorate: { type: string, description: "Division name; the join key to AEC geography." }
+                        StateAbbrev: { type: string }

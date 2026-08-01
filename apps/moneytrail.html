@@ -7,8 +7,9 @@
 <meta name="description" content="Open any AusTender contract's full amendment history as a value curve, scan what the Commonwealth signed in a period, and check suppliers against the federal lobbyist register — every figure sourced, nothing characterised.">
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
+<script src="oz-map-data.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-current-members"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -135,6 +136,32 @@
   embabel-warning-panel { margin-top:.6rem; display:grid; gap:.4rem; }
   [hidden] { display:none !important; }
 
+  /* Search + league + map */
+  .filterbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; }
+  .filterbar select, .filterbar input[type=text] { padding:.72rem .8rem; font:inherit; color:var(--embabel-text);
+    background:var(--embabel-bg); border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); }
+  .filterbar input[type=text] { flex:1 1 12rem; }
+  .filterbar select:focus, .filterbar input:focus { border-color:var(--embabel-accent); outline:3px solid color-mix(in srgb, var(--embabel-accent) 18%, transparent); }
+  .result { padding:.85rem 0; border-bottom:1px solid color-mix(in srgb, var(--embabel-border) 60%, transparent); }
+  .result .r-desc { font-size:.95rem; line-height:1.5; }
+  .result .r-meta { display:flex; flex-wrap:wrap; gap:.4rem .9rem; margin-top:.4rem; font-size:.8rem; color:var(--embabel-text-muted); align-items:center; }
+  .linky { color:var(--embabel-accent); font-weight:650; text-decoration:none; cursor:pointer; }
+  .linky:hover { text-decoration:underline; }
+  a.ext { color:var(--embabel-accent); font-weight:650; text-decoration:none; white-space:nowrap; }
+  a.ext:hover { text-decoration:underline; }
+  .growth-badge { display:inline-block; font:750 .8rem/1.3 var(--embabel-font); color:var(--embabel-warning);
+    background:var(--embabel-warning-bg); border:1px solid color-mix(in srgb, var(--embabel-warning) 40%, transparent);
+    border-radius:6px; padding:.15rem .45rem; font-variant-numeric:tabular-nums; }
+  .growth-badge.down { color:var(--embabel-text-muted); background:var(--embabel-surface-subtle);
+    border-color:var(--embabel-border); }
+  .rule { font-size:.78rem; color:var(--embabel-text-muted); border-left:3px solid var(--embabel-border);
+    padding:.4rem .7rem; margin-top:.8rem; }
+  .map-box { margin-top:1.1rem; }
+  svg.ozmap { width:100%; max-width:640px; height:auto; display:block; margin:0 auto; }
+  svg.ozmap .land { fill:color-mix(in srgb, var(--embabel-text-muted) 10%, transparent); stroke:var(--embabel-border); stroke-width:1; }
+  svg.ozmap .bub { fill:color-mix(in srgb, var(--embabel-accent) 55%, transparent); stroke:var(--embabel-surface); stroke-width:1.5; cursor:pointer; }
+  svg.ozmap .bub:hover { fill:var(--embabel-accent); }
+
   /* How-it-works tab */
   .how h3 { margin:1.4rem 0 .3rem; font-size:1.02rem; letter-spacing:-.01em; }
   .how h3:first-of-type { margin-top:0; }
@@ -202,6 +229,35 @@
       <div id="lb-result" hidden></div>
     </section>
 
+    <!-- ============ FIND CONTRACTS ============ -->
+    <section class="card" id="search-card">
+      <h2>Find contracts</h2>
+      <p class="sub">Search descriptions, suppliers and agencies in a window — keyword is deterministic; semantic asks a model and says so. Filter by the supplier's registered state.</p>
+      <div class="filterbar">
+        <input id="q-input" type="text" placeholder="e.g. security, consultancy, Townsville…" aria-label="Search text">
+        <select id="q-mode" aria-label="Search mode">
+          <option value="keyword">Keyword (exact)</option>
+          <option value="semantic">Semantic (model-judged)</option>
+        </select>
+        <select id="q-state" aria-label="Supplier state"></select>
+        <button class="embabel-button" id="q-go">Search</button>
+      </div>
+      <embabel-operation-state id="q-state-el"></embabel-operation-state>
+      <div id="q-result" hidden></div>
+    </section>
+
+    <!-- ============ GREW THROUGH AMENDMENTS ============ -->
+    <section class="card" id="league-card">
+      <h2>Grew through amendments</h2>
+      <p class="sub">Contracts amended in the window, ranked by growth over the original commitment — the register's own before/after. Downward amendments stay in the list with their sign; a commitment is not a budget, and this never claims one was exceeded.</p>
+      <div class="filterbar">
+        <select id="l-state" aria-label="Supplier state"></select>
+        <button class="embabel-button" id="l-go">Rank them</button>
+      </div>
+      <embabel-operation-state id="l-state-el"></embabel-operation-state>
+      <div id="l-result" hidden></div>
+    </section>
+
     <!-- ============ WHAT WAS SIGNED ============ -->
     <section class="card" id="window-card">
       <h2>What the Commonwealth signed</h2>
@@ -250,6 +306,11 @@
               <b>former-government-representative declarations</b>. Joined to suppliers by conservative
               name match — and reported as a name match, because the register publishes no client ABNs.</div>
             <span class="tag">AGD · verified live 1 Aug 2026</span></div>
+          <div class="hop"><div class="h">Parliamentary Handbook + AEC geography</div>
+            <div class="d">Supplier postcode → electoral division (AEC boundaries, centroid method,
+              approximate on straddling postcodes) → the sitting member and party (Handbook API, live).
+              <b>Geography, never association</b> — the rule renders wherever the join does.</div>
+            <span class="tag">APH · AEC · verified live 1 Aug 2026</span></div>
           <div class="hop"><div class="h">Structured × text, one query</div>
             <div class="d">CN4118426's $97,587 repayment exists <b>only in its description text</b> — the
               contract value was never amended. A value-delta query misses it; a governed query that
@@ -282,6 +343,10 @@
           <div class="hop"><div class="h">Federal Register of Legislation</div><div class="d">Point-in-time law:
             "the provision in force on the date this decision applied it" — the decision-provenance
             layer, from a keyless government API.</div><span class="tag">next hop</span></div>
+          <div class="hop"><div class="h">Correspondence producers</div><div class="d">The postcode→division
+            table is applied in the app today (transparently, with its centroid caveat); a declared
+            correspondence producer moves that join into the engine with the same provenance as
+            every other hop.</div><span class="tag">engine seam</span></div>
           <div class="hop"><div class="h">ANAO recommendations</div><div class="d">Recommendation → agency response →
             follow-up verdict → remediation contracts: the accountability chain nobody joins today.</div><span class="tag">next hop</span></div>
           <div class="hop"><div class="h">Non-public data, governed</div><div class="d">The same engine enforces
@@ -352,17 +417,21 @@
   // ---- Envelope plumbing -------------------------------------------------
   // Live mode invokes the realm's lenses through the shared runner; the lens presents a JSON
   // document which arrives as envelope.data (parse defensively — present() sends a string).
-  var runner = (!DEMO && E) ? E.createRunner({ timeoutMs: 120000 }) : null;
+  // One runner PER SURFACE: a runner cancels its own superseded requests, so sharing one would
+  // let a window scan silently cancel a passport load.
+  var runner = null, wRunner = null, lbRunner = null;
+  if (!DEMO && E) { runner = E.createRunner({ timeoutMs: 120000 }); wRunner = E.createRunner({ timeoutMs: 180000 }); lbRunner = E.createRunner({ timeoutMs: 120000 }); }
   function lensData(envelope) {
     if (!envelope) return null;
     var d = envelope.data;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { /* leave as-is */ } }
     return d;
   }
-  async function runLens(id, args, stateEl) {
+  async function runLens(id, args, stateEl, which) {
     if (DEMO) return demoLens(id, args, stateEl);
-    if (!runner) throw new Error('The Embabel app runtime did not load.');
-    var envelope = await runner.lens(id, args, { state: stateEl });
+    var r = which === 'window' ? wRunner : which === 'lobby' ? lbRunner : runner;
+    if (!r) throw new Error('The Embabel app runtime did not load.');
+    var envelope = await r.lens(id, args, { state: stateEl });
     return envelope ? lensData(envelope) : null; // null = superseded by a newer request
   }
   async function demoLens(id, args, stateEl) {
@@ -378,6 +447,52 @@
       source: 'AusTender OCDS API (CC BY 3.0 AU)'
     };
     if (id === 'au-window-signed') out = demoData.window;
+    if (id === 'au-current-members') out = {
+      kind: 'au-current-members', status: 'COMPLETE', warnings: [],
+      members: Object.entries(window.OZ_MEMBERS || {}).map(function (kv) {
+        return Object.assign({ division: kv[0] }, kv[1]);
+      }),
+    };
+    if (id === 'au-contract-search') {
+      var q = String(args.query || '').toLowerCase();
+      var st = String(args.state || '').toUpperCase();
+      var rowsAll = demoData.windowRows || [];
+      var hits = rowsAll.filter(function (x) {
+        var okQ = !q || (x.description || '').toLowerCase().includes(q) ||
+          (x.supplierName || '').toLowerCase().includes(q) || (x.agencyName || '').toLowerCase().includes(q);
+        var okS = !st || String(x.supplierRegion || '').toUpperCase() === st;
+        return okQ && okS;
+      }).sort(function (a, b) { return b.amount - a.amount; }).slice(0, 40);
+      out = {
+        kind: 'au-contract-search', query: args.query, state: st || null,
+        mode: 'keyword', window: demoData.window.window,
+        status: 'PARTIAL',
+        warnings: ['Searched the 200 baked releases — a sample, not the period.' +
+          (args.mode === 'semantic' ? ' Semantic mode needs a live world (ai_relevant/ai_score run in the engine); demo searched by keyword.' : '')],
+        matchBasis: { kind: 'KEYWORD — deterministic containment', criterion: args.query,
+                      note: 'Matches the register’s text exactly as published.' },
+        results: hits.map(function (x) {
+          return Object.assign({}, x, { austenderUrl: 'https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(x.cnId) });
+        }),
+        limits: ["Searches the fetched window only.", "State filters on the SUPPLIER'S registered state — not where the work is delivered."],
+        source: 'AusTender OCDS API (CC BY 3.0 AU)',
+      };
+    }
+    if (id === 'au-amended-up') {
+      var stl = String(args.state || '').toUpperCase();
+      var entries = (demoData.league.entries || []).filter(function (x) {
+        return !stl || String(x.supplierRegion || '').toUpperCase() === stl;
+      });
+      out = {
+        kind: 'au-amended-up', window: demoData.league.window, state: stl || null, rankBy: 'growthPct',
+        status: 'PARTIAL', warnings: [],
+        coverage: demoData.league.coverage,
+        league: entries,
+        limits: ["AusTender records contract COMMITMENTS — growth is a contract amended past what was first agreed, NOT a budget overrun.",
+                 "State is the SUPPLIER'S registered state, not where work is delivered."],
+        source: 'AusTender OCDS API (CC BY 3.0 AU)',
+      };
+    }
     if (id === 'au-supplier-lobbying') out = demoData.lobbying[String(args.supplierName || '').toUpperCase()] || {
       kind: 'au-supplier-lobbying', supplierName: args.supplierName, status: 'COMPLETE', warnings: [], found: false,
       matchBasis: { kind: 'NAME MATCH — the register publishes no client ABNs', suppliedName: args.supplierName,
@@ -388,6 +503,47 @@
     };
     setState(stateEl, out ? 'ready' : 'empty', {});
     return out;
+  }
+
+  // ---- Geography: postcode -> division -> member ---------------------------
+  // The correspondence is CENTROID-BASED (a postcode straddling a boundary is assigned
+  // approximately) and the location is the SUPPLIER'S REGISTERED ADDRESS. Both caveats render
+  // wherever the join renders, and the rule is absolute: geography, never association.
+  var GEO_RULE = 'Electorate is the supplier’s REGISTERED address located by postcode centroid — approximate on boundary-straddling postcodes, and it says nothing about the member: geography, not association.';
+  var membersByDivision = (window.OZ_MEMBERS || {});   // demo fallback, baked with its date
+  var membersFresh = false;
+  async function loadMembers() {
+    if (DEMO || membersFresh || !runner) return;
+    try {
+      var d = await runLens('au-current-members', {}, null);
+      if (d && d.members && d.members.length) {
+        membersByDivision = {};
+        d.members.forEach(function (m) { membersByDivision[m.division] = m; });
+        membersFresh = true;
+      }
+    } catch (e) { /* baked fallback stands; it carries its as-at date */ }
+  }
+  function electorateOf(postcode) {
+    var pc = String(postcode || '').trim();
+    var division = (window.OZ_DIVISIONS || {})[pc];
+    if (!division) return null;
+    return { division: division, member: membersByDivision[division] || null };
+  }
+  function electorateHTML(postcode) {
+    var e = electorateOf(postcode);
+    if (!e) return '';
+    var m = e.member;
+    return '<span title="' + esc(GEO_RULE) + '">Division of <b>' + esc(e.division) + '</b>' +
+      (m ? ' · ' + esc(m.name) + ' (' + esc(m.partyAbbrev || m.party) + ')' : '') + '</span>';
+  }
+  function supplierUrl(name) {
+    return 'https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(String(name || ''));
+  }
+  var STATES = ['', 'NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'NT', 'ACT'];
+  function fillStateSelect(el) {
+    el.innerHTML = STATES.map(function (s) {
+      return '<option value="' + s + '">' + (s || 'All states') + '</option>';
+    }).join('');
   }
 
   function warningsInto(el, list) {
@@ -517,15 +673,22 @@
         '<div class="note">' + esc((d.joins && d.joins[0] && d.joins[0].detail) || '') + '</div></div>' +
       '</div>';
 
+    var elect = electorateHTML(c.supplierPostcode);
     var meta =
       '<div class="meta">' +
-      '<div><span class="k">Supplier</span>' + esc(c.supplierName || '—') + (c.supplierAbn ? ' <span class="fine">ABN ' + esc(c.supplierAbn) + '</span>' : ' <span class="fine">(no ABN published)</span>') + '</div>' +
+      '<div><span class="k">Supplier</span>' + esc(c.supplierName || '—') + (c.supplierAbn ? ' <span class="fine">ABN ' + esc(c.supplierAbn) + '</span>' : ' <span class="fine">(no ABN published)</span>') +
+        (c.supplierName ? ' <a class="ext" target="_blank" rel="noopener" href="' + esc(supplierUrl(c.supplierName)) + '">all their contracts ↗</a>' : '') + '</div>' +
       '<div><span class="k">Agency</span>' + esc(c.agencyName || '—') + (c.agencyAbn ? ' <span class="fine">ABN ' + esc(c.agencyAbn) + '</span>' : '') + '</div>' +
       '<div><span class="k">Procurement</span><span class="badge ' + methodCls + '">' + esc(c.procurementMethodDetails || c.procurementMethod || 'unstated') + '</span></div>' +
       '<div><span class="k">Signed</span>' + esc(dateLbl(c.dateSigned)) + '</div>' +
       '<div><span class="k">Period</span>' + esc(dateLbl(c.startDate)) + ' → ' + esc(dateLbl(c.endDate)) + '</div>' +
       '<div><span class="k">Category (UNSPSC)</span>' + esc((c.unspscCodes || []).join(', ') || '—') + '</div>' +
+      '<div><span class="k">Registered at</span>' + esc([c.supplierLocality, c.supplierRegion, c.supplierPostcode].filter(Boolean).join(' ') || '—') +
+        (elect ? ' · ' + elect : '') + '</div>' +
+      '<div><span class="k">Register record</span>' + (d.austenderUrl
+        ? '<a class="ext" target="_blank" rel="noopener" href="' + esc(d.austenderUrl) + '">View on AusTender ↗</a>' : '—') + '</div>' +
       '</div>' +
+      (elect ? '<div class="rule">' + esc(GEO_RULE) + '</div>' : '') +
       (c.limitedTenderReason
         ? '<div class="fine" style="margin-top:.6rem"><b>Stated limited-tender ground (verbatim):</b> ' + esc(c.limitedTenderReason) + '</div>'
         : '') +
@@ -603,9 +766,118 @@
   async function runLobby(supplierName) {
     var card = $('lobby-card'); card.hidden = false; $('lb-result').hidden = true;
     try {
-      var d = await runLens('au-supplier-lobbying', { supplierName: supplierName }, $('lb-state'));
+      var d = await runLens('au-supplier-lobbying', { supplierName: supplierName }, $('lb-state'), 'lobby');
       if (d) renderLobby(d);
     } catch (e) { /* state component already shows the error */ }
+  }
+
+  // ---- Search rendering -----------------------------------------------------
+  function renderSearch(d) {
+    var box = $('q-result');
+    var mb = d.matchBasis || {};
+    var head = '<div class="fine" style="margin-top:.8rem"><b>' + esc(mb.kind || '') + '.</b> ' + esc(mb.note || '') +
+      (d.state ? ' Filtered to supplier state <b>' + esc(d.state) + '</b>.' : '') + '</div>' +
+      (d.warnings && d.warnings.length ? '<div class="fine">' + d.warnings.map(function (w) { return esc(typeof w === 'string' ? w : JSON.stringify(w)); }).join(' · ') + '</div>' : '');
+    var rows = d.results || [];
+    var body = rows.length ? rows.map(function (x) {
+      var elect = electorateHTML(x.supplierPostcode);
+      return '<div class="result">' +
+        '<div class="r-desc">' + esc(x.description || x.title || '(no description published)') + '</div>' +
+        '<div class="r-meta">' +
+        '<b style="color:var(--embabel-text)">' + esc(aud(x.amount)) + '</b>' +
+        '<span class="linky" data-cn="' + esc(x.cnId) + '">' + esc(x.cnId) + '</span>' +
+        '<span class="linky" data-supplier="' + esc(x.supplierName || '') + '">' + esc(x.supplierName || '—') + '</span>' +
+        '<span>' + esc(x.agencyName || '—') + '</span>' +
+        '<span class="badge ' + (x.procurementMethod === 'limited' ? 'limited' : 'open') + '">' + esc(x.procurementMethod || 'unstated') + '</span>' +
+        (elect ? '<span>' + elect + '</span>' : '') +
+        '<a class="ext" target="_blank" rel="noopener" href="' + esc(x.austenderUrl) + '">record ↗</a>' +
+        (x.supplierName ? '<a class="ext" target="_blank" rel="noopener" href="' + esc(supplierUrl(x.supplierName)) + '">supplier ↗</a>' : '') +
+        '</div></div>';
+    }).join('') : '<div class="fine" style="font-size:.95rem;margin-top:.6rem"><b>No matches in the fetched window.</b> Exact text match only — a spelling variant or a different window may match.</div>';
+    var fine = '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>' +
+      'CN opens the passport here; supplier links open the register’s own search. Source: ' + esc(d.source || '') + '</div>' +
+      '<div class="rule">' + esc(GEO_RULE) + '</div>';
+    box.innerHTML = head + body + fine;
+    box.hidden = false;
+    wireRowLinks(box);
+  }
+  function wireRowLinks(scope) {
+    scope.querySelectorAll('.linky[data-cn]').forEach(function (el) {
+      el.addEventListener('click', function () { loadPassport(el.dataset.cn); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    });
+    scope.querySelectorAll('.linky[data-supplier]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        $('q-input').value = el.dataset.supplier; $('q-mode').value = 'keyword'; runSearch();
+        $('search-card').scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  }
+
+  // ---- League rendering -----------------------------------------------------
+  function renderLeague(d) {
+    var box = $('l-result');
+    var rows = d.league || [];
+    var cover = '<div class="fine" style="margin-top:.8rem">' + esc(d.coverage || '') +
+      (d.state ? ' Filtered to supplier state <b>' + esc(d.state) + '</b>.' : '') + '</div>';
+    var body = rows.length
+      ? '<table><thead><tr><th>CN</th><th>Supplier</th><th>Agency</th><th class="num">Original</th><th class="num">Now</th><th class="num">Growth</th><th class="num">Amdts</th><th></th></tr></thead><tbody>' +
+        rows.map(function (x) {
+          return '<tr><td><span class="linky" data-cn="' + esc(x.cnId) + '">' + esc(x.cnId) + '</span></td>' +
+            '<td><span class="linky" data-supplier="' + esc(x.supplierName || '') + '">' + esc(x.supplierName || '—') + '</span></td>' +
+            '<td>' + esc(x.agencyName || '—') + '</td>' +
+            '<td class="num">' + esc(aud(x.originalAmount, true)) + '</td>' +
+            '<td class="num">' + esc(aud(x.currentAmount, true)) + '</td>' +
+            '<td class="num"><span class="growth-badge' + (x.growthPct < 0 ? ' down' : '') + '">' +
+              esc((x.growthPct >= 0 ? '+' : '') + x.growthPct) + '%</span></td>' +
+            '<td class="num">' + esc(String(x.amendments)) + '</td>' +
+            '<td><a class="ext" target="_blank" rel="noopener" href="' + esc(x.austenderUrl) + '">↗</a></td></tr>';
+        }).join('') + '</tbody></table>'
+      : '<div class="fine" style="font-size:.95rem;margin-top:.6rem"><b>No contracts grew through amendments in this fetch.</b></div>';
+    var fine = '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>Source: ' + esc(d.source || '') + '</div>';
+    box.innerHTML = cover + body + fine;
+    box.hidden = false;
+    wireRowLinks(box);
+  }
+
+  // ---- The map of Australia -------------------------------------------------
+  // Bubbles at supplier-postcode centroids, area proportional to committed value. The land is
+  // Natural Earth; the correspondence caveat and the registered-address basis render with it.
+  function renderMap(geo) {
+    var oz = window.OZ_OUTLINE, pcs = window.OZ_POSTCODES;
+    if (!oz || !pcs || !geo || !(geo.points || []).length) return '';
+    var pts = geo.points.filter(function (p) { return pcs[p.postcode]; });
+    if (!pts.length) return '';
+    var LON0 = 112.5, LON1 = 154.5, LAT0 = -44.2, LAT1 = -9.8, W = 760, H = 699;
+    var X = function (lon) { return (lon - LON0) / (LON1 - LON0) * W; };
+    var Y = function (lat) { return (LAT1 - lat) / (LAT1 - LAT0) * H; };
+    var vMax = Math.max.apply(null, pts.map(function (p) { return p.value; }));
+    var land = oz.paths.map(function (p) { return '<path class="land" d="' + p + '"/>'; }).join('');
+    var bubs = pts.map(function (p, i) {
+      var ll = pcs[p.postcode];
+      var r = 4 + 26 * Math.sqrt(p.value / vMax);
+      return '<circle class="bub" data-i="' + i + '" cx="' + X(ll[1]).toFixed(1) + '" cy="' + Y(ll[0]).toFixed(1) + '" r="' + r.toFixed(1) + '"/>';
+    }).join('');
+    var missing = geo.withoutPostcode
+      ? '<div class="fine">' + geo.withoutPostcode + ' release(s) had no usable supplier postcode and are not on the map.</div>' : '';
+    setTimeout(function () {
+      var svg = document.querySelector('svg.ozmap');
+      if (!svg) return;
+      svg.querySelectorAll('.bub').forEach(function (el) {
+        var p = pts[Number(el.dataset.i)];
+        var e = electorateOf(p.postcode);
+        el.addEventListener('mousemove', function (ev) {
+          showTT(ev.clientX, ev.clientY,
+            '<b>' + esc(aud(p.value)) + '</b>' +
+            esc((p.locality || '') + ' ' + p.postcode + (p.region ? ' (' + p.region + ')' : '')) + ' · ' + p.count + ' contract(s)<br>' +
+            (e ? 'Division of ' + esc(e.division) + (e.member ? ' · ' + esc(e.member.name) + ' (' + esc(e.member.partyAbbrev || '') + ')' : '') + '<br>' : '') +
+            'Largest: ' + esc(p.topSupplier || '—'));
+        });
+        el.addEventListener('mouseleave', hideTT);
+      });
+    }, 0);
+    return '<div class="map-box"><div class="chart-title">Where the window’s suppliers are registered — bubble area = committed value</div>' +
+      '<svg class="ozmap" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Committed value by supplier postcode">' + land + bubs + '</svg>' +
+      missing + '<div class="rule">' + esc((geo.basis || '') + '. ' + GEO_RULE) + '</div></div>';
   }
 
   // ---- Window rendering ---------------------------------------------------
@@ -624,13 +896,15 @@
       }).join('') + '</div>';
 
     var top = '<div class="chart-title" style="margin-top:1rem">Largest contracts in the fetch</div>' +
-      '<table><thead><tr><th>CN</th><th>Supplier</th><th>Agency</th><th>Method</th><th class="num">Value</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>CN</th><th>Supplier</th><th>Agency</th><th>Method</th><th class="num">Value</th><th></th></tr></thead><tbody>' +
       (d.topContracts || []).map(function (x) {
         return '<tr class="click" data-cn="' + esc(x.cnId) + '"><td class="cn">' + esc(x.cnId) + '</td>' +
           '<td>' + esc(x.supplierName || '—') + '</td><td>' + esc(x.agencyName || '—') + '</td>' +
           '<td><span class="badge ' + (x.procurementMethod === 'limited' ? 'limited' : 'open') + '">' + esc(x.procurementMethod || 'unstated') + '</span></td>' +
-          '<td class="num">' + esc(aud(x.amount)) + '</td></tr>';
-      }).join('') + '</tbody></table><div class="fine">Click a CN to open its passport — amendments and all.</div>';
+          '<td class="num">' + esc(aud(x.amount)) + '</td>' +
+          '<td>' + (x.austenderUrl ? '<a class="ext" target="_blank" rel="noopener" href="' + esc(x.austenderUrl) + '">↗</a>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table><div class="fine">Click a CN to open its passport — amendments and all. ↗ opens the register’s own record.</div>';
+    var map = renderMap(d.geo);
 
     var g2 = '<div class="grid2" style="margin-top:1rem">' +
       '<div><div class="chart-title">Top suppliers by committed value</div>' +
@@ -643,10 +917,13 @@
       (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
       '</ul>Source: ' + esc(d.source || '') + '</div>';
 
-    box.innerHTML = tiles + top + g2 + fine;
+    box.innerHTML = tiles + map + top + g2 + fine;
     box.hidden = false;
     box.querySelectorAll('tr.click').forEach(function (tr) {
-      tr.addEventListener('click', function () { loadPassport(tr.dataset.cn); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      tr.addEventListener('click', function (ev) {
+        if (ev.target.closest('a')) return; // the ↗ link is the register's, not ours
+        loadPassport(tr.dataset.cn); window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     });
   }
 
@@ -666,8 +943,35 @@
     if (!from || !to) return;
     $('w-result').hidden = true; $('w-warnings').hidden = true;
     try {
-      var d = await runLens('au-window-signed', { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', minAmount: '0' }, $('w-state'));
+      var d = await runLens('au-window-signed', { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', minAmount: '0' }, $('w-state'), 'window');
       if (d) renderWindow(d);
+    } catch (e) { /* state component shows it */ }
+  }
+  var searchRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
+  async function runSearch() {
+    var q = $('q-input').value.trim();
+    if (!q) return;
+    var from = $('w-from').value, to = $('w-to').value;
+    $('q-result').hidden = true;
+    var args = { query: q, mode: $('q-mode').value, state: $('q-state').value,
+                 from: from + 'T00:00:00Z', to: to + 'T00:00:00Z' };
+    try {
+      var d;
+      if (DEMO) d = await demoLens('au-contract-search', args, $('q-state-el'));
+      else { var env = await searchRunner.lens('au-contract-search', args, { state: $('q-state-el') }); d = env ? lensData(env) : null; }
+      if (d) renderSearch(d);
+    } catch (e) { /* state component shows it */ }
+  }
+  var leagueRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  async function runLeague() {
+    var from = $('w-from').value, to = $('w-to').value;
+    $('l-result').hidden = true;
+    var args = { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', state: $('l-state').value, rankBy: 'growthPct' };
+    try {
+      var d;
+      if (DEMO) d = await demoLens('au-amended-up', args, $('l-state-el'));
+      else { var env = await leagueRunner.lens('au-amended-up', args, { state: $('l-state-el') }); d = env ? lensData(env) : null; }
+      if (d) renderLeague(d);
     } catch (e) { /* state component shows it */ }
   }
 
@@ -688,6 +992,10 @@
     var b = e.target.closest('.sample'); if (b) loadPassport(b.dataset.cn);
   });
   $('w-go').addEventListener('click', loadWindow);
+  fillStateSelect($('q-state')); fillStateSelect($('l-state'));
+  $('q-go').addEventListener('click', runSearch);
+  $('q-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') runSearch(); });
+  $('l-go').addEventListener('click', runLeague);
   document.addEventListener('embabel-retry', function (e) {
     var host = e.target && e.target.id;
     if (host === 'pp-state') loadPassport($('cn-input').value);
@@ -713,9 +1021,14 @@
         return;
       }
     }
+    loadMembers(); // fire-and-forget: electorate lines upgrade in place when the fresh chamber lands
     // Land on the story: the $402.5M → $736.3M chain, with the window scan one click away.
     loadPassport('CN3942784');
-    if (DEMO) { $('w-from').value = '2026-07-28'; $('w-to').value = '2026-07-29'; loadWindow(); }
+    if (DEMO) {
+      $('w-from').value = '2026-07-28'; $('w-to').value = '2026-07-29';
+      loadWindow(); runLeague();
+      $('q-input').value = 'security'; runSearch();
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();

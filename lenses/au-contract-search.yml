@@ -1,0 +1,130 @@
+id: au-contract-search
+name: Search what the Commonwealth signed
+description: >-
+  Search contract descriptions in a publication window, two ways it always discloses: KEYWORD is a
+  deterministic case-insensitive containment match; SEMANTIC uses the engine's ai_relevant /
+  ai_score primitives to keep and rank rows by fit to a natural-language ask ("anything about
+  cyber security uplift"), and says a model judged the fit. Every hit carries its description,
+  value, parties and a link to the AusTender record.
+params:
+  - name: query
+    type: STRING
+    label: What are you looking for?
+    required: true
+    default: security
+  - name: from
+    type: STRING
+    label: Window start (ISO instant)
+    required: true
+    default: "2026-07-21T00:00:00Z"
+  - name: to
+    type: STRING
+    label: Window end (ISO instant, exclusive)
+    required: true
+    default: "2026-07-28T00:00:00Z"
+  - name: mode
+    type: STRING
+    label: keyword | semantic
+    required: false
+    default: keyword
+  - name: state
+    type: STRING
+    label: Supplier state filter (NSW/VIC/QLD/SA/WA/TAS/NT/ACT; blank = all)
+    required: false
+    default: ""
+spec:
+  kind: cypherscript
+  script: |
+    const query = String(lensArgs.query || "").trim();
+    const from = String(lensArgs.from || "").trim();
+    const to = String(lensArgs.to || "").trim();
+    const mode = String(lensArgs.mode || "keyword").trim().toLowerCase() === "semantic" ? "semantic" : "keyword";
+    const state = String(lensArgs.state || "").trim().toUpperCase();
+    const window = `${from}/${to}`;
+
+    // KEYWORD is arithmetic (containment over the register's own text). SEMANTIC is the engine's
+    // ai_relevant filter + ai_score rerank — an LLM judgment, so the answer LABELS it as one and
+    // carries the criterion verbatim. The two must never be presented interchangeably.
+    const cypher = mode === "semantic"
+      ? `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE r.ai_relevant = $query
+          AND ($state = '' OR toUpper(coalesce(r.supplierRegion,'')) = $state)
+        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+               toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+               r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
+               r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
+               r.supplierPostcode AS supplierPostcode,
+               r.procurementMethod AS procurementMethod,
+               r.limitedTenderReason AS limitedTenderReason, r.releaseDate AS releaseDate
+        ORDER BY ai_score(r, $query) DESC
+        LIMIT 40
+      `
+      : `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE (toLower(r.description) CONTAINS toLower($query)
+           OR toLower(r.supplierName) CONTAINS toLower($query)
+           OR toLower(r.agencyName) CONTAINS toLower($query))
+          AND ($state = '' OR toUpper(coalesce(r.supplierRegion,'')) = $state)
+        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+               toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+               r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
+               r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
+               r.supplierPostcode AS supplierPostcode,
+               r.procurementMethod AS procurementMethod,
+               r.limitedTenderReason AS limitedTenderReason, r.releaseDate AS releaseDate
+        ORDER BY amount DESC
+        LIMIT 40
+      `;
+    const r = await gateway.kg.query({ cypher, params: JSON.stringify({ window, query, state }) });
+    const rows = ((r && r.rows) ? r.rows : (r || []));
+    const warnings = (r && r.warnings) || [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-contract-search",
+      query, mode, state: state || null, window: { from, to },
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [{
+        title: mode === "semantic" ? "Semantic narrowing over window descriptions" : "Keyword containment over window descriptions",
+        note: mode === "semantic"
+          ? "ai_relevant keeps rows a model scores >= 0.5 against the ask; ai_score orders them. A judgment, labelled as one."
+          : "Deterministic case-insensitive containment over description, supplier and agency text. No model involved.",
+        cypher: cypher.trim(),
+      }],
+      joins: [{ source: "AusTender OCDS API", role: "Contract notices first published in the window",
+                licence: "CC BY 3.0 AU, keyless", ok: !failed,
+                detail: `${rows.length} match(es)${truncated ? " over a CAPPED window fetch — a sample" : ""}` }],
+      matchBasis: mode === "semantic"
+        ? { kind: "SEMANTIC — an LLM scored each description against your ask", criterion: query,
+            note: "Fit is a model judgment (threshold 0.5), not a fact about the record. The keyword mode exists for when you need determinism." }
+        : { kind: "KEYWORD — deterministic containment", criterion: query,
+            note: "Matches the register's text exactly as published; spelling variants are missed rather than guessed." },
+      results: rows.map(x => ({
+        cnId: x.cnId, title: x.title, description: x.description, amount: x.amount,
+        supplierName: x.supplierName, supplierAbn: x.supplierAbn || null,
+        agencyName: x.agencyName,
+        supplierLocality: x.supplierLocality || null, supplierRegion: x.supplierRegion || null,
+        supplierPostcode: x.supplierPostcode || null,
+        procurementMethod: x.procurementMethod,
+        limitedTenderReason: x.limitedTenderReason || null,
+        releaseDate: x.releaseDate,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId),
+      })),
+      method: "Window fetch from the register, then " + (mode === "semantic"
+        ? "model-scored narrowing (disclosed as such)." : "deterministic text containment."),
+      limits: [
+        "Searches the fetched window only — a capped fetch is a sample and is labelled PARTIAL.",
+        "Descriptions are the agencies' own words; brevity or vagueness in them is a register fact.",
+        "State filters on the SUPPLIER'S registered state — not where the work is delivered.",
+        "The AusTender link opens the register's own search on the CN id — the canonical record, not a copy.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html

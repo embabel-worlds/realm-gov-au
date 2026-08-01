@@ -13,3 +13,8 @@
   name: agLobbyists
   type: openapi
   auth: none
+
+- url: aph-handbook.yaml
+  name: aphHandbook
+  type: openapi
+  auth: none
