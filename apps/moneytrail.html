@@ -1076,81 +1076,152 @@
   // (the 409-before-stream race, the reply arriving on the stream rather than in the POST body,
   // filtering the stream's other event kinds, and the session being shared with every other
   // surface). This app used to hand-roll it and hit the first trap.
-  var chat = null;
-  function chatAppend(role, text, thinking) {
-    var log = $('chat-log'); log.hidden = false;
-    var div = document.createElement('div');
-    div.className = 'msg ' + role + (thinking ? ' thinking' : '');
-    div.textContent = text;
-    log.appendChild(div); log.scrollTop = log.scrollHeight;
-    return div;
-  }
-  function chatDisable(note) {
-    $('chat-input').disabled = true; $('chat-send').disabled = true;
-    var n = $('chat-note'); n.hidden = false; n.textContent = note;
-  }
-  var chatThinkingEl = null, chatBusy = false;
-  function chatEnsure() {
-    if (chat) return chat;
-    chat = E.chat.session({
-      onMessage: function (m) {
-        if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
-        chatAppend('assistant', m.content);
-        chatBusy = false; $('chat-send').disabled = false;
+  // ---- The ask box is a LENS ROUTER, not general chat -------------------------------------
+  // General chat answers from the persisted graph, and these contracts are VIRTUAL — fetched from
+  // an anchor per query — so it finds nothing and says so. Worse, some questions are unanswerable
+  // as phrased ("IBM's largest contracts": the register has no supplier search, only id and date).
+  // So this box routes a question to one of the realm's lenses, runs it, renders the panel, and
+  // SAYS what it ran and over what window. When nothing fits, it says what it can answer instead
+  // of guessing.
+  var ROUTES = [
+    { id: 'passport', test: /\bcn\s?\d{5,}\b/i,
+      label: 'the contract passport',
+      run: function (q) { var m = q.match(/\bcn\s?(\d{5,})\b/i); return loadPassport('CN' + m[1]); },
+      focus: 'passport-card' },
+    { id: 'amended', test: /\b(grew|grow|growth|amend|blowout|blow out|over.?budget|increase[sd]?|escalat)/i,
+      label: 'contracts that grew through amendments',
+      run: function () { return runLeague(); }, focus: 'league-card' },
+    { id: 'themes', test: /\b(portfolio|buying|purchas|theme|categor|what.*(buy|bought))/i,
+      label: 'what a portfolio is buying',
+      run: function (q) {
+        var sel = $('t-portfolio');
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value && q.toLowerCase().indexOf(sel.options[i].value.toLowerCase().slice(0, 12)) >= 0) { sel.value = sel.options[i].value; break; }
+        }
+        return runThemes();
+      }, focus: 'themes-card' },
+    { id: 'lobby', test: /\b(lobby|lobbyist|lobbying)\b/i,
+      label: 'the lobbyist-register check',
+      run: function (q) { var n = subjectOf(q); return n ? runLobby(n) : null; },
+      needsSubject: true, focus: 'lobby-card' },
+    { id: 'window', test: /\b(signed|awarded|spend|spent|total|this (week|month)|last (week|month)|biggest|largest)\b/i,
+      label: function (q) { return subjectOf(q) ? 'a search for “' + subjectOf(q) + '”' : 'what was signed in the window'; },
+      run: function (q) {
+        var n = subjectOf(q);
+        if (n) { $('q-input').value = n; $('q-mode').value = 'keyword'; return runSearch(); }
+        return loadWindow();
       },
-      onError: function () {
-        if (chatThinkingEl) chatThinkingEl.textContent = 'Connection to your world dropped — retrying…';
-      },
+      focus: function (q) { return subjectOf(q) ? 'search-card' : 'window-card'; } },
+  ];
+  /** A supplier/agency name from the question: a quoted phrase, or a run of Capitalised words. */
+  function subjectOf(q) {
+    var quoted = q.match(/["“']([^"”']{3,60})["”']/);
+    if (quoted) return quoted[1].trim();
+    var stop = /^(What|Which|Who|Show|Tell|List|Find|How|Is|Are|Did|Does|The|This|That|Their|Australian|Commonwealth|Government)$/;
+    var run = [], best = [];
+    (q.replace(/[?.,;:]/g, '').split(/\s+/)).forEach(function (w) {
+      if (/^[A-Z][A-Za-z&.'-]*$/.test(w) && !stop.test(w)) { run.push(w); if (run.length > best.length) best = run.slice(); }
+      else run = [];
     });
-    return chat;
+    // Strip the possessive: "IBM's" must match the register's "IBM AUSTRALIA LTD".
+    return best.length ? best.join(' ').replace(/['\u2019]s\b/g, '').trim() : null;
   }
-  async function chatSend(q) {
+  function askAppend(role, text, cls) {
+    var log = $('chat-log'); log.hidden = false;
+    var d = document.createElement('div');
+    d.className = 'msg ' + role + (cls ? ' ' + cls : '');
+    d.innerHTML = text;
+    log.appendChild(d); log.scrollTop = log.scrollHeight;
+    return d;
+  }
+  async function askApp(q) {
     q = String(q || $('chat-input').value || '').trim();
-    if (!q || chatBusy) return;
-    chatAppend('user', q);
+    if (!q) return;
     $('chat-input').value = '';
-    chatBusy = true; $('chat-send').disabled = true;
-    chatThinkingEl = chatAppend('assistant', 'Asking your world…', true);
-    try {
-      await chatEnsure().send(q);
-    } catch (e) {
-      if (chatThinkingEl) { chatThinkingEl.remove(); chatThinkingEl = null; }
-      chatAppend('assistant', (e && e.message) || 'The assistant could not be reached.');
-      chatBusy = false; $('chat-send').disabled = false;
-    }
-  }
-  $('chat-send').addEventListener('click', function () { chatSend(); });
-  $('chat-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') chatSend(); });
-  $('chat-examples').addEventListener('click', function (e) {
-    var b = e.target.closest('.qcard');
-    if (!b) return;
-    // No host to answer (standalone demo): put the question in the box and open the panel that
-    // answers it, rather than accepting a question and silently doing nothing.
-    if (DEMO || !E) {
-      $('chat-input').value = b.dataset.q;
-      selectTab('explore');
-      var q = b.dataset.q.toLowerCase();
-      var target = q.indexOf('portfolio') >= 0 ? 'themes-card'
-        : q.indexOf('grew') >= 0 ? 'league-card'
-        : q.indexOf('lobbyist') >= 0 ? 'lobby-card'
-        : q.indexOf('cn3942784') >= 0 ? 'passport-card'
-        : q.indexOf('ground') >= 0 || q.indexOf('comply') >= 0 ? 'search-card'
-        : 'window-card';
-      setTimeout(function () {
-        var el = $(target);
-        if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 120);
+    askAppend('user', esc(q));
+    var route = null;
+    for (var i = 0; i < ROUTES.length; i++) { if (ROUTES[i].test.test(q)) { route = ROUTES[i]; break; } }
+    if (!route) {
+      askAppend('assistant',
+        '<b>I answer over the contract registers only.</b> Try: a contract id (<i>CN3942784</i>), ' +
+        'a supplier or agency name, “which contracts grew the most”, “what is the Defence portfolio buying”, ' +
+        'or “is Acme a lobbying client”.');
       return;
     }
-    chatSend(b.dataset.q);
-  });
-  if (DEMO || !E) {
-    chatDisable('Chat needs a running Embabel world — this standalone demo has no host. Pick a question above and it opens the panel that answers it under “Browse the data”; with a world loaded, the assistant answers it directly under the same rules.');
-  } else {
-    // The conversation is shared with the platform's own chat — say so rather than implying privacy.
-    var n = $('chat-note'); n.hidden = false;
-    n.textContent = 'This continues your assistant conversation — the same session as the main chat window.';
+    if (route.needsSubject && !subjectOf(q)) {
+      askAppend('assistant', '<b>Which company?</b> Name it — e.g. “is <i>IBM Australia</i> a lobbying client”.');
+      return;
+    }
+    var win = $('w-from').value + ' → ' + $('w-to').value;
+    // Only window-bound lenses carry the window caveat. The passport is keyed by id, and the
+    // lobbyist register is its own corpus — claiming a date scope on either would be a lie.
+    var windowBound = { window: 1, amended: 1, themes: 1 };
+    var scoped = windowBound[route.id]
+      ? ' over <b>' + esc(win) + '</b> (the register has no supplier or agency search, so every ' +
+        'question is answered inside a date window — widen it under Browse the data)'
+      : '';
+    var label = typeof route.label === 'function' ? route.label(q) : route.label;
+    var pending = askAppend('assistant', 'Running <b>' + esc(label) + '</b>' + scoped + '…', 'thinking');
+    // Stay on Ask so the box remains usable for follow-ups; the panel is a link, not a shove.
+    browseLoaded = true;
+    try { await route.run(q); } catch (e) {
+      pending.className = 'msg assistant';
+      pending.innerHTML = 'That lens failed: ' + esc(e && e.message || e);
+      return;
+    }
+    var focus = typeof route.focus === 'function' ? route.focus(q) : route.focus;
+    pending.className = 'msg assistant';
+    pending.innerHTML = 'Ran <b>' + esc(label) + '</b>' + scoped + '. ' +
+      summaryOf(focus) + ' <span class="linky" data-open="' + esc(focus) + '">open the panel →</span>';
+    pending.querySelector('[data-open]').addEventListener('click', function () {
+      selectTab('explore');
+      setTimeout(function () { var el = $(focus); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 120);
+    });
   }
+  /** A one-line read of what the panel now shows, so the answer is in the conversation too. */
+  function summaryOf(cardId) {
+    try {
+      if (cardId === 'league-card') {
+        var rows = document.querySelectorAll('#l-result tbody tr');
+        if (!rows.length) return 'No contracts grew in that window.';
+        var first = rows[0].querySelectorAll('td');
+        return rows.length + ' grew; largest ' + esc(first[5].innerText.trim()) + ' (' + esc(first[1].innerText.trim()) + ').';
+      }
+      if (cardId === 'search-card') {
+        var n = document.querySelectorAll('#q-result .result').length;
+        return n ? n + ' matching contract(s).' : 'No matches in that window.';
+      }
+      if (cardId === 'window-card') {
+        var tile = document.querySelector('#w-result .tile .val');
+        return tile ? 'Committed ' + esc(tile.innerText.trim()) + '.' : '';
+      }
+      if (cardId === 'themes-card') {
+        var n2 = document.querySelectorAll('#t-result .judged').length;
+        var any = document.querySelectorAll('#t-result > div').length;
+        return any ? any + ' portfolio group(s).' : '';
+      }
+      if (cardId === 'passport-card') {
+        var v = document.querySelectorAll('#pp-result .tile .val');
+        return v.length > 2 ? 'Original ' + esc(v[0].innerText.trim()) + ' → now ' + esc(v[1].innerText.trim()) + '.' : '';
+      }
+      if (cardId === 'lobby-card') {
+        var t = (document.querySelector('#lb-result') || {}).innerText || '';
+        return t.indexOf('No client entry matched') >= 0 ? 'No client entry matched that name.' : 'Register entries found.';
+      }
+    } catch (e) { /* a summary is a nicety; never let it break the answer */ }
+    return '';
+  }
+  $('chat-send').addEventListener('click', function () { askApp(); });
+  $('chat-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') askApp(); });
+  $('chat-examples').addEventListener('click', function (e) {
+    var b = e.target.closest('.qcard');
+    if (b) askApp(b.dataset.q);
+  });
+  (function () {
+    var n = $('chat-note'); n.hidden = false;
+    n.textContent = 'This box answers from the contract registers by running the app\'s own lenses — ' +
+      'it is not general chat, and it will tell you when a question is outside what the registers can answer.';
+  })();
 
   // ---- Deep dive: three tiers that never blend -------------------------------
   var ddRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
