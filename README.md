@@ -75,20 +75,27 @@ Mirror partitioned by publication month (for "all contracts of supplier X since 
 traversal); GrantConnect (XLSX-only — needs a tabular producer); ABN Lookup enrichment (free GUID
 env var); the weekly XLSX exports for the consultancy/confidentiality flags the API lacks.
 
-## Activating this realm — reference data must be seeded
+## Activating this realm
 
-Adding the realm gives a world its types, producers, lenses, apps and skill immediately. The
-**seeded reference data does not load automatically**: `ReferenceDataSeeder` is only invoked by an
-explicit admin call today (its own source notes that auto-seeding on world load is "the eventual
-home"). Until that lands, activation is two steps:
+Add it to the world's `config/realms.yml` (path or repo) and that is all. Its reference data —
+the 17 portfolios, 195 agencies and 20 procurement grounds — is **seeded automatically** when the
+world is next loaded or rebuilt, guarded by a content fingerprint so an unchanged realm costs one
+read rather than 232 writes. The marker is per-world, so several users with this realm installed
+each get their own copy.
+
+To force a reseed (after hand-editing `reference/`, say), rebuild the world or delete the marker:
+
+```cypher
+MATCH (m:RealmReferenceSeed {worldId: $worldId}) DELETE m
+```
+
+The explicit admin trigger still exists and is still idempotent, which is useful for a deploy
+script that wants the nodes in place before anyone logs in:
 
 ```bash
-# 1. add the realm to the world's config/realms.yml (path or repo), then
-# 2. seed its reference data (idempotent — safe to re-run on every deploy)
 curl -XPOST "http://localhost:8042/api/v1/admin/reference/seed?username=<user>"
 ```
 
-Without step 2 the `Portfolio`, `Agency` and `ProcurementGround` nodes do not exist, so the
-portfolio and reason-code joins return nothing — and, importantly, they return *nothing* rather
-than something wrong. Everything anchored purely on the live feeds (the contract passport, window
-scans, the amendment league, lobbying) works without seeding.
+Everything anchored purely on the live feeds (the contract passport, window scans, the amendment
+league, lobbying) works with or without seeding; the portfolio and reason-code joins need it, and
+return *nothing* rather than something wrong until it happens.
