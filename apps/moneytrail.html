@@ -1152,6 +1152,103 @@
     n.textContent = 'This continues your assistant conversation — the same session as the main chat window.';
   }
 
+  // ---- Deep dive: three tiers that never blend -------------------------------
+  var ddRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 180000 }) : null;
+  async function runDeepDive(cnId) {
+    var box = $('dd-result');
+    box.innerHTML = '<div class="fine" style="margin-top:1rem">Looking across the registers and the press…</div>';
+    try {
+      var d;
+      if (DEMO) d = (demoData.deepdive || {})[String(cnId).toUpperCase()] || null;
+      else { var env = await ddRunner.lens('au-contract-deepdive', { cnId: cnId, searchPhrase: '' }); d = env ? lensData(env) : null; }
+      if (!d) { box.innerHTML = '<div class="fine" style="margin-top:1rem">Demo mode carries a deep dive for CN4118426 only — run against a world for any other contract.</div>'; return; }
+      renderDeepDive(d, box);
+    } catch (e) {
+      box.innerHTML = '<div class="fine" style="margin-top:1rem">Deep dive failed: ' + esc(e && e.message || e) + '</div>';
+    }
+  }
+  function renderDeepDive(d, box) {
+    var ctx = d.context || {}, cov = d.coverage || {};
+    var ctxRows = [
+      ['Portfolio', ctx.portfolio], ['Agency legal name', ctx.agencyLegalName],
+      ['Agency ABN', ctx.agencyAbn], ['Body type', ctx.bodyType],
+      ['Staffing (ASL)', ctx.staffingLevel],
+      ['Ground ' + (ctx.groundCode ? '(' + ctx.groundCode + ')' : ''), ctx.groundText],
+      ['Exemption ' + (ctx.exemptionCode ? '(' + ctx.exemptionCode + ')' : ''), ctx.exemptionText],
+    ].filter(function (r) { return r[1]; });
+    var context = '<div class="tier t-context"><div class="tlabel">Other government registers</div>' +
+      '<div class="tdesc">' + esc((d.tiers && d.tiers.context) || '') + '</div>' +
+      (ctxRows.length ? '<div class="meta">' + ctxRows.map(function (r) {
+        return '<div><span class="k">' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>';
+      }).join('') + '</div>' : '<div class="fine">No cross-register context resolved.</div>') +
+      (ctx.unresolvedNote ? '<div class="fine">' + esc(ctx.unresolvedNote) + '</div>' : '') + '</div>';
+
+    var covBody;
+    if (cov.status === 'UNAVAILABLE' || cov.status === 'SKIPPED') {
+      covBody = '<div class="fine" style="font-size:.9rem"><b>Not looked at.</b> ' + esc(cov.note || '') + '</div>';
+    } else if (!(cov.results || []).length) {
+      covBody = '<div class="fine" style="font-size:.9rem"><b>No results.</b> ' + esc(cov.note || '') + '</div>';
+    } else {
+      covBody = cov.results.map(function (r) {
+        return '<div class="cov"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title) + ' ↗</a>' +
+          '<div class="cmeta">' + esc(r.age || 'undated') + ' · ' + esc((r.url || '').replace(/^https?:\/\//, '').split('/')[0]) + '</div>' +
+          (r.snippet ? '<div class="cmeta">' + esc(String(r.snippet).replace(/<[^>]*>/g, '')) + '</div>' : '') + '</div>';
+      }).join('');
+    }
+    var coverage = '<div class="tier t-coverage"><div class="tlabel">Press coverage — not evidence about this contract</div>' +
+      '<div class="tdesc">' + esc((d.tiers && d.tiers.coverage) || '') + '</div>' + covBody +
+      '<div class="fine">Searched: <b>' + esc(cov.searchPhrase || '') + '</b>. ' + esc(cov.phraseBasis || '') + '</div></div>';
+
+    box.innerHTML = context + coverage;
+  }
+
+  // ---- Portfolio themes: facts and judgments, visibly separated ---------------
+  var thRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  async function runThemes() {
+    var from = $('w-from').value, to = $('w-to').value;
+    $('t-result').hidden = true;
+    var args = { from: from + 'T00:00:00Z', to: to + 'T00:00:00Z', portfolio: $('t-portfolio').value };
+    try {
+      var d;
+      if (DEMO) { setState($('t-state-el'), 'loading', {}); d = demoData.themes || null; setState($('t-state-el'), d ? 'ready' : 'empty', {}); }
+      else { var env = await thRunner.lens('au-portfolio-themes', args, { state: $('t-state-el') }); d = env ? lensData(env) : null; }
+      if (d) renderThemes(d);
+    } catch (e) { /* state element shows it */ }
+  }
+  function renderThemes(d) {
+    var box = $('t-result');
+    var rows = d.portfolios || [];
+    var body = rows.map(function (p) {
+      var j = p.judged || {};
+      var topics = (j.topics || []);
+      var clusters = (j.clusters || []);
+      return '<div style="margin-top:1.1rem">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:baseline">' +
+        '<b style="font-size:1.02rem">' + esc(p.portfolio) + '</b>' +
+        '<span class="bar-val">' + esc(aud(p.committed, true)) + ' · ' + p.contracts + ' contracts · ' +
+        p.limitedCount + ' limited</span></div>' +
+        (topics.length || clusters.length || j.digest ?
+          '<div class="judged"><div class="jlabel">Model judgment — not the register\'s words</div>' +
+          (j.digest ? '<div style="font-size:.92rem;margin-top:.3rem">' + esc(j.digest) + '</div>' : '') +
+          (topics.length ? '<div class="chiprow">' + topics.map(function (t) {
+            return '<span>' + esc(typeof t === 'string' ? t : JSON.stringify(t)) + '</span>'; }).join('') + '</div>' : '') +
+          (j.vaguestDescriptionCn ? '<div class="fine" style="margin-top:.4rem">Least informative description for its value: ' +
+            '<span class="linky" data-cn="' + esc(String(j.vaguestDescriptionCn)) + '">' + esc(String(j.vaguestDescriptionCn)) + '</span></div>' : '') +
+          '</div>' : '') +
+        '</div>';
+    }).join('');
+    var un = d.unplaced || {};
+    var unplaced = (un.contracts ? '<div class="rule" style="margin-top:1rem"><b>' + esc(aud(un.committed, true)) +
+      '</b> across ' + un.contracts + ' contract(s) could not be placed in a portfolio. ' + esc(un.note || '') +
+      ((un.exampleNames || []).length ? ' e.g. ' + esc(un.exampleNames.slice(0, 3).join('; ')) : '') + '</div>' : '');
+    var fine = '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') +
+      '</ul>Source: ' + esc(d.source || '') + '</div>';
+    box.innerHTML = body + unplaced + fine;
+    box.hidden = false;
+    wireRowLinks(box);
+  }
+
+  // Tabs: Explore ↔ How this works.
   // Three panes: Ask is the landing, Browse is the drill-in, How explains the machinery.
   // Browse loads LAZILY on first open — the landing must not pay for panels nobody asked for.
   var browseLoaded = false;
