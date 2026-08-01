@@ -120,6 +120,15 @@ function check(name, cond, detail) {
   check('a verbatim transcript excerpt renders quoted, with speakers', /“Senator ROBERTS/.test(plText) && /Dr Mayfield/.test(plText));
   check('the model reading is never faked in demo', !/judgment, not transcript/i.test(plText));
 
+  // ANY topic, not just Capitalised entities: a lowercase policy phrase must route and extract.
+  await page.fill('#chat-input', 'what has parliament discussed about immigration detention?');
+  await page.click('#chat-send'); await page.waitForTimeout(900);
+  check('a lowercase topic routes to parliament', await page.locator('#parliament-card').isVisible());
+  check('the topic itself is the phrase', (await page.locator('#pl-phrase').inputValue()) === 'immigration detention');
+  await page.fill('#chat-input', 'what was said about robodebt in senate estimates?');
+  await page.click('#chat-send'); await page.waitForTimeout(900);
+  check('a trailing venue clause is trimmed off the topic', (await page.locator('#pl-phrase').inputValue()) === 'robodebt');
+
   console.log('\n== progress banner (idle structure) ==');
   // The banner only SHOWS during live scans (demo mode never fetches), but its structure is
   // load-bearing for the progress JS — a renamed id silently degrades every live scan to a

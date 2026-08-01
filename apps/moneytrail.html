@@ -459,7 +459,7 @@
       <h2>The parliamentary record</h2>
       <p class="sub">Chamber debates, committee evidence and Senate Estimates transcripts matching a phrase — ParlInfo's own records, grouped by record class, each hit linking to the transcript. Mentions, never evidence about a contract.</p>
       <div class="filterbar">
-        <input id="pl-phrase" type="text" placeholder="a supplier, an agency, a program, a contract id" size="34" aria-label="Parliament search phrase" value="Snowy Hydro">
+        <input id="pl-phrase" type="text" placeholder="any topic \u2014 a policy area, a program, a supplier, a contract id" size="34" aria-label="Parliament search phrase" value="Snowy Hydro">
         <button class="embabel-button" id="pl-go">Search the record</button>
       </div>
       <div class="qstamp" id="pl-stamp" hidden></div>
@@ -1269,9 +1269,9 @@
       label: 'suppliers appearing for the first time',
       run: function () { return runNewSuppliers(); }, focus: 'newsup-card' },
     { id: 'parliament', test: /\b(parliament|hansard|estimates|senate|committee evidence|raised in|question time)\b/i,
-      label: function (q) { var n = subjectOf(q); return n ? 'the parliamentary record for \u201c' + n + '\u201d' : 'the parliamentary record'; },
-      run: function (q) { var n = subjectOf(q); if (!n) return null; $('pl-phrase').value = n; return runParliament(); },
-      needsSubject: true, focus: 'parliament-card' },
+      label: function (q) { var n = parliamentPhraseOf(q); return n ? 'the parliamentary record for \u201c' + n + '\u201d' : 'the parliamentary record'; },
+      run: function (q) { var n = parliamentPhraseOf(q); if (!n) return null; $('pl-phrase').value = n; return runParliament(); },
+      needsSubject: true, subject: parliamentPhraseOf, focus: 'parliament-card' },
     { id: 'opaque', test: /\b(thin disclosure|insufficient (information|detail)|no (information|details?|description)|little information|opaque|vague(ly)? describ|poorly described|bugger all|tell(s|ing)? (the public|us) (almost )?nothing|launchers)\b/i,
       label: 'large contracts with thin disclosure',
       run: function () { return runOpaque(); }, focus: 'opaque-card' },
@@ -1310,6 +1310,19 @@
       },
       focus: function (q) { return subjectOf(q) ? 'search-card' : 'window-card'; } },
   ];
+  /** The parliament route takes ANY topic, not just Capitalised entities: an entity name when one
+   *  is present, else the lowercase topic after 'about/on/regarding/discussed' — so "what has
+   *  parliament discussed about immigration detention" searches "immigration detention". */
+  function parliamentPhraseOf(q) {
+    var entity = subjectOf(q);
+    if (entity) return entity;
+    var m = q.replace(/[?.!]+\s*$/, '')
+      .match(/^[\s\S]*\b(?:about|regarding|concerning|discussed|discussion of|debate[sd]? (?:on|about)|on)\s+(.{3,80})$/i);
+    if (!m) return null;
+    // Trim a trailing venue clause: "…about robodebt in senate estimates" → "robodebt".
+    return m[1].replace(/\s+(?:in|at|before|during)\s+(?:the\s+)?(?:parliament|hansard|senate(?:\s+estimates)?|estimates|committee[s]?|question time).*$/i, '')
+      .replace(/\s+this (year|month|week)$/i, '').trim() || null;
+  }
   /** A supplier/agency name from the question: a quoted phrase, or a run of Capitalised words. */
   function subjectOf(q) {
     var quoted = q.match(/["“']([^"”']{3,60})["”']/);
@@ -1408,7 +1421,7 @@
       askStamp('<b>“' + esc(q) + '”</b> → generated a query and ran it. The Cypher is shown with the rows.');
       return;
     }
-    if (route.needsSubject && !subjectOf(q)) {
+    if (route.needsSubject && !(route.subject || subjectOf)(q)) {
       askStamp('<b>“' + esc(q) + '”</b> — which company? Name it, e.g. “is <i>IBM Australia</i> a lobbying client”.');
       return;
     }

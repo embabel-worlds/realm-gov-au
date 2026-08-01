@@ -1,8 +1,9 @@
 id: au-parliament
 name: The parliamentary record
 description: >-
-  Search Hansard directly: chamber debates, committee evidence and Senate Estimates transcripts
-  matching a phrase, from ParlInfo's own records — grouped by record class, each hit linking to
+  Search Hansard directly for ANY topic — a policy area, a program, a supplier, an agency, a
+  contract id: chamber debates, committee evidence and Senate Estimates transcripts matching the
+  phrase, from ParlInfo's own records — grouped by record class, each hit linking to
   the transcript with its date, plus a date-scoped Estimates check over the chosen window. A match
   is a page where the phrase appears, never a finding about anyone; a silence is qualified per
   record class, and Questions on Notice are not yet searchable, so "never raised in Parliament"
@@ -10,7 +11,7 @@ description: >-
 params:
   - name: phrase
     type: STRING
-    label: Search phrase (a supplier, an agency, a program, a contract id)
+    label: Search phrase — any topic (a policy area, a program, a supplier, an agency, a contract id)
     required: true
     default: "Snowy Hydro"
   - name: from
@@ -145,6 +146,7 @@ spec:
       },
       limits: [
         "A match is a page where the phrase appears — it may concern anything about the entity, and it is never evidence about any contract.",
+        "The search is a LITERAL phrase: a topic discussed in other words ('nuclear submarines' vs 'AUKUS') is missed. Try the names the record itself would use.",
         "Questions on Notice are not yet a searchable class, so 'never raised in Parliament' cannot be concluded from empty results here — only 'not found in these records'.",
         "Each class returns at most 8 most-recent matches; a busy entity has more history than one page.",
         "Excerpts cover the top 3 followed transcripts per Estimates search, phrase-anchored windows only — the summary reads THOSE passages, never the full hearings.",
