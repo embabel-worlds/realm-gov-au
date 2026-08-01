@@ -9,7 +9,7 @@
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script src="oz-map-data.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-current-members","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-current-members","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask"],"views":[],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -356,6 +356,19 @@
       </div>
       <embabel-operation-state id="l-state-el"></embabel-operation-state>
       <div id="l-result" hidden></div>
+    </section>
+
+    <!-- ============ ASK IN PLAIN ENGLISH (generated query) ============ -->
+    <section class="card" id="ask-kg-card">
+      <h2>Ask in plain English</h2>
+      <p class="sub">The platform writes the Cypher, runs it, and shows you the query it wrote — so a wrong answer is a visible wrong query rather than a confident sentence.</p>
+      <div class="filterbar">
+        <input id="k-q" type="text" placeholder="e.g. which agencies signed the largest contracts last week?" aria-label="Question">
+        <button class="embabel-button" id="k-go">Generate and run</button>
+      </div>
+      <div class="qstamp" id="k-stamp" hidden></div>
+      <embabel-operation-state id="k-state-el"></embabel-operation-state>
+      <div id="k-result" hidden></div>
     </section>
 
     <!-- ============ HOW CONTRACTS AVOIDED OPEN TENDER ============ -->
@@ -1307,10 +1320,20 @@
     var route = null;
     for (var i = 0; i < ROUTES.length; i++) { if (ROUTES[i].test.test(q)) { route = ROUTES[i]; break; } }
     if (!route) {
-      askStamp('<b>“' + esc(q) + '”</b> — I answer over the contract registers only. Try a contract id ' +
-        '(<i>CN3942784</i>), a supplier or agency name, “which contracts grew the most”, ' +
-        '“where does the money go”, “how did contracts avoid open tender”, or “what is the Defence portfolio buying”.');
-      if (movedCard) { $('pane-explore').appendChild(movedCard); movedCard = null; }
+      // No hand-written lens fits — hand it to the generated-query lens rather than refusing.
+      // In the standalone demo there is no host to generate with, so say that instead.
+      if (DEMO || !E) {
+        askStamp('<b>“' + esc(q) + '”</b> — no built-in panel matches, and generating a query needs a ' +
+          'running world. Try a contract id (<i>CN3942784</i>), “which contracts grew the most”, ' +
+          '“where does the money go”, or “how did contracts avoid open tender”.');
+        if (movedCard) { $('pane-explore').appendChild(movedCard); movedCard = null; }
+        return;
+      }
+      askStamp('<b>“' + esc(q) + '”</b> → no built-in panel matches, so the platform is writing a query for it…');
+      browseLoaded = true;
+      showCardInline('ask-kg-card');
+      await runAskKg(q);
+      askStamp('<b>“' + esc(q) + '”</b> → generated a query and ran it. The Cypher is shown with the rows.');
       return;
     }
     if (route.needsSubject && !subjectOf(q)) {
@@ -1524,6 +1547,54 @@
     box.hidden = false;
   }
 
+  // ---- Generated query (text -> Cypher -> rows) ---------------------------------------------
+  var kRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 240000 }) : null;
+  async function runAskKg(q) {
+    var question = String(q || $('k-q').value || '').trim();
+    if (!question) return;
+    $('k-q').value = question;
+    $('k-result').hidden = true;
+    stamp('k-stamp', 'Generating a query for <b>“' + esc(question) + '”</b> · lens <b>au-ask</b>');
+    try {
+      var d;
+      if (DEMO) {
+        setState($('k-state-el'), 'error', { message: 'Generating a query needs a running world — this standalone demo has no host.' });
+        return;
+      }
+      var env = await kRunner.lens('au-ask', { question: question }, { state: $('k-state-el') });
+      d = env ? lensData(env) : null;
+      if (d) renderAskKg(d);
+    } catch (e) { /* state element shows it */ }
+  }
+  function renderAskKg(d) {
+    var box = $('k-result');
+    var g = d.generated || {};
+    var rows = d.rows || [];
+    var cols = rows.length ? Object.keys(rows[0]) : [];
+    var table = rows.length
+      ? '<table><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        rows.slice(0, 30).map(function (r) {
+          return '<tr>' + cols.map(function (c) {
+            var v = r[c];
+            return '<td>' + esc(v == null ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v))) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody></table>' +
+        (d.truncated ? '<div class="fine">Showing 30 of ' + d.rowCount + ' rows.</div>' : '')
+      : '<div class="fine" style="font-size:.95rem"><b>No rows.</b> The query ran and matched nothing — which is not the same as nothing existing.</div>';
+    box.innerHTML =
+      (g.cypher ? '<div class="chart-title" style="margin-top:.8rem">The query it wrote</div>' +
+        '<pre class="cy">' + esc(g.cypher) + '</pre>' +
+        '<div class="fine">' + esc(g.note || '') +
+        (g.apiCalls != null ? ' · ' + g.apiCalls + ' API call(s)' : '') +
+        (g.llmCalls != null ? ' · ' + g.llmCalls + ' LLM call(s)' : '') +
+        (g.durationMs != null ? ' · ' + g.durationMs + 'ms' : '') + '</div>'
+        : '<div class="fine">No query was returned.</div>') +
+      '<div class="chart-title" style="margin-top:1rem">Rows</div>' + table +
+      ((d.warnings || []).length ? (d.warnings).map(function (w) { return '<div class="mt-state mt-state--error">' + esc(w) + '</div>'; }).join('') : '') +
+      '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></div>';
+    box.hidden = false;
+  }
+
   // ---- The lens catalogue: run any governed query explicitly --------------------------------
   // Forms come from the runtime's <embabel-lens-form>, which reads each lens's DECLARED params
   // from /apps-runtime/v1/contracts. Hand-writing them would drift from the realm the moment a
@@ -1697,6 +1768,8 @@
   $('t-go').addEventListener('click', runThemes);
   $('g-go').addEventListener('click', runGrounds);
   $('m-go').addEventListener('click', runMoneyBy);
+  $('k-go').addEventListener('click', function () { runAskKg(); });
+  $('k-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') runAskKg(); });
   document.addEventListener('embabel-retry', function (e) {
     var host = e.target && e.target.id;
     if (host === 'pp-state') loadPassport($('cn-input').value);

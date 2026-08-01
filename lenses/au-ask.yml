@@ -1,0 +1,67 @@
+id: au-ask
+name: Ask in plain English
+description: >-
+  Type a question and the platform generates the Cypher, runs it against the live registers, and
+  shows BOTH the answer and the query it wrote. The generated query is the point: it is inspectable,
+  re-runnable, and provably the thing that produced the rows — not a paraphrase of them.
+params:
+  - name: question
+    type: STRING
+    label: Your question
+    required: true
+    default: "which agencies signed the largest contracts last week?"
+spec:
+  kind: cypherscript
+  script: |
+    const question = String(lensArgs.question || "").trim();
+    if (!question) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-ask", status: "EMPTY", note: "Ask a question.",
+      }) });
+    } else {
+
+    // ask_kg writes the Cypher AND runs it, returning the query alongside the rows. That pairing
+    // is the whole value here: a generated answer whose query you cannot see is not auditable, and
+    // this realm's discipline is that every figure can be traced to the statement that produced it.
+    let out = null, error = null;
+    try {
+      out = await gateway.kg.ask({ question });
+    } catch (e) {
+      error = String((e && e.message) || e);
+    }
+    // The tool returns a JSON string on some surfaces and an object on others; accept both rather
+    // than assuming, because guessing wrong here renders an empty answer over a successful run.
+    let parsed = out;
+    if (typeof out === "string") { try { parsed = JSON.parse(out); } catch (e) { parsed = { rows: [], error: out }; } }
+    parsed = parsed || {};
+    const rows = parsed.rows || [];
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-ask",
+      question,
+      status: error || parsed.error ? "FAILED" : (rows.length ? "COMPLETE" : "EMPTY"),
+      warnings: [error, parsed.error].filter(Boolean),
+      generated: {
+        cypher: parsed.cypher || null,
+        note: "Written by the platform's text-to-Cypher for THIS question, then executed. Read it: " +
+              "it is the only honest account of what the answer counted.",
+        resolutionPlan: parsed.resolutionPlan || null,
+        apiCalls: parsed.apiCalls != null ? parsed.apiCalls : null,
+        llmCalls: parsed.llmCalls != null ? parsed.llmCalls : null,
+        durationMs: parsed.durationMs != null ? parsed.durationMs : null,
+      },
+      rowCount: rows.length,
+      rows: rows.slice(0, 50),
+      truncated: rows.length > 50,
+      method: "The question is turned into a governed query over this world's schema and run — the " +
+              "same machinery the assistant uses, surfaced so the query is visible.",
+      limits: [
+        "A generated query can misread a question. The Cypher is shown so a wrong answer is a visible wrong query rather than a confident sentence.",
+        "It can only reach what this world's schema exposes — the contract registers here are fetched from an anchor, so questions must name one (a contract id, or a period).",
+        "Empty rows mean the query found nothing, which is not the same as nothing existing.",
+      ],
+      source: "Generated over the gov-au realm's schema; data from the registers it names.",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html

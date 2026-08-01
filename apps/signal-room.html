@@ -156,6 +156,7 @@
   }
   @media (max-width:600px) {
     .shell,.mast-inner { padding-left:16px; padding-right:16px; }
+    .mode { display:none; }
     .signal,.signal.hero-signal { grid-column:1/-1; min-height:220px; }
     .intro { align-items:start; flex-direction:column; }
     .commitment { grid-template-columns:36px minmax(0,1fr); } .commitment .money { grid-column:2; }
@@ -236,6 +237,7 @@
   var E = window.embabel || null;
   var demoData = null;
   var snapshot = null;
+  var activeWindow = null;
   var loaded = {};
   var runners = {};
 
@@ -263,7 +265,7 @@
     if (!demoData) demoData = await (await fetch('moneytrail-demo-data.json')).json();
     return demoData;
   }
-  function args() { return {from:$('from').value + 'T00:00:00Z',to:$('to').value + 'T00:00:00Z'}; }
+  function controlArgs() { return {from:$('from').value + 'T00:00:00Z',to:$('to').value + 'T00:00:00Z'}; }
   function runnerFor(id) {
     if (!runners[id] && E) runners[id] = E.createRunner({timeoutMs:300000});
     return runners[id];
@@ -295,7 +297,10 @@
     loaded = {};
     ['amendments','grounds','categories','portfolios'].forEach(function (name) { renderLazy(name); });
   }
-  function currentWindowLabel() { return $('from').value + ' → ' + $('to').value; }
+  function currentWindowLabel() {
+    var w = activeWindow || controlArgs();
+    return String(w.from).slice(0,10) + ' → ' + String(w.to).slice(0,10);
+  }
 
   function signalCard(index, value, title, copy, fill, left, right, hero) {
     return '<article class="signal' + (hero ? ' hero-signal' : '') + '">' +
@@ -357,7 +362,8 @@
     $('signals').innerHTML = '<div class="placeholder">Fetching and shaping notices from the governed window lens…</div>';
     $('evidence').hidden = true; resetDeepViews();
     try {
-      var data = await invoke('au-window-signed', Object.assign(args(),{minAmount:'0'}));
+      activeWindow = controlArgs();
+      var data = await invoke('au-window-signed', Object.assign({},activeWindow,{minAmount:'0'}));
       if (!data) throw new Error('The lens returned no readable result.');
       renderSnapshot(data);
     } catch (e) {
@@ -433,7 +439,7 @@
     pane.innerHTML='<div class="lazy"><div class="lazy-inner"><h3>Loading ' + esc(name) + '…</h3><p>The governed lens may page a public register and materialize virtual records for this window.</p></div></div>';
     var c=lazyCopy[name];
     try {
-      var lensArgs=args();
+      var lensArgs=Object.assign({},activeWindow || controlArgs());
       if (name==='amendments') Object.assign(lensArgs,{state:'',rankBy:'growthPct'});
       if (name==='categories') Object.assign(lensArgs,{sectors:''});
       if (name==='portfolios') Object.assign(lensArgs,{portfolio:''});
