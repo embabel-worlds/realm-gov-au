@@ -120,6 +120,12 @@ function check(name, cond, detail) {
   check('a verbatim transcript excerpt renders quoted, with speakers', /“Senator ROBERTS/.test(plText) && /Dr Mayfield/.test(plText));
   check('the model reading is never faked in demo', !/judgment, not transcript/i.test(plText));
 
+  // The semantic-index affordance: offered on estimates hits, honest about needing a world in demo.
+  check('index button offered on estimates hits', (await page.locator('#pl-index').count()) === 1);
+  await page.click('#pl-index'); await page.waitForTimeout(400);
+  const plStamp = await page.locator('#pl-stamp').innerText();
+  check('demo indexing says it needs a running world', /needs a running world/i.test(plStamp));
+
   // ANY topic, not just Capitalised entities: a lowercase policy phrase must route and extract.
   await page.fill('#chat-input', 'what has parliament discussed about immigration detention?');
   await page.click('#chat-send'); await page.waitForTimeout(900);

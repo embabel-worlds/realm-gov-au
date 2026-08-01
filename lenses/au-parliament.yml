@@ -24,6 +24,11 @@ params:
     label: Estimates window to
     required: false
     default: "2026-08-01"
+  - name: index
+    type: BOOLEAN
+    label: Index the followed transcripts into your documents (semantic search over them afterwards)
+    required: false
+    default: "false"
 spec:
   kind: cypherscript
   script: |
@@ -110,6 +115,61 @@ spec:
       }
     }
 
+    // ---- OPT-IN INDEXING: the transcripts land in the document knowledge base --------------
+    // This is the pragmatic corpus path: full readable text via the built-in fetch (windowed —
+    // transcripts exceed one window), ingested under a STABLE parlinfo:// uri so re-indexing the
+    // same hearing REPLACES it. Chunking and embedding are the pipeline's job; afterwards the
+    // existing relevance machinery (vector / agentic-rag over Documents, document search in chat)
+    // answers semantic questions — 'advisory services' finds 'remuneration of consultants'.
+    const wantIndex = String(lensArgs.index) === "true";
+    let indexed = null;
+    if (wantIndex) {
+      const targets = estimates.results.filter(r => r.url).slice(0, 3);
+      const done = [], problems = [];
+      for (const t of targets) {
+        try {
+          let text = "", start = 0;
+          for (let page = 0; page < 3; page++) {
+            const out = await gateway.fetch.fetch({ url: t.url, max_length: 100000, start_index: start });
+            const chunk = typeof out === "string" ? out : String((out && out.content) || out || "");
+            const marker = chunk.match(/\[truncated: \d+ more characters[\s\S]*?start_index=(\d+)/);
+            text += marker ? chunk.slice(0, chunk.lastIndexOf("[truncated:")) : chunk;
+            if (!marker) break;
+            start = Number(marker[1]);
+          }
+          // The links index is navigation, not transcript — never ingest it as content.
+          const cut = text.indexOf("## Links on this page");
+          if (cut > 0) text = text.slice(0, cut);
+          // parlinfo://<fragment id> from the display URL's Id:"…" — the record's own identity.
+          const idm = String(t.url).match(/Id%3A%22(.+?)%22/i);
+          const fragment = idm ? decodeURIComponent(idm[1]) : String(t.url).replace(/^https?:\/\//, "");
+          const uri = "parlinfo://" + fragment;
+          await gateway.ingest.document({
+            content: text.slice(0, 250000),
+            uri: uri,
+            title: t.title || ("ParlInfo " + fragment),
+            sourceKind: "parlinfo",
+            sourceModifiedAt: t.date ? t.date + "T00:00:00Z" : undefined,
+            publishedByDomain: "aph.gov.au",
+          });
+          done.push({ uri: uri, title: t.title });
+        } catch (e) {
+          problems.push(String((e && e.message) || e));
+        }
+      }
+      indexed = {
+        count: done.length,
+        documents: done,
+        problems: problems.length ? problems : undefined,
+        note: done.length
+          ? "These hearings are now in your document knowledge base. Semantic questions over them work " +
+            "in chat and document search — meaning-based, not phrase-based — and re-indexing the same " +
+            "hearing replaces it rather than duplicating."
+          : (problems.length ? "Nothing was indexed — the transcript fetches failed; see problems."
+                             : "Nothing to index — no followed transcripts in the Estimates results."),
+      };
+    }
+
     const groups = [chamber, committees, estimates, ...(period ? [period] : [])];
     const total = groups.reduce((n, g) => n + g.results.length, 0);
     const failed = groups.some(g => g.failed) ||
@@ -129,6 +189,7 @@ spec:
                 "RETURN m.title, m.url, m.publishedAt ORDER BY m.publishedAt DESC",
       }],
       judged,
+      indexed,
       groups: groups.map(g => ({
         record: g.record,
         searched: g.searched,
@@ -150,6 +211,7 @@ spec:
         "Questions on Notice are not yet a searchable class, so 'never raised in Parliament' cannot be concluded from empty results here — only 'not found in these records'.",
         "Each class returns at most 8 most-recent matches; a busy entity has more history than one page.",
         "Excerpts cover the top 3 followed transcripts per Estimates search, phrase-anchored windows only — the summary reads THOSE passages, never the full hearings.",
+        "Indexing is OPT-IN and writes to YOUR document knowledge base (full transcripts, stable parlinfo:// identity). Only indexed hearings answer semantic questions; everything else here is phrase search.",
       ],
       source: "ParlInfo search feeds (aph.gov.au, keyless)",
     }) });

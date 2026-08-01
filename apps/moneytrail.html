@@ -1499,10 +1499,33 @@
         : '<div class="fine">' + esc(g.note || 'Nothing matched in this class.') + '</div>';
       return '<div style="margin-top:.9rem"><b>' + esc(g.record) + '</b> <span class="fine">(' + (g.results || []).length + ')</span>' + body + '</div>';
     }).join('');
+    var indexedNote = d.indexed
+      ? '<p class="fine"><b>' + (d.indexed.count || 0) + ' transcript(s) indexed.</b> ' + esc(d.indexed.note || '') + '</p>'
+      : '';
+    var estimatesHits = (d.groups || []).some(function (g) { return /Estimates/.test(g.record || '') && (g.results || []).length; });
+    var indexBtn = (!d.indexed && estimatesHits)
+      ? '<p class="fine"><button class="embabel-button" id="pl-index">Index these hearings for semantic search</button> ' +
+        'Writes the full transcripts to your documents \u2014 afterwards, meaning-based questions over them work in chat.</p>'
+      : '';
     box.innerHTML = '<p class="fine">' + (d.totals && d.totals.mentions || 0) + ' mention(s) across the record classes. ' +
       'A match is a page where the phrase appears \u2014 mentions, never evidence about a contract.</p>' + judged + groups +
+      indexedNote + indexBtn +
       '<p class="fine">' + (d.limits || []).map(esc).join(' ') + '</p>';
     box.hidden = false;
+  }
+  async function indexParliamentTranscripts() {
+    if (DEMO || !plRunner) {
+      stamp('pl-stamp', 'Indexing writes to your document knowledge base \u2014 it needs a running world; the standalone demo cannot.');
+      return;
+    }
+    var args = { phrase: $('pl-phrase').value.trim(), from: $('w-from').value, to: $('w-to').value, index: 'true' };
+    try {
+      var env = await withBusy('Indexing hearing transcripts', function () {
+        return plRunner.lens('au-parliament', args, { state: $('pl-state-el'), waitSeconds: 15 });
+      }, 'Fetching and ingesting up to three full transcripts \u2014 a minute is normal.');
+      var d = env ? lensData(env) : null;
+      if (d) renderParliament(d);
+    } catch (e) { /* the state element shows it */ }
   }
   /** Demo: REAL baked ParlInfo results for the canonical phrase (fetched live 2026-08-01);
    *  any other phrase says honestly that the demo cannot search. */
@@ -2281,6 +2304,9 @@
   $('g-go').addEventListener('click', runGrounds);
   $('op-go').addEventListener('click', runOpaque);
   $('pl-go').addEventListener('click', runParliament);
+  $('pl-result').addEventListener('click', function (ev) {
+    if (ev.target && ev.target.id === 'pl-index') indexParliamentTranscripts();
+  });
   $('m-go').addEventListener('click', runMoneyBy);
   $('k-go').addEventListener('click', function () { runAskKg(); });
   $('ap-go').addEventListener('click', runAgencyProfile);

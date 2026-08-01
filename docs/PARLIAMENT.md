@@ -43,10 +43,14 @@ records".
 - **Questions on Notice as a standalone dataset**: `qon`, `qanda`, `qonsw` all error as sole
   datasets (probed). QoN citations still surface via committee documents; finding the right
   dataset name (or confirming QoNs are not in the RSS surface) is the remaining recall gap.
-- **Semantic search over Estimates** — the corpus proposal (`me` repo,
-  specs/CORPUS_INDEXING_PROPOSAL.md): realm-declared vector indexing of transcript pages, for
-  which these feed producers are the fetch layer. Estimates is paraphrase; keyword search
-  structurally misses "advisory services" ≈ "remuneration of external consultants".
+- ~~Semantic search over Estimates~~ **SHIPPED, the pragmatic way**: `au-parliament`'s opt-in
+  `index` step fetches the followed hearings' FULL transcripts (built-in fetch, windowed) and
+  ingests them under stable `parlinfo://<fragment-id>` uris (`gateway.ingest.document` — re-index
+  replaces). Chunk+embed is the document pipeline's job; afterwards the existing relevance
+  machinery (vector / agentic-rag over Documents, document search in chat) answers MEANING-based
+  questions — "advisory services" finds "remuneration of external consultants". The engine-level
+  `corpora:` proposal (me: specs/CORPUS_INDEXING_PROPOSAL.md) remains the deployment-grade
+  upgrade: shared scope (embed once per deployment, not per world) and automatic refresh.
 
 ## Why not Acts of Parliament
 
