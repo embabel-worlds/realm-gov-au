@@ -1,0 +1,160 @@
+id: au-portfolio-themes
+name: What a portfolio is actually buying
+description: >-
+  The subjective layer over the register's own prose. Contract CATEGORIES are UNSPSC codes
+  ('50000000') and titles are internal references — neither tells you what a portfolio actually
+  bought. The descriptions do, and this reduces them per portfolio with the engine's LLM
+  aggregations: recurring themes, emergent clusters, a plain-language digest, and the single
+  vaguest description for its value. Every number beside them stays arithmetic, and every
+  model-produced field is labelled as a judgment.
+params:
+  - name: from
+    type: STRING
+    label: Window start (ISO instant)
+    required: true
+    default: "2026-07-27T00:00:00Z"
+  - name: to
+    type: STRING
+    label: Window end (ISO instant, exclusive)
+    required: true
+    default: "2026-07-29T00:00:00Z"
+  - name: portfolio
+    type: STRING
+    label: Portfolio (blank = every portfolio in the window)
+    required: false
+    default: ""
+spec:
+  kind: cypherscript
+  script: |
+    const from = String(lensArgs.from || "").trim();
+    const to = String(lensArgs.to || "").trim();
+    const portfolio = String(lensArgs.portfolio || "").trim();
+    const window = `${from}/${to}`;
+
+    // THE JOIN: window releases -> Agency (seeded from AGOR, alias-aware) -> Portfolio (seeded).
+    // AusTender has no portfolio field at all, so this grouping cannot be expressed against the
+    // feed alone. The counts and sums are pure arithmetic over the register's rows.
+    const factual = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        MATCH (a:Agency)
+        WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+        MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)
+        WHERE $portfolio = '' OR p.name = $portfolio
+        RETURN p.name AS portfolio, count(r) AS contracts,
+               sum(toFloat(r.amount)) AS committed,
+               count(CASE WHEN r.procurementMethod = 'limited' THEN 1 END) AS limitedCount
+        ORDER BY committed DESC
+      `,
+      params: JSON.stringify({ window, portfolio }),
+    });
+    const rows = ((factual && factual.rows) ? factual.rows : (factual || []));
+    const warnings = [...((factual && factual.warnings) || [])];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+
+    // THE HONESTY COUNTERPART: value whose agency name resolved to no seeded Agency. A portfolio
+    // breakdown that silently drops unresolved rows looks complete and isn't. This is reported
+    // beside the totals, never folded into them.
+    const unplaced = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        WHERE NOT EXISTS {
+          MATCH (a:Agency) WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+        }
+        RETURN count(r) AS contracts, sum(toFloat(r.amount)) AS committed,
+               collect(DISTINCT r.agencyName)[0..8] AS names
+      `,
+      params: JSON.stringify({ window }),
+    });
+    const un = ((unplaced && unplaced.rows) ? unplaced.rows : (unplaced || []))[0] || {};
+
+    // THE SUBJECTIVE LAYER: reduce each portfolio's DESCRIPTIONS. These are LLM aggregations —
+    // themes/cluster/summarize/argmax fold a GROUP of text into topics, clusters, a digest and a
+    // single winner by a criterion no stored field expresses. Labelled as judgments in the output.
+    const subjective = await gateway.kg.query({
+      cypher: `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        MATCH (a:Agency)
+        WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+        MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)
+        WHERE $portfolio = '' OR p.name = $portfolio
+        RETURN p.name AS portfolio,
+               themes(r.description, 6) AS topics,
+               cluster(r.description) AS clusters,
+               summarize(r.description, 'what this portfolio bought, in three plain sentences') AS digest,
+               argmax(r.cnId, r.description,
+                      'least informative description for the money committed') AS vaguest
+      `,
+      params: JSON.stringify({ window, portfolio }),
+    });
+    const subRows = ((subjective && subjective.rows) ? subjective.rows : (subjective || []));
+    warnings.push(...((subjective && subjective.warnings) || []));
+    const byPortfolio = {};
+    for (const s of subRows) byPortfolio[s.portfolio] = s;
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-portfolio-themes",
+      window: { from, to }, portfolio: portfolio || null,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      queries: [
+        { title: "Portfolio totals (arithmetic)",
+          note: "AusTender has no portfolio field — the grouping comes from seeded AGOR agencies.",
+          cypher: "MATCH (w:PublicationWindow)-[:PUBLISHED]->(r:ContractRelease)\n" +
+                  "MATCH (a:Agency) WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases\n" +
+                  "MATCH (a)-[:IN_PORTFOLIO]->(p:Portfolio)\n" +
+                  "RETURN p.name, count(r), sum(toFloat(r.amount))" },
+        { title: "Portfolio character (LLM aggregations over the register's prose)",
+          note: "themes/cluster/summarize/argmax reduce a GROUP of descriptions. Judgments, not facts.",
+          cypher: "RETURN p.name, themes(r.description, 6), cluster(r.description),\n" +
+                  "       summarize(r.description, '…'), argmax(r.cnId, r.description, '…')" },
+      ],
+      joins: [
+        { source: "AusTender OCDS API", role: "Contract notices published in the window",
+          licence: "CC BY 3.0 AU, keyless", ok: !failed, detail: `${rows.length} portfolio group(s)` },
+        { source: "AGOR via seeded reference data", role: "Agency → portfolio spine",
+          licence: "CC BY 3.0 AU", ok: true, detail: "195 agencies, 17 portfolios (seeded)" },
+      ],
+      portfolios: rows.map(r => {
+        const s = byPortfolio[r.portfolio] || {};
+        return {
+          portfolio: r.portfolio,
+          contracts: Number(r.contracts || 0),
+          committed: Math.round(Number(r.committed || 0)),
+          limitedCount: Number(r.limitedCount || 0),
+          // Everything below this line is model-produced. The app renders it under a
+          // "judgment" heading so a reader never mistakes it for the register's own words.
+          judged: {
+            topics: s.topics || null,
+            clusters: s.clusters || null,
+            digest: s.digest || null,
+            vaguestDescriptionCn: s.vaguest || null,
+          },
+        };
+      }),
+      unplaced: {
+        contracts: Number(un.contracts || 0),
+        committed: Math.round(Number(un.committed || 0)),
+        exampleNames: un.names || [],
+        note: "Value whose agency name matched no seeded agency — alias drift, or a body AGOR " +
+              "does not list. Reported separately so the portfolio totals are never mistaken for the whole window.",
+      },
+      interpretation: {
+        factual: ["contracts", "committed", "limitedCount", "unplaced"],
+        judged: ["topics", "clusters", "digest", "vaguestDescriptionCn"],
+        note: "Counts and sums are arithmetic over register rows. Topics, clusters, the digest and " +
+              "the vaguest-description pick are LLM reductions of the descriptions the agencies wrote — " +
+              "useful for orientation, never evidence, and never a characterisation of any agency.",
+      },
+      limits: [
+        "Descriptions are the agencies' own words; a portfolio that writes terse descriptions will look terse here, which is a fact about disclosure, not about spending.",
+        "'Least informative description' is a subjective pick over the fetched window — a prompt for a human to go read the record, not a finding.",
+        "A capped window fetch makes every figure a sample; the status says so.",
+      ],
+      source: "AusTender OCDS API (CC BY 3.0 AU) + AGOR (CC BY 3.0 AU, seeded)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html
