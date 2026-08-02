@@ -1,0 +1,219 @@
+id: au-action-overlap
+name: Money running while an action was in force
+description: >-
+  The temporal question the registers can't ask each other: whose Commonwealth money was RUNNING
+  during the period an NDIS compliance action was in force against them — grants and contracts
+  together, each matched by ABN and compared date-against-date. Overlap is the sharpest honest
+  claim available from published data, and it is still only a claim about DATES. An action
+  concerns a provider's NDIS obligations; money running at the same time may fund something else
+  entirely, under a different program, in a different state. Actions are ranked by the register's
+  own severity wording, because a banning order and a compliance notice are not the same object.
+params:
+  - name: from
+    type: DATE
+    label: Window from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Window to
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Only money at or above (AUD)
+    required: false
+    default: "50000"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const isoAt = (d, endOfDay) => !d ? d : (/T/.test(d) ? d : d + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z'));
+    const window = `${isoAt(from)}/${isoAt(to, true)}`;
+    const minValue = Number(lensArgs.minValue || 0) || 50000;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const warnings = [];
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+
+    // THREE date shapes meet here and none of them is ISO by default: GrantConnect writes
+    // `9-July-2026` (no leading zero, month name sometimes abbreviated), the NDIS register writes
+    // `31/05/2023` or a timestamp, AusTender writes ISO. A comparison across them is only as good
+    // as this function, and a value it cannot read must come back null — never a guess, because a
+    // wrong overlap is a false accusation about dates.
+    const MONTHS = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+    const asDay = (v) => {
+      const s = String(v || "").trim();
+      if (!s) return null;
+      let m = s.match(/^(\d{1,2})-([A-Za-z]{3,})-(\d{4})$/);        // 9-July-2026
+      if (m) { const mo = MONTHS[m[2].slice(0,3).toLowerCase()];
+               return mo == null ? null : `${m[3]}-${String(mo+1).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`; }
+      m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);                    // 31/05/2023
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      m = s.match(/^(\d{4}-\d{2}-\d{2})/);                           // ISO, with or without a time
+      return m ? m[1] : null;
+    };
+
+    const ask = async (label, cypher, params) => {
+      try {
+        const q = await gateway.kg.query({ cypher, params: JSON.stringify(params || {}) });
+        warnings.push(...((q && q.warnings) || []));
+        return { rows: ((q && q.rows) ? q.rows : (q || [])), ok: true };
+      } catch (e) {
+        warnings.push(label + " unavailable: " + String((e && e.message) || e));
+        return { rows: [], ok: false };
+      }
+    };
+
+    const grantsQ = await ask("GrantConnect window", `
+      MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+      WHERE g.value >= $minValue
+      RETURN g.gaId AS id, g.recipient AS party, g.recipientAbn AS abn, g.agency AS buyer,
+             g.program AS program, g.purpose AS text, g.value AS value,
+             g.startDate AS startDate, g.endDate AS endDate`, { windowKey, minValue });
+    const contractsQ = await ask("AusTender window", `
+      MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+      WHERE toFloat(r.amount) >= $minValue
+      RETURN r.cnId AS id, r.supplierName AS party, r.supplierAbn AS abn, r.agencyName AS buyer,
+             r.title AS program, r.description AS text, toFloat(r.amount) AS value,
+             r.startDate AS startDate, r.endDate AS endDate`, { window, minValue });
+
+    const money = []
+      .concat(grantsQ.rows.map(r => Object.assign({}, r, { kind: "grant" })))
+      .concat(contractsQ.rows.map(r => Object.assign({}, r, { kind: "contract" })))
+      .map(r => Object.assign({}, r, { abnDigits: digits(r.abn), start: asDay(r.startDate), end: asDay(r.endDate) }))
+      .filter(r => r.abnDigits.length === 11);
+
+    const abns = Array.from(new Set(money.map(r => r.abnDigits)));
+    // Enumerated seeds mint ONE virtual anchor per literal, so the list is inlined; a $param list
+    // has nothing to mint at parse time and would fetch nothing at all. The engine refuses more
+    // than 200 anchors on one fetch — a real guardrail, since each anchor drives a fetch — so the
+    // ABNs are asked in batches and the results concatenated. Batching rather than truncating
+    // matters here: a silently dropped ABN reads downstream as "no action against this entity".
+    const ABNS_PER_QUERY = 150;
+    const actionRows = [];
+    let registerOk = true;
+    for (let i = 0; i < abns.length; i += ABNS_PER_QUERY) {
+      const batch = abns.slice(i, i + ABNS_PER_QUERY);
+      const inList = batch.map(a => "'" + a + "'").join(", ");
+      const r = await ask(`NDIS compliance register (ABNs ${i + 1}-${i + batch.length})`, `
+        MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord)
+        WHERE q.abn IN [${inList}]
+        RETURN q.abn AS abn, x.register AS register, x.name AS name, x.state AS state,
+               x.dateFrom AS dateFrom, x.dateTo AS dateTo, x.detail AS detail`);
+      if (!r.ok) registerOk = false;
+      actionRows.push(...r.rows);
+    }
+    const actionsQ = { rows: actionRows, ok: registerOk };
+
+    // The register's own wording carries the severity distinction; this preserves it rather than
+    // flattening every entry to "adverse". Anything unrecognised sorts last and says so.
+    const severityOf = (register) => {
+      const r = String(register || "").toLowerCase();
+      if (r.includes("banning")) return { rank: 3, severity: "banning order" };
+      if (r.includes("revocation") || r.includes("revoke")) return { rank: 3, severity: "revocation" };
+      if (r.includes("suspension") || r.includes("suspend")) return { rank: 2, severity: "suspension" };
+      if (r.includes("refusal") || r.includes("refuse")) return { rank: 2, severity: "refusal" };
+      if (r.includes("notice")) return { rank: 1, severity: "compliance notice" };
+      return { rank: 0, severity: "other action as published" };
+    };
+
+    // OVERLAP. An open-ended action (no dateTo) is still in force, so it overlaps anything that has
+    // not already ended. Money with no readable start date is reported as UNDATED rather than
+    // silently dropped or silently counted — its absence from the overlap set is a fact about the
+    // publication, not about the entity.
+    const overlaps = [];
+    const undated = [];
+    actionsQ.rows.forEach(a => {
+      const aFrom = asDay(a.dateFrom), aTo = asDay(a.dateTo);
+      const sev = severityOf(a.register);
+      const mine = money.filter(m => m.abnDigits === digits(a.abn));
+      mine.forEach(m => {
+        if (!m.start || !aFrom) { undated.push({ id: m.id, kind: m.kind, party: m.party, reason: !aFrom ? "action has no readable start date" : "money has no readable start date" }); return; }
+        const inForceDuring = (!aTo || aTo >= m.start) && (!m.end || aFrom <= m.end);
+        if (!inForceDuring) return;
+        overlaps.push({
+          abn: m.abnDigits, party: m.party, kind: m.kind, id: m.id, buyer: m.buyer,
+          program: m.program, value: Number(m.value) || 0,
+          moneyStart: m.start, moneyEnd: m.end,
+          action: { register: a.register, severity: sev.severity, rank: sev.rank,
+                    from: aFrom, to: aTo, stillInForce: !aTo, state: a.state || null,
+                    detail: String(a.detail || "").trim() || null },
+          url: m.kind === "grant"
+            ? "https://www.grants.gov.au/Ga/Show/" + encodeURIComponent(m.id)
+            : "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(m.id),
+        });
+      });
+    });
+    overlaps.sort((a, b) => (b.action.rank - a.action.rank) || (b.value - a.value));
+
+    const byEntity = {};
+    overlaps.forEach(o => {
+      const e = (byEntity[o.abn] = byEntity[o.abn] || { abn: o.abn, party: o.party, items: 0, value: 0, topRank: 0, severities: new Set() });
+      e.items += 1; e.value += o.value; e.topRank = Math.max(e.topRank, o.action.rank);
+      e.severities.add(o.action.severity);
+    });
+    const entities = Object.keys(byEntity).map(k => {
+      const e = byEntity[k];
+      return { abn: e.abn, party: e.party, overlappingItems: e.items, overlappingValue: Math.round(e.value),
+               severities: Array.from(e.severities) };
+    }).sort((a, b) => b.overlappingValue - a.overlappingValue);
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+    const unscreenable = []
+      .concat(grantsQ.rows, contractsQ.rows)
+      .filter(r => digits(r.abn).length !== 11).length;
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-action-overlap",
+      window: { from, to }, minValue,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        moneyItemsScreened: money.length,
+        distinctAbns: abns.length,
+        actionsMatched: actionsQ.rows.length,
+        entitiesWithOverlap: entities.length,
+        overlappingItems: overlaps.length,
+        overlappingValue: Math.round(overlaps.reduce((n, o) => n + o.value, 0)),
+        unscreenableItems: unscreenable,
+        undatedComparisons: undated.length,
+        note: actionsQ.rows.length
+          ? `${entities.length} entit(ies) had money whose own period overlaps a compliance action in force against the same ABN. ` +
+            `Severity is the register's own wording — a compliance notice is not a banning order — and an overlap is a claim about DATES only.`
+          : `No compliance action matched any ABN receiving money in this window. That is a fact about the NDIS register, never a clean bill.`,
+      },
+      queries: [
+        { title: "The money (arithmetic)",
+          cypher: "MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward) WHERE g.value >= $minValue RETURN g\n" +
+                  "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease) WHERE toFloat(r.amount) >= $minValue RETURN r" },
+        { title: "The actions, by ABN",
+          cypher: "MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord)\nWHERE q.abn IN [<the ABNs receiving money>]\nRETURN q.abn, x.register, x.dateFrom, x.dateTo" },
+        { title: "Overlap", note: "Computed in the lens: an action with no end date is still in force and overlaps anything not already ended." },
+      ],
+      entities,
+      overlaps: overlaps.slice(0, 40),
+      undatedComparisons: undated.slice(0, 20),
+      interpretation: {
+        factual: ["every date, value, register entry and overlap — arithmetic over published fields"],
+        judged: [],
+        note: "No model is involved. 'Severity' is a reading of the register's OWN action-type wording, not a judgment about the entity.",
+      },
+      limits: [
+        "An overlap is a coincidence of DATES between two published records. It is not a finding that the money was misused, and the action may concern a different part of the entity's operations entirely.",
+        "NDIS compliance actions concern a provider's obligations under the NDIS Act. A grant or contract running at the same time is frequently for unrelated work, under a different program and often a different portfolio.",
+        "A compliance notice is the lowest rung of the register and is common; a banning order is not. The severity field preserves that distinction and no total should be read across it.",
+        "Matching is by ABN alone: an ABN can be transferred, re-used, or shared across a corporate group, and a group's other ABNs are invisible here.",
+        "Money whose dates cannot be read is listed under undatedComparisons rather than counted either way — the register's date formats disagree with each other and unreadable is not the same as absent.",
+        "Both money sources are WINDOW scans, so an entity's other awards and contracts outside this window are not considered.",
+      ],
+      method: "One window of grants and contracts at or over the floor, ABNs normalized to digits, matched against " +
+              "NDIS compliance actions for the same ABNs, then each action's in-force period compared date-against-date " +
+              "with each item's own start and end dates.",
+      source: "GrantConnect (CC BY 4.0); AusTender OCDS (CC BY 3.0 AU); NDIS Commission compliance actions register",
+    }) });
+presentation:
+  href: /apps/moneytrail.html
