@@ -113,6 +113,8 @@
     marginBand: "very marginal (<3%) | marginal (3-6%) | fairly safe (6-10%) | safe (10%+)."
     swing: "Two-party-preferred swing at the 2025 election."
     postcodes: "Postcodes whose centroid falls in this division (approximate on boundaries)."
+    centroidLat: "Approximate map-only latitude: median of the division's GeoNames postcode centroids; four divisions without an assigned postcode use documented coarse fallbacks. Never a join key."
+    centroidLon: "Approximate map-only longitude: median of the division's GeoNames postcode centroids; four divisions without an assigned postcode use documented coarse fallbacks. Never a join key."
 
 - name: Grant
   userAnchor: false

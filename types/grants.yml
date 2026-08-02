@@ -1,13 +1,13 @@
-# GrantConnect awards as a LAZY window fetch — the whole recent window materializes on first
-# traversal (tabular producer, deployment-cached file), replacing the deleted reference snapshot
-# that went stale the moment it was written.
+# GrantConnect awards as a LAZY date-range fetch. The requested export materializes on first
+# traversal and is deployment-cached, replacing the deleted reference snapshot that went stale
+# the moment it was written.
 
 - name: GrantWindow
   visibility: internal
   description: >-
-    The anchor for a recent-grants fetch. One key ('recent') stands for the producer's rolling
-    window (published in the last 90 days); the fetch date and window are shown by every
-    consuming surface, because a rolling window is a moving target.
+    The anchor for a GrantConnect publish-date export. Its key is an explicit inclusive range,
+    `YYYY-MM-DD|YYYY-MM-DD`; the producer substitutes the two key parts into GrantConnect's
+    DateStart and DateEnd parameters. Identical ranges share the deployment-wide file cache.
   properties:
     key:
       metadata: { identity: "true" }
@@ -15,7 +15,7 @@
 - name: GrantAward
   visibility: internal
   description: >-
-    One published grant award from GrantConnect's rolling recent window. Values are commitments
+    One published grant award from a requested GrantConnect publish-date range. Values are commitments
     as published. The DELIVERY location fields are the only honest geographic basis — the
     recipient's address is a head office, and this realm never maps money by head office.
   properties:
@@ -46,5 +46,5 @@
       relationship: PUBLISHED_GRANT
       keyField: key
       recordKeyField: windowKey
-      producer: grantsPublishedRecently
-      description: "Every grant award published in the rolling recent window: `MATCH (w:GrantWindow {key:'recent'})-[:PUBLISHED_GRANT]->(g:GrantAward)`."
+      producer: grantsPublishedByDate
+      description: "Every grant award in an inclusive publish-date range: `MATCH (w:GrantWindow {key:'2026-05-04|2026-08-02'})-[:PUBLISHED_GRANT]->(g:GrantAward)`."

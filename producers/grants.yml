@@ -1,21 +1,22 @@
 # GrantConnect published grant awards — the LAZY replacement for the deleted 5.7MB reference
-# snapshot (the correction that motivated the whole tabular producer). One XLSX per rolling
-# window, fetched on first traversal, cached deployment-wide, re-downloaded on TTL.
+# snapshot. One XLSX per requested publish-date range, fetched on first traversal, cached
+# deployment-wide, re-downloaded on TTL. The GrantWindow key is `YYYY-MM-DD|YYYY-MM-DD`;
+# numbered key tokens turn its two parts into the date format expected by GrantConnect.
 #
 # Verified live 2026-08-01: 7,064 grants / $4.98B for a 30-day window, 1.3MB.
-# The export wants its dates as 01-Jul-2026 — the {today|date:} token renders them.
+# The export wants its dates as 01-Jul-2026 — the {keyN|date:} tokens render them.
 # GOTCHA: the file's criteria banner is ~19 two-cell rows, which defeats modal-width header
 # detection — headerRow is EXPLICIT (row 20, 1-based), pinned to the verified layout.
-- name: grantsPublishedRecently
+- name: grantsPublishedByDate
   kind: tabular
-  url: "https://www.grants.gov.au/Reports/GaPublishedDownload?AgencyStatus=0&DateType=Publish%20Date&DateStart={today-90d|date:dd-MMM-yyyy}&DateEnd={today|date:dd-MMM-yyyy}"
+  url: "https://www.grants.gov.au/Reports/GaPublishedDownload?AgencyStatus=0&DateType=Publish%20Date&DateStart={key1|date:dd-MMM-yyyy}&DateEnd={key2|date:dd-MMM-yyyy}"
   format: xlsx
   headerRow: 20
   userAgent: browser
-  # No keyColumn: the whole window IS the answer, stamped back to the (single) anchor key.
+  # No keyColumn: the whole requested range IS the answer, stamped back to its composite key.
   keyAs: windowKey
-  maxRows: 200000
-  maxRowsPerKey: 100000
+  maxRows: 500000
+  maxRowsPerKey: 500000
   project:
     agency: "Agency"
     gaId: "GA ID"

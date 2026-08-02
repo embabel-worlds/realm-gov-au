@@ -1,48 +1,81 @@
 id: au-grant-hop
 name: Grants by electorate margin
 description: >-
-  Where discretionary money LANDS, politically: recent grant awards mapped by their DELIVERY
+  Where discretionary money LANDS, politically: date-scoped grant awards mapped by their DELIVERY
   postcode (the only honest geographic basis — recipient addresses are head offices) onto the
   seeded electorates with their 2025 margins. Grants per dollar into marginal government-held
   seats vs safe seats. Election facts joined to published awards: it answers WHERE, and
   establishes nothing about WHY — every surface says so.
 params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: false
+  - name: to
+    type: DATE
+    label: Published to
+    required: false
   - name: minValue
     type: STRING
-    label: Grants at or above (AUD)
+    label: Minimum grant value (AUD)
     required: false
     default: "100000"
 spec:
   kind: cypherscript
   script: |
-    const minValue = Number(lensArgs.minValue || 0) || 100000;
+    const minValue = Math.max(0, Number(lensArgs.minValue || 0) || 100000);
+    const iso = (value) => String(value || "").slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    const shiftDays = (value, days) => {
+      const date = new Date(value + "T00:00:00Z");
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    };
+    const to = iso(lensArgs.to) || today;
+    const from = iso(lensArgs.from) || shiftDays(to, -89);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new Error("Grant dates must use YYYY-MM-DD.");
+    }
+    if (from > to) throw new Error("Published from must be on or before published to.");
+    const requestedDays = Math.floor((Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86400000) + 1;
+    const windowKey = from + "|" + to;
     const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const shortAud = (value) => {
+      const trim = (n) => n.toFixed(2).replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
+      if (value >= 1e9) return "$" + trim(value / 1e9) + "b";
+      if (value >= 1e6) return "$" + trim(value / 1e6) + "m";
+      if (value >= 1e3) return "$" + trim(value / 1e3) + "k";
+      return "$" + value.toLocaleString("en-AU");
+    };
 
-    // The rolling recent window (the producer's own 90 days), lazily fetched + deployment-cached.
-    const gq = await gateway.kg.query({
+    // The explicit inclusive range is part of the virtual anchor key. Traversing this relationship
+    // makes the producer fetch exactly that GrantConnect export, then share it via the file cache.
+    const queries = await Promise.all([gateway.kg.query({
       cypher: `
-        MATCH (w:GrantWindow {key:'recent'})-[:PUBLISHED_GRANT]->(g:GrantAward)
-        RETURN g.agency AS agency, g.recipient AS recipient, g.activity AS activity,
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        RETURN g.agency AS agency, g.recipient AS recipient, g.program AS program, g.activity AS activity,
                g.value AS value, g.deliveryPostcode AS deliveryPostcode,
                g.deliveryState AS deliveryState, g.selectionProcess AS selectionProcess,
                g.publishDate AS publishDate, g.gaId AS gaId, g.goId AS goId
       `,
+      params: JSON.stringify({ windowKey }),
+    }), gateway.kg.query({
+      cypher: `
+        MATCH (e:Electorate)
+        RETURN e.division AS division, e.state AS state, e.marginBand AS marginBand,
+               e.marginPct AS marginPct, e.heldByAbbrev AS heldByAbbrev, e.member AS member,
+               e.centroidLat AS centroidLat, e.centroidLon AS centroidLon,
+               e.postcodes AS postcodes
+      `,
       params: JSON.stringify({}),
-    });
+    })]);
+    const gq = queries[0];
+    const eq = queries[1];
     const all = ((gq && gq.rows) ? gq.rows : (gq || []));
     const warnings = [...((gq && gq.warnings) || [])];
     const failed = warnings.some(w => { const t = asText(w);
       return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
 
-    const eq = await gateway.kg.query({
-      cypher: `
-        MATCH (e:Electorate)
-        RETURN e.division AS division, e.state AS state, e.marginBand AS marginBand,
-               e.marginPct AS marginPct, e.heldByAbbrev AS heldByAbbrev, e.member AS member,
-               e.postcodes AS postcodes
-      `,
-      params: JSON.stringify({}),
-    });
     const electorates = ((eq && eq.rows) ? eq.rows : (eq || []));
     warnings.push(...((eq && eq.warnings) || []));
 
@@ -58,6 +91,11 @@ spec:
     let noDelivery = 0, multiDivision = 0, unmatched = 0;
     const byDivision = {};
     const bands = {};
+    for (const e of electorates) byDivision[e.division] = {
+      division: e.division, state: e.state, marginBand: e.marginBand, marginPct: e.marginPct,
+      heldByAbbrev: e.heldByAbbrev, member: e.member, grants: 0, value: 0, awards: [],
+      centroidLat: Number(e.centroidLat), centroidLon: Number(e.centroidLon),
+    };
     for (const g of grants) {
       const pc = String(g.deliveryPostcode || "").trim();
       if (!pc) { noDelivery++; continue; }
@@ -65,11 +103,13 @@ spec:
       if (!divs.length) { unmatched++; continue; }
       if (divs.length > 1) { multiDivision++; continue; }
       const e = divs[0];
-      const d = (byDivision[e.division] = byDivision[e.division] || {
-        division: e.division, state: e.state, marginBand: e.marginBand, marginPct: e.marginPct,
-        heldByAbbrev: e.heldByAbbrev, member: e.member, grants: 0, value: 0,
-      });
+      const d = byDivision[e.division];
       d.grants++; d.value += g.valueNum;
+      d.awards.push({
+        gaId: g.gaId, goId: g.goId, agency: g.agency, recipient: g.recipient, program: g.program,
+        activity: g.activity, value: Math.round(g.valueNum), publishDate: g.publishDate,
+        deliveryPostcode: g.deliveryPostcode, selectionProcess: g.selectionProcess,
+      });
       const b = (bands[e.marginBand] = bands[e.marginBand] || { band: e.marginBand, grants: 0, value: 0, divisions: new Set() });
       b.grants++; b.value += g.valueNum; b.divisions.add(e.division);
     }
@@ -78,14 +118,30 @@ spec:
       divisions: b.divisions.size,
       valuePerDivision: Math.round(b.value / b.divisions.size),
     })).sort((a, b) => a.band.localeCompare(b.band));
-    const topDivisions = Object.values(byDivision)
-      .map(d => ({ ...d, value: Math.round(d.value) }))
-      .sort((a, b) => b.value - a.value).slice(0, 15);
-    const attributed = Object.values(byDivision).reduce((n, d) => n + d.grants, 0);
+    const divisions = Object.values(byDivision)
+      .map(d => ({ ...d, value: Math.round(d.value), awards: d.awards.sort((a, b) => b.value - a.value) }))
+      .sort((a, b) => b.value - a.value || a.division.localeCompare(b.division));
+    const attributed = divisions.reduce((n, d) => n + d.grants, 0);
+    const observedDates = all.map(g => iso(g.publishDate)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    const justBelow = grants.length && minValue > 0 ? all
+      .map(g => Object.assign({}, g, { valueNum: Number(String(g.value || "").replace(/[^0-9.]/g, "")) || 0 }))
+      .filter(g => g.valueNum < minValue && g.valueNum >= minValue * 0.9)
+      .sort((a, b) => b.valueNum - a.valueNum) : [];
+    const justAbove = minValue > 0 ? grants.filter(g => g.valueNum <= minValue * 1.1) : [];
+    const truncated = warnings.some(w => {
+      const t = asText(w);
+      return t.includes("MAX_ROWS") || t.includes("ROW_LIMIT") || t.includes("TRUNCAT");
+    });
 
     await gateway.lens.present({ content: JSON.stringify({
       kind: "au-grant-hop",
       minValue,
+      coverage: {
+        from, to, requestedDays, rowsFetched: all.length,
+        observedFrom: observedDates[0] || null,
+        observedTo: observedDates[observedDates.length - 1] || null,
+        exactRequest: !failed && !truncated,
+      },
       status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
       warnings,
       headline: {
@@ -94,16 +150,26 @@ spec:
         noDeliveryPostcode: noDelivery,
         crossBoundary: multiDivision,
         unmatchedPostcode: unmatched,
-        note: `${attributed} of ${grants.length} grants ≥ $${(minValue / 1000).toFixed(0)}k in the rolling window map to exactly ONE division by delivery postcode. ` +
+        note: `${attributed} of ${grants.length} grants ≥ ${shortAud(minValue)} published from ${from} to ${to} map to exactly ONE division by delivery postcode. ` +
               `${noDelivery} state no delivery postcode, ${multiDivision} cross a boundary, ${unmatched} match no division — all EXCLUDED from money totals, never guessed.`,
       },
       queries: [{
         title: "Grant awards × seeded electorates",
         note: "Delivery postcode only — recipient addresses are head offices and are never mapped.",
-        cypher: "MATCH (w:GrantWindow {key:'recent'})-[:PUBLISHED_GRANT]->(g:GrantAward)\nMATCH (e:Electorate) WHERE g.deliveryPostcode IN e.postcodes RETURN e.division, e.marginBand, count(g), sum(g.value)",
+        cypher: "MATCH (w:GrantWindow {key:$from + '|' + $to})-[:PUBLISHED_GRANT]->(g:GrantAward)\nMATCH (e:Electorate) WHERE g.deliveryPostcode IN e.postcodes RETURN e.division, e.marginBand, count(g), sum(g.value)",
       }],
       byMarginBand: bandRows,
-      topDivisions,
+      divisions,
+      thresholdContext: {
+        belowCount: justBelow.length,
+        aboveCount: justAbove.length,
+        windowPct: 10,
+        examples: justBelow.slice(0, 5).map(g => ({
+          gaId: g.gaId, goId: g.goId, recipient: g.recipient, program: g.program,
+          activity: g.activity, value: Math.round(g.valueNum),
+        })),
+        note: "The selected minimum is a display filter, not proof of a statutory or program threshold. Bunching may reflect published program caps, award design, delegation settings, co-funding or coincidence; the register rows alone cannot establish why.",
+      },
       interpretation: {
         factual: ["award rows verbatim", "2025 election margins (seeded AEC facts)", "the postcode→division mapping and its exclusions"],
         judged: [],
@@ -112,9 +178,9 @@ spec:
       limits: [
         "Delivery postcode is as published; a program delivered nationally from one postcode concentrates falsely — read the top divisions with that in mind.",
         "Cross-boundary postcodes and blank delivery fields are excluded from totals and counted openly; the mapping is 2025 boundaries.",
-        "The window is the producer's rolling 90 days as of the fetch; the publish dates carry the actual span.",
+        "The selected publish-date range is inclusive. Large uncached ranges can take several minutes because GrantConnect supplies an XLSX export, not a query API.",
       ],
-      source: "GrantConnect published awards (rolling window) · AEC 2025 results + postcodes (seeded reference)",
+      source: "GrantConnect published awards (selected publish-date range) · GeoNames postcode centroids × AEC 2025 boundaries · AEC 2025 final results",
     }) });
 presentation:
   href: /apps/grants-atlas.html
