@@ -1,0 +1,219 @@
+id: au-grant-overlap
+name: The same work, funded from two places
+description: >-
+  Awards whose PURPOSES read as the same work, funded through different programs — or by different
+  agencies entirely. Nobody can see this today: each program publishes its own list, and no view
+  crosses them. Deterministic first (shared distinctive wording between two purposes, counted, with
+  both texts shown), then an optional LLM read of the top pairs for whether they really describe
+  the same work. Overlap is NOT duplication: co-funding is normal, staged programs are deliberate,
+  and two grants can share language while funding different things. This produces PAIRS TO READ.
+params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Published to (inclusive)
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Only awards at or above (AUD)
+    required: false
+    default: "100000"
+  - name: crossing
+    type: STRING
+    label: Pairs must cross (program | agency | none)
+    required: false
+    default: "program"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const minValue = Number(lensArgs.minValue || 0) || 100000;
+    const crossing = ["program", "agency", "none"].indexOf(String(lensArgs.crossing || "").trim()) >= 0
+      ? String(lensArgs.crossing).trim() : "program";
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    const q = await gateway.kg.query({
+      cypher: `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        WHERE g.value >= $minValue
+        RETURN g.gaId AS gaId, g.purpose AS purpose, g.activity AS activity, g.program AS program,
+               g.agency AS agency, g.recipient AS recipient, g.value AS value,
+               g.startDate AS startDate, g.endDate AS endDate
+        ORDER BY value DESC
+      `,
+      params: JSON.stringify({ windowKey, minValue }),
+    });
+    const rows = ((q && q.rows) ? q.rows : (q || []));
+    const warnings = [...((q && q.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+
+    // ---- DETERMINISTIC SIMILARITY ----------------------------------------------------------
+    // Distinctive wording only. Common administrative vocabulary ("project", "support",
+    // "community", "australia") appears in most purposes and would make everything look alike, so
+    // a term carried by more than a fifth of the window is dropped as boilerplate BEFORE any
+    // comparison. What survives is the wording that actually distinguishes one purpose.
+    const STOP = new Set(("the a an and or of to in for on with by at from as is are be will this that " +
+      "project program grant funding fund support supports provide provides deliver delivery activity " +
+      "australia australian australias national state states community communities people organisation " +
+      "organisations service services work works new").split(/\s+/));
+    const termsOf = (s) => {
+      const t = String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/)
+        .filter(x => x.length > 3 && !STOP.has(x));
+      return new Set(t);
+    };
+    const normText = (s2) => String(s2 || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+    // COMPARE DISTINCT TEXTS, NOT AWARDS. One program's paragraph can sit on thirty-five awards,
+    // and pairing awards makes that paragraph produce hundreds of pairs that are all the same
+    // observation — they crowded out every other finding and consumed the entire LLM budget.
+    // Collapsing to one representative per distinct purpose means each block of text is considered
+    // exactly once, and the award count it stands for travels with it.
+    const byText = {};
+    rows.forEach(r => {
+      const k = normText(r.purpose);
+      if (!k) return;
+      if (!byText[k]) byText[k] = Object.assign({}, r, { terms: termsOf(r.purpose), normPurpose: k, awardsWithThisText: 0, totalValueOfText: 0 });
+      byText[k].awardsWithThisText += 1;
+      byText[k].totalValueOfText += (Number(r.value) || 0);
+    });
+    const docs = Object.keys(byText).map(k => byText[k]);
+    const df = {};
+    docs.forEach(d => d.terms.forEach(t => { df[t] = (df[t] || 0) + 1; }));
+    const tooCommon = Math.max(2, Math.ceil(docs.length * 0.2));
+    docs.forEach(d => { d.keep = new Set(Array.from(d.terms).filter(t => df[t] < tooCommon)); });
+
+    // Candidate generation via an inverted index — comparing every pair directly is quadratic and
+    // pointless when most pairs share nothing distinctive at all.
+    const index = {};
+    docs.forEach((d, i) => d.keep.forEach(t => { (index[t] = index[t] || []).push(i); }));
+    const seen = {};
+    const pairs = [];
+    // Identical text cannot reach this loop — collapsing to distinct purposes above already made
+    // one program's paragraph a single document. That is deliberate: byte-identical text is
+    // program boilerplate, which au-grant-boilerplate reports with its family and value, and left
+    // in it produced hundreds of pairs restating one observation while consuming the LLM budget.
+    Object.keys(index).forEach(t => {
+      const ids = index[t];
+      if (ids.length > 40) return;   // a term this widespread is not distinctive after all
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+        const key = ids[a] + ":" + ids[b];
+        if (seen[key]) continue;
+        seen[key] = 1;
+        const x = docs[ids[a]], y = docs[ids[b]];
+        if (crossing === "program" && String(x.program || "") === String(y.program || "")) continue;
+        if (crossing === "agency" && String(x.agency || "") === String(y.agency || "")) continue;
+        const shared = Array.from(x.keep).filter(t2 => y.keep.has(t2));
+        const union = new Set(Array.from(x.keep).concat(Array.from(y.keep))).size;
+        if (shared.length < 4 || !union) continue;
+        pairs.push({
+          overlap: Math.round((shared.length / union) * 100) / 100,
+          sharedTerms: shared.sort().slice(0, 12),
+          combinedValue: (Number(x.value) || 0) + (Number(y.value) || 0),
+          a: x, b: y,
+        });
+      }
+    });
+    pairs.sort((p1, p2) => (p2.overlap - p1.overlap) || (p2.combinedValue - p1.combinedValue));
+    const top = pairs.slice(0, 25);
+
+    // ---- SUBJECTIVE LAYER ------------------------------------------------------------------
+    // The deterministic pass finds SHARED WORDING; only a reader can say whether that is the same
+    // work. One judgment per pair, on the two purposes alone, and a failure degrades to the
+    // wording overlap rather than losing the pair.
+    let judgeError = null;
+    const judged = [];
+    for (const p of top.slice(0, 12)) {
+      try {
+        const out = await gateway.ai.complete({
+          prompt: "Do these two funded activities describe the SAME work — the same activity, for the same " +
+            "beneficiaries, producing the same thing? Sharing a field, a population, a sector or vocabulary " +
+            "is NOT the same work. Reply with one word — same, related, or different — then a colon and one " +
+            "short sentence of reason, using only what the two texts say.\n\n" +
+            "A: " + String(p.a.purpose || "") + "\n\nB: " + String(p.b.purpose || ""),
+        });
+        const verdict = String((out && (out.text || out.content)) || out || "").trim();
+        judged.push(Object.assign({}, p, {
+          verdict: verdict || null,
+          verdictLabel: (verdict.match(/^\s*(same|related|different)/i) || [null, null])[1],
+        }));
+      } catch (e) {
+        judgeError = String((e && e.message) || e);
+        judged.push(Object.assign({}, p, { verdict: null, verdictLabel: null }));
+      }
+    }
+    if (judgeError) warnings.push("Pair reading unavailable — wording overlap only: " + judgeError);
+
+    const shape = (r) => ({
+      gaId: r.gaId, recipient: r.recipient, agency: r.agency, program: r.program,
+      activity: r.activity, value: r.value, startDate: r.startDate, endDate: r.endDate,
+      awardsWithThisText: r.awardsWithThisText, totalValueOfText: Math.round(r.totalValueOfText || 0),
+      purpose: String(r.purpose || ""),
+      grantConnectUrl: "https://www.grants.gov.au/Ga/Show/" + encodeURIComponent(r.gaId),
+    });
+    const present = (judged.length ? judged : top).map(p => ({
+      overlap: p.overlap, sharedTerms: p.sharedTerms, combinedValue: p.combinedValue,
+      crosses: {
+        program: String(p.a.program || "") !== String(p.b.program || ""),
+        agency: String(p.a.agency || "") !== String(p.b.agency || ""),
+        recipient: String(p.a.recipient || "") !== String(p.b.recipient || ""),
+      },
+      verdict: p.verdict || null, verdictLabel: p.verdictLabel || null,
+      a: shape(p.a), b: shape(p.b),
+    }));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grant-overlap",
+      window: { from, to }, minValue, crossing,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        awardsCompared: rows.length,
+        distinctPurposeTexts: docs.length,
+        candidatePairs: pairs.length,
+        pairsRead: judged.filter(p => p.verdict).length,
+        note: rows.length
+          ? `${pairs.length} pair(s) of awards share distinctive wording without being the same text` +
+            (crossing === "none" ? "" : ` across different ${crossing}s`) +
+            `; the ${Math.min(judged.length, 12)} strongest were read for whether they describe the same work. ` +
+            `${rows.length} award(s) carry ${docs.length} distinct purpose text(s) — repeated text is compared once, ` +
+            `and byte-identical text is program boilerplate reported by au-grant-boilerplate.`
+          : "No awards at or over the threshold in this window.",
+      },
+      queries: [
+        { title: "The awards compared (arithmetic)",
+          cypher: "MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)\n" +
+                  "WHERE g.value >= $minValue RETURN g.gaId, g.purpose, g.program, g.agency, g.value" },
+        { title: "Similarity", note: "Computed in the lens, not by the graph: distinctive-term overlap between " +
+                  "purposes after dropping wording carried by more than a fifth of the window." },
+      ],
+      pairs: present,
+      interpretation: {
+        factual: ["overlap", "sharedTerms", "combinedValue", "crosses", "both purposes verbatim"],
+        judged: ["verdict", "verdictLabel"],
+        note: "Overlap counts shared distinctive words — it establishes that two notices READ alike, nothing more. " +
+              "The verdict is one model's reading of the two texts, and both texts are shown so you need not take it.",
+      },
+      limits: [
+        "Shared wording is not duplicated funding. Co-funding, staged programs, and consortium partners all produce look-alike purposes legitimately.",
+        "This compares only what is IN this window and over the threshold — the counterpart grant may sit in another window or below the floor.",
+        "Each side of a pair is one DISTINCT purpose text, not one award: `awardsWithThisText` says how many awards carry it, and the named award is a representative of that block.",
+        "Purposes that describe the same work in different words are invisible to the deterministic pass; the model only ever sees pairs that pass it.",
+        "Byte-identical purposes are excluded here by design — that is program template text, and au-grant-boilerplate reports it with the full family and value attached.",
+        "A pair is a prompt to read two records. It is never evidence of waste, and this lens never says it is.",
+      ],
+      method: "Awards over the threshold in one publish-date window; distinctive-term overlap between every candidate " +
+              "pair (boilerplate vocabulary removed first), optionally restricted to pairs crossing a program or " +
+              "agency boundary, then an LLM reading of the strongest pairs.",
+      source: "GrantConnect published awards (CC BY 4.0)",
+    }) });
+presentation:
+  href: /apps/grants-atlas.html

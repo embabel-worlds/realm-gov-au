@@ -1,0 +1,193 @@
+id: au-money-trace
+name: One ABN, every register
+description: >-
+  Everything the Commonwealth publishes about one ABN, in one place: contracts won, grants
+  received, NDIS compliance actions, Modern Slavery lodgement, and the ATO tax transparency row.
+  Each register is asked separately so
+  a SILENCE is qualified per register — "not in this register", never "clean" — and no federal
+  debarment register exists to ask. Grants and contracts are window scans narrowed by ABN, so
+  their answer is bounded by the window, which the output states. Register entries to hand a
+  human, never a determination about the entity.
+params:
+  - name: abn
+    type: STRING
+    label: ABN
+    required: true
+    default: ""
+  - name: from
+    type: DATE
+    label: Window from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Window to
+    required: true
+    default: "2026-08-02"
+spec:
+  kind: cypherscript
+  script: |
+    // The same ABN is published spaced, unspaced, numeric and float across this source estate, so
+    // every comparison happens on digits. A float tail ('12345678901.0') is a real shape here.
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+    const abn = digits(lensArgs.abn);
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const isoAt = (d, endOfDay) => !d ? d : (/T/.test(d) ? d : d + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z'));
+    const window = `${isoAt(from)}/${isoAt(to, true)}`;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const warnings = [];
+
+    if (!abn || abn.length !== 11) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-money-trace", status: "EMPTY",
+        note: abn ? `'${lensArgs.abn}' is not an 11-digit ABN.` : "Enter an ABN to trace.",
+      }) });
+    } else {
+
+    // Each register in its own query, each failure contained: one register being unavailable must
+    // leave that register UNKNOWN, never silently empty and never fatal to the rest.
+    const ask = async (label, cypher, params) => {
+      try {
+        const q = await gateway.kg.query({ cypher, params: JSON.stringify(params || {}) });
+        warnings.push(...((q && q.warnings) || []));
+        return { rows: ((q && q.rows) ? q.rows : (q || [])), ok: true };
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        warnings.push(label + " unavailable: " + msg);
+        return { rows: [], ok: false, error: msg };
+      }
+    };
+
+    // ---- The ABN-anchored registers. The ABN is INLINED: a pinned equality on a virtual anchor
+    // mints the anchor at parse time, and a $param has nothing to mint, so it would fetch nothing.
+    const ndis = await ask("NDIS compliance register", `
+      MATCH (q:IntegrityQuery {abn:'${abn}'})-[:HAS_ADVERSE]->(x:AdverseRecord)
+      RETURN x.register AS register, x.name AS name, x.dateFrom AS dateFrom,
+             x.dateTo AS dateTo, x.state AS state, x.detail AS detail`);
+    const slavery = await ask("Modern Slavery register", `
+      MATCH (q:IntegrityQuery {abn:'${abn}'})-[:HAS_STATEMENT]->(x:SlaveryStatement)
+      RETURN x.periodStart AS periodStart, x.periodEnd AS periodEnd, x.kind AS kind,
+             x.entities AS entities, x.link AS link`);
+    const tax = await ask("ATO tax transparency report", `
+      MATCH (q:IntegrityQuery {abn:'${abn}'})-[:HAS_TAX_RECORD]->(x:TaxRecord)
+      RETURN x.name AS name, x.totalIncome AS totalIncome, x.taxableIncome AS taxableIncome,
+             x.taxPayable AS taxPayable, x.incomeYear AS incomeYear`);
+
+    // ---- The WINDOW scans. Neither register offers an ABN search, so this fetches the window and
+    // narrows in the lens — which bounds the answer to the window, and the output says so.
+    const contractsQ = await ask("AusTender window", `
+      MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+      RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+             r.agencyName AS agencyName, r.title AS title, r.description AS description,
+             toFloat(r.amount) AS amount, r.procurementMethod AS procurementMethod,
+             r.limitedTenderReason AS limitedTenderReason, r.startDate AS startDate,
+             r.endDate AS endDate, r.releaseDate AS releaseDate`, { window });
+    const grantsQ = await ask("GrantConnect window", `
+      MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+      RETURN g.gaId AS gaId, g.recipient AS recipient, g.recipientAbn AS recipientAbn,
+             g.agency AS agency, g.program AS program, g.activity AS activity,
+             g.purpose AS purpose, g.value AS value, g.startDate AS startDate,
+             g.endDate AS endDate, g.selectionProcess AS selectionProcess`, { windowKey });
+
+    const contracts = contractsQ.rows.filter(r => digits(r.supplierAbn) === abn);
+    const grants = grantsQ.rows.filter(r => digits(r.recipientAbn) === abn);
+
+    // THE LOBBYIST REGISTER IS NOT ABN-ADDRESSABLE. Its records hang off a firm GUID anchor
+    // (LobbyistOrg {firmId}), and an unanchored scan of the label is refused by design — a virtual
+    // label has no population to walk until something pins it. There is no published ABN→firmId
+    // index, so this trace cannot ask the question, and saying "not in this register" would be a
+    // lie about a register that was never read. Lobbying is reachable by NAME via
+    // au-supplier-lobbying, which is where a reader should go next.
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+    const sum = (xs, f) => Math.round(xs.reduce((n, x) => n + (Number(f(x)) || 0), 0));
+
+    // A per-register verdict, so silence is never read as absence of the underlying fact.
+    const verdict = (q, hits, register) => ({
+      register,
+      state: !q.ok ? "UNKNOWN — the register could not be read" :
+             (hits.length ? "PRESENT" : "NOT IN THIS REGISTER"),
+      hits: hits.length,
+    });
+
+    // The name each register knows this ABN by. They disagree more often than people expect —
+    // trading names, group parents, post-merger renames — and that disagreement is worth seeing.
+    const names = Array.from(new Set([
+      ...contracts.map(c => c.supplierName), ...grants.map(g => g.recipient),
+      ...ndis.rows.map(n => n.name), ...tax.rows.map(t => t.name),
+    ].map(n => String(n || "").trim()).filter(Boolean)));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-money-trace",
+      abn, window: { from, to },
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        namesUsed: names,
+        contractsInWindow: contracts.length,
+        contractValueInWindow: sum(contracts, c => c.amount),
+        grantsInWindow: grants.length,
+        grantValueInWindow: sum(grants, g => g.value),
+        registersPresent: [
+          ndis.rows.length ? "NDIS compliance" : null,
+          slavery.rows.length ? "Modern Slavery" : null,
+          tax.rows.length ? "ATO tax transparency" : null,
+        ].filter(Boolean),
+        note: `In this window the ABN appears on ${contracts.length} contract(s) and ${grants.length} grant(s). ` +
+              `Register presence is reported per register below; a register with no entry is reported as such, never as a clean record.`,
+      },
+      registers: [
+        verdict(ndis, ndis.rows, "NDIS Commission compliance actions"),
+        verdict(slavery, slavery.rows, "Modern Slavery statements"),
+        verdict(tax, tax.rows, "ATO tax transparency"),
+        { register: "Federal lobbyist register",
+          state: "NOT ASKED — this register is not addressable by ABN; use au-supplier-lobbying, which matches by name",
+          hits: 0 },
+      ],
+      contracts: contracts.sort((a, b) => b.amount - a.amount).slice(0, 25).map(c => ({
+        cnId: c.cnId, amount: c.amount, agencyName: c.agencyName, title: c.title,
+        description: c.description, procurementMethod: c.procurementMethod,
+        limitedTenderReason: c.limitedTenderReason || null,
+        startDate: c.startDate, endDate: c.endDate,
+        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(c.cnId),
+      })),
+      grants: grants.sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)).slice(0, 25).map(g => ({
+        gaId: g.gaId, value: g.value, agency: g.agency, program: g.program, activity: g.activity,
+        purpose: g.purpose, selectionProcess: g.selectionProcess,
+        startDate: g.startDate, endDate: g.endDate,
+        grantConnectUrl: "https://www.grants.gov.au/Ga/Show/" + encodeURIComponent(g.gaId),
+      })),
+      adverse: ndis.rows,
+      slavery: slavery.rows,
+      tax: tax.rows,
+      queries: [
+        { title: "The ABN-anchored registers",
+          cypher: "MATCH (q:IntegrityQuery {abn:'<digits>'})-[:HAS_ADVERSE|HAS_STATEMENT|HAS_TAX_RECORD]->(x)\nRETURN x" },
+        { title: "Contracts and grants (window scans, narrowed by ABN in the lens)",
+          cypher: "MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease) RETURN r\n" +
+                  "MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward) RETURN g" },
+      ],
+      interpretation: {
+        factual: ["every figure, date, register entry and name — all as published"],
+        judged: [],
+        note: "Nothing here is a model judgment. Matching is by ABN alone.",
+      },
+      limits: [
+        "An ABN is not an entity. It can be transferred, re-used, or shared across a corporate group, and a group's work may sit under ABNs this trace never sees.",
+        "Contracts and grants are bounded by the WINDOW — an absence here means 'not published in this window', never 'never happened'.",
+        "There is no federal debarment register. NDIS compliance, Modern Slavery and tax transparency are the closest published substitutes and cover only the entities each Act reaches.",
+        "A register entry is a fact about a REGISTER, never a finding about any contract or grant listed beside it.",
+        "The lobbyist register is NOT asked here at all — it is keyed by firm GUID with no published ABN index, and its clients are listed by name only. Its line says 'not asked', never 'not present'.",
+      ],
+      method: "One ABN, digits-normalized, asked of each register separately: three ABN-anchored registers, " +
+              "two window scans narrowed by ABN, and a scan of the lobbyist register's firm ABNs.",
+      source: "AusTender OCDS (CC BY 3.0 AU); GrantConnect (CC BY 4.0); NDIS Commission compliance register; " +
+              "Modern Slavery Register; ATO corporate tax transparency; Australian Government Register of Lobbyists",
+    }) });
+    }
+presentation:
+  href: /apps/moneytrail.html

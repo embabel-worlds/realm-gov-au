@@ -1,0 +1,208 @@
+id: au-grant-boilerplate
+name: Grants that don't say what they fund
+description: >-
+  The grants analogue of thin contract disclosure, with a signal contracts don't have: the SAME
+  purpose text published verbatim across many awards. A program that pastes one paragraph onto
+  every grant has disclosed the PROGRAM, never the award — the reader cannot tell what any
+  individual dollar bought. Three deterministic screens (missing, template-shared, or merely an
+  echo of the activity or program name), then an LLM reading of what survives. A finding about
+  the DISCLOSURE, never about the grant: a small community grant reasonably says less than a
+  research council award, and the output is a prompt to go read the record.
+params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Published to (inclusive)
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Only awards at or above (AUD)
+    required: false
+    default: "100000"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const minValue = Number(lensArgs.minValue || 0) || 100000;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    // ---- FACTUAL LAYER: every award at or over the threshold, verbatim --------------------
+    // The value floor is a plain comparison so it narrows BEFORE any per-row LLM judgment —
+    // wrapping it in coalesce/toFloat once defeated that and sent every fetched row to the model.
+    const factual = await gateway.kg.query({
+      cypher: `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        WHERE g.value >= $minValue
+        RETURN g.gaId AS gaId, g.purpose AS purpose, g.activity AS activity, g.program AS program,
+               g.agency AS agency, g.recipient AS recipient, g.value AS value,
+               g.publishDate AS publishDate, g.selectionProcess AS selectionProcess
+        ORDER BY value DESC
+      `,
+      params: JSON.stringify({ windowKey, minValue }),
+    });
+    const rows = ((factual && factual.rows) ? factual.rows : (factual || []));
+    const warnings = [...((factual && factual.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+
+    // ---- DETERMINISTIC SCREEN --------------------------------------------------------------
+    // TEMPLATE TEXT is the grants-specific signal and the strongest one here: it needs no
+    // judgment at all, only counting. If eleven awards carry byte-identical purposes, that text
+    // describes the program, and no reader can tell the eleven apart from what was published.
+    const byPurpose = {};
+    rows.forEach(r => {
+      const k = norm(r.purpose);
+      if (k) (byPurpose[k] = byPurpose[k] || []).push(r.gaId);
+    });
+
+    const screened = rows.map(r => {
+      const purpose = String(r.purpose || "").trim();
+      const k = norm(purpose);
+      const shared = k ? (byPurpose[k] || []).length : 0;
+      const signals = [];
+      if (!purpose) signals.push("no purpose published");
+      else {
+        if (shared > 1) signals.push(`purpose is shared verbatim with ${shared - 1} other award(s) in this window`);
+        if (k && (k === norm(r.activity) || k === norm(r.program))) signals.push("purpose merely repeats the activity or program name");
+        if (purpose.length < 80 && !signals.length) signals.push("purpose under 80 characters");
+      }
+      return Object.assign({}, r, {
+        purposeChars: purpose.length, sharedWith: Math.max(shared - 1, 0), signals, templateKey: shared > 1 ? k : null,
+      });
+    });
+    const flagged = screened.filter(r => r.signals.length);
+
+    // ---- SUBJECTIVE LAYER ------------------------------------------------------------------
+    // Scoped to g.purpose so the model reads the PROSE and nothing else: unscoped it judges every
+    // string on the node joined together — agency, ids, ABN, postcodes, dates — and the per-item
+    // character cap can then cut the purpose off before the model ever reaches it. The criterion
+    // is an inlined literal because the rewriter matches it textually; a $param never matches.
+    let judged = {};
+    let judgeError = null;
+    try {
+      const sub = await gateway.kg.query({
+        cypher: `
+          MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+          WHERE g.value >= $minValue
+          RETURN g.gaId AS gaId,
+                 ai.score(g.purpose, 'says concretely what THIS grant funds — the specific activity, who it reaches, and what it produces') AS disclosure
+          ORDER BY disclosure ASC
+          LIMIT 40
+        `,
+        params: JSON.stringify({ windowKey, minValue }),
+      });
+      warnings.push(...((sub && sub.warnings) || []));
+      (((sub && sub.rows) ? sub.rows : (sub || []))).forEach(x => {
+        if (x && x.gaId != null && x.disclosure != null) judged[x.gaId] = Number(x.disclosure);
+      });
+    } catch (e) {
+      judgeError = String((e && e.message) || e);
+      warnings.push("LLM disclosure reading unavailable — deterministic signals only: " + judgeError);
+    }
+
+    const JUDGE_FLOOR = 0.4;
+    const out = screened.map(r => {
+      const score = judged[r.gaId];
+      return Object.assign({}, r, {
+        disclosureScore: score != null ? Math.round(score * 100) / 100 : null,
+        judgedThin: score != null ? score < JUDGE_FLOOR : null,
+      });
+    }).sort((a, b) =>
+      (b.signals.length - a.signals.length) ||
+      ((a.disclosureScore == null ? 2 : a.disclosureScore) - (b.disclosureScore == null ? 2 : b.disclosureScore)) ||
+      (b.value - a.value));
+    const judgedThin = out.filter(r => !r.signals.length && r.judgedThin);
+    const sum = (xs) => Math.round(xs.reduce((n, x) => n + (Number(x.value) || 0), 0));
+
+    // The template families themselves, worst first — the reader should see the paragraph ONCE
+    // and the money attached to it, rather than the same text forty times.
+    const templates = Object.keys(byPurpose)
+      .filter(k => byPurpose[k].length > 1)
+      .map(k => {
+        const ids = byPurpose[k];
+        const members = rows.filter(r => ids.indexOf(r.gaId) >= 0);
+        return {
+          awards: ids.length,
+          totalValue: sum(members),
+          agencies: Array.from(new Set(members.map(m => m.agency).filter(Boolean))).slice(0, 6),
+          programs: Array.from(new Set(members.map(m => m.program).filter(Boolean))).slice(0, 6),
+          purpose: String((members[0] || {}).purpose || ""),
+        };
+      })
+      .sort((a, b) => (b.awards - a.awards) || (b.totalValue - a.totalValue));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grant-boilerplate",
+      window: { from, to }, minValue,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        awardsOverThreshold: rows.length,
+        valueOverThreshold: sum(rows),
+        flaggedCount: flagged.length,
+        flaggedValue: sum(flagged),
+        templateFamilies: templates.length,
+        valueUnderTemplateText: sum(rows.filter(r => (byPurpose[norm(r.purpose)] || []).length > 1)),
+        judgedThinCount: judgedThin.length,
+        note: rows.length
+          ? `${flagged.length} of ${rows.length} awards at or over the threshold carry a purpose that adds nothing by construction; ` +
+            `${templates.length} block(s) of text are reused across awards. The model read ${Object.keys(judged).length} and judged ${judgedThin.length} more essentially uninformative.`
+          : "No awards at or over the threshold in this window.",
+      },
+      queries: [
+        { title: "Awards at or over the threshold (arithmetic)",
+          cypher: "MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)\n" +
+                  "WHERE g.value >= $minValue RETURN g ORDER BY g.value DESC" },
+        { title: "Disclosure reading (LLM judgment, per row, scoped to the purpose text)",
+          note: "ai.score reads g.purpose alone and scores 0..1; low = uninformative. A judgment, never a fact.",
+          cypher: "RETURN g.gaId, ai.score(g.purpose, 'says concretely what THIS grant funds…') AS disclosure\n" +
+                  "ORDER BY disclosure ASC LIMIT 40" },
+      ],
+      templates: templates.slice(0, 12),
+      // ONE ROW PER TEMPLATE FAMILY. Listing forty awards that carry the same paragraph reproduces
+      // the very redundancy being reported, and buries the other findings under it — the family is
+      // already reported once, with its full count and value, in `templates`.
+      awards: (() => { const seenTemplate = {}; return out.filter(r => {
+        if (!r.templateKey) return true;
+        if (seenTemplate[r.templateKey]) return false;
+        seenTemplate[r.templateKey] = 1; return true;
+      }); })().slice(0, 40).map(r => ({
+        gaId: r.gaId, value: r.value, recipient: r.recipient, agency: r.agency,
+        program: r.program, activity: r.activity, purpose: r.purpose, purposeChars: r.purposeChars,
+        sharedWith: r.sharedWith, representsTemplateFamily: r.templateKey ? r.sharedWith + 1 : null,
+        selectionProcess: r.selectionProcess, signals: r.signals,
+        disclosureScore: r.disclosureScore, judgedThin: r.judgedThin,
+        grantConnectUrl: "https://www.grants.gov.au/Ga/Show/" + encodeURIComponent(r.gaId),
+      })),
+      truncatedList: out.length > 40,
+      awardsListNote: "One row per block of reused text — the full membership and value of each family is in `templates`.",
+      interpretation: {
+        factual: ["value", "purpose (verbatim)", "purposeChars", "sharedWith", "signals", "templates"],
+        judged: ["disclosureScore", "judgedThin"],
+        note: "Shared purpose text is COUNTED, not judged — byte-identical prose across awards is a fact " +
+              "about what was published. The disclosure score is a model's reading, useful for ranking only.",
+      },
+      limits: [
+        "This measures what was PUBLISHED, not what was funded — thin disclosure is a fact about the notice.",
+        "Template text is often legitimate: one program, one set of terms. It still means the published record cannot distinguish the awards, which is the point being reported.",
+        "Proportionality is not modelled — a $100k community grant reasonably says less than a $3m research award, and the reader must weigh that themselves.",
+        "The model reads at most 40 rows per run; the deterministic screens cover every award over the threshold.",
+      ],
+      method: "Awards at or over the threshold in one publish-date window; deterministic screens for purposes that " +
+              "add nothing by construction (missing, template-shared, or an echo of the activity/program), then a " +
+              "per-row LLM reading of the survivors, scoped to the purpose text.",
+      source: "GrantConnect published awards (CC BY 4.0)",
+    }) });
+presentation:
+  href: /apps/grants-atlas.html

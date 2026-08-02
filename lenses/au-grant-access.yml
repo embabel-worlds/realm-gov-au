@@ -1,0 +1,219 @@
+id: au-grant-access
+name: Who gets the grants, and how fast the money moves
+description: >-
+  Two arithmetic questions about grant ACCESS that the published lists cannot answer separately.
+  CONCENTRATION: per program and per agency, how much of the money went to the top recipient, how
+  many distinct recipients shared it, and where one recipient took everything. LAG: the days from
+  publication to start and from start to end — which shows, measured rather than assumed, that this
+  register publishes most awards AFTER they commence, so only the extreme tail distinguishes
+  anything. Concentration is a STRUCTURE observation — a single national body is often the only
+  eligible recipient. Counts and dates only; no judgments anywhere in this lens.
+params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Published to (inclusive)
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Only awards at or above (AUD)
+    required: false
+    default: "0"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const minValue = Number(lensArgs.minValue || 0) || 0;
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    const q = await gateway.kg.query({
+      cypher: `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        WHERE g.value >= $minValue
+        RETURN g.gaId AS gaId, g.recipient AS recipient, g.recipientAbn AS recipientAbn,
+               g.agency AS agency, g.program AS program, g.value AS value,
+               g.publishDate AS publishDate, g.startDate AS startDate, g.endDate AS endDate,
+               g.selectionProcess AS selectionProcess, g.deliveryState AS deliveryState
+        ORDER BY value DESC
+      `,
+      params: JSON.stringify({ windowKey, minValue }),
+    });
+    const rows = ((q && q.rows) ? q.rows : (q || []));
+    const warnings = [...((q && q.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
+             t.includes("COULD NOT BE FETCHED") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+
+    const num = (v) => Number(v) || 0;
+    const round = (n) => Math.round(n * 100) / 100;
+    // Recipients are grouped by ABN where published and by name otherwise. Name grouping is
+    // imperfect (trading names, punctuation, a renamed entity) and the output says which was used,
+    // because a concentration figure computed over mis-grouped recipients is worse than none.
+    const keyOf = (r) => {
+      const a = String(r.recipientAbn || "").replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+      return a.length === 11 ? "abn:" + a : "name:" + String(r.recipient || "").trim().toLowerCase();
+    };
+    const byAbn = rows.filter(r => keyOf(r).startsWith("abn:")).length;
+
+    // ---- CONCENTRATION, per grouping ------------------------------------------------------
+    const concentrationOver = (field) => {
+      const groups = {};
+      rows.forEach(r => {
+        const g = String(r[field] || "(unstated)");
+        (groups[g] = groups[g] || []).push(r);
+      });
+      return Object.keys(groups).map(name => {
+        const members = groups[name];
+        const total = members.reduce((n, r) => n + num(r.value), 0);
+        const perRecipient = {};
+        members.forEach(r => {
+          const k = keyOf(r);
+          perRecipient[k] = perRecipient[k] || { value: 0, awards: 0, label: r.recipient };
+          perRecipient[k].value += num(r.value);
+          perRecipient[k].awards += 1;
+        });
+        const ranked = Object.keys(perRecipient).map(k => perRecipient[k])
+          .sort((a, b) => b.value - a.value);
+        const top = ranked[0] || { value: 0, awards: 0, label: null };
+        // Herfindahl over value shares: 1 is one recipient taking everything. Reported as a number
+        // to sort by, never as a verdict — specialised programs concentrate for good reasons.
+        const hhi = total > 0
+          ? round(ranked.reduce((n, x) => n + Math.pow(x.value / total, 2), 0))
+          : 0;
+        return {
+          name, awards: members.length, totalValue: Math.round(total),
+          recipients: ranked.length,
+          topRecipient: top.label, topRecipientValue: Math.round(top.value),
+          topRecipientShare: total > 0 ? round(top.value / total) : 0,
+          topRecipientAwards: top.awards,
+          soleRecipient: ranked.length === 1 && members.length > 1,
+          hhi,
+        };
+      }).sort((a, b) => (b.totalValue - a.totalValue));
+    };
+    const byProgram = concentrationOver("program");
+    const byAgency = concentrationOver("agency");
+
+    // ---- LAG, in days ----------------------------------------------------------------------
+    // Publication trailing commencement turned out to be the RULE (511 of 533 awards in the first
+    // window measured), so the count is a property of the publishing cycle and only the tail is
+    // informative — the lens reports the share and ranks by how far behind.
+    // GrantConnect publishes `9-July-2026` — day without a leading zero and a month NAME that is
+    // sometimes full ('July') and sometimes abbreviated ('Dec'). Neither Date.parse nor an ISO
+    // slice reads that: slicing to ten characters yields '9-July-202' and every interval computed
+    // from it was centuries wide. Parse it explicitly, and treat anything unparseable as unknown
+    // rather than as a number — a wrong day-count is worse than an absent one.
+    const MONTHS = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+    const asDate = (v) => {
+      const s = String(v || "").trim();
+      if (!s) return null;
+      const m = s.match(/^(\d{1,2})-([A-Za-z]{3,})-(\d{4})$/);
+      if (m) {
+        const mon = MONTHS[m[2].slice(0, 3).toLowerCase()];
+        if (mon == null) return null;
+        return Date.UTC(Number(m[3]), mon, Number(m[1]));
+      }
+      const iso = Date.parse(/T/.test(s) ? s : s + "T00:00:00Z");   // ISO, if the source ever changes
+      return isNaN(iso) ? null : iso;
+    };
+    const days = (a, b) => {
+      const x = asDate(a), y = asDate(b);
+      return (x == null || y == null) ? null : Math.round((y - x) / 86400000);
+    };
+    const lagged = rows.map(r => {
+      const toStart = days(r.publishDate, r.startDate);
+      const duration = days(r.startDate, r.endDate);
+      return Object.assign({}, r, {
+        daysPublishToStart: toStart, durationDays: duration,
+        publishedAfterStart: toStart != null && toStart < 0,
+      });
+    });
+    const withLag = lagged.filter(r => r.daysPublishToStart != null);
+    const median = (xs) => {
+      if (!xs.length) return null;
+      const s = xs.slice().sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+    };
+    // Sorted MOST-late first: with publication trailing commencement across almost the whole
+    // window, the count says little and the tail says everything — an award published six years
+    // after it began is a different object from one published a fortnight after.
+    const lateAnnounced = lagged.filter(r => r.publishedAfterStart)
+      .sort((a, b) => (a.daysPublishToStart - b.daysPublishToStart));
+    const sum = (xs) => Math.round(xs.reduce((n, x) => n + num(x.value), 0));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grant-access",
+      window: { from, to }, minValue,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        awards: rows.length,
+        totalValue: sum(rows),
+        distinctRecipients: new Set(rows.map(keyOf)).size,
+        programs: byProgram.length,
+        agencies: byAgency.length,
+        soleRecipientPrograms: byProgram.filter(p => p.soleRecipient).length,
+        medianDaysPublishToStart: median(withLag.map(r => r.daysPublishToStart)),
+        medianDurationDays: median(lagged.filter(r => r.durationDays != null).map(r => r.durationDays)),
+        publishedAfterStartCount: lateAnnounced.length,
+        publishedAfterStartValue: sum(lateAnnounced),
+        publishedAfterStartShare: withLag.length ? round(lateAnnounced.length / withLag.length) : null,
+        recipientGrouping: `${byAbn} of ${rows.length} awards carry a usable ABN; the rest are grouped by recipient name`,
+        note: rows.length
+          ? `${rows.length} award(s) worth $${sum(rows).toLocaleString()} across ${byProgram.length} program(s); ` +
+            `${byProgram.filter(p => p.soleRecipient).length} program(s) had a single recipient across multiple awards. ` +
+            `Publication trails commencement as a RULE here, not as an exception: ${lateAnnounced.length} of ${withLag.length} ` +
+            `awards were published after their own start date, and the median award is published ` +
+            `${Math.abs(median(withLag.map(r => r.daysPublishToStart)) || 0)} days after it starts — so this is a property of the ` +
+            `register's publishing cycle, and only the extremes below are worth a reader's time.`
+          : "No awards in this window at or above the floor.",
+      },
+      queries: [
+        { title: "The awards (arithmetic; everything below is computed from these rows)",
+          cypher: "MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)\n" +
+                  "WHERE g.value >= $minValue\n" +
+                  "RETURN g.recipient, g.recipientAbn, g.agency, g.program, g.value,\n" +
+                  "       g.publishDate, g.startDate, g.endDate" },
+      ],
+      concentration: { byProgram: byProgram.slice(0, 25), byAgency: byAgency.slice(0, 25) },
+      lag: {
+        publishedAfterStart: lateAnnounced.slice(0, 20).map(r => ({
+          gaId: r.gaId, recipient: r.recipient, agency: r.agency, program: r.program,
+          value: r.value, publishDate: r.publishDate, startDate: r.startDate,
+          daysPublishToStart: r.daysPublishToStart,
+          grantConnectUrl: "https://www.grants.gov.au/Ga/Show/" + encodeURIComponent(r.gaId),
+        })),
+        slowestToStart: withLag.filter(r => r.daysPublishToStart > 0)
+          .sort((a, b) => b.daysPublishToStart - a.daysPublishToStart).slice(0, 10)
+          .map(r => ({ gaId: r.gaId, recipient: r.recipient, program: r.program, value: r.value,
+                       publishDate: r.publishDate, startDate: r.startDate,
+                       daysPublishToStart: r.daysPublishToStart })),
+      },
+      interpretation: {
+        factual: ["every count, share, HHI, median and day-count — all arithmetic over published fields"],
+        judged: [],
+        note: "No model is involved. HHI and top-recipient share are descriptive statistics, not verdicts.",
+      },
+      limits: [
+        "Concentration is a structure, not a fault: many programs have one nationally eligible recipient, and a high share is often the only possible outcome.",
+        "Recipient grouping falls back to NAME where no ABN is published, so two spellings of one body can read as two recipients; the headline says how much of the window that affects.",
+        "A window is not a program. A program that ran across several windows looks smaller here than it is, and its concentration is computed only over what this window published.",
+        "Publishing after the start date is the NORM in this data, not an exception — the median award is published after it commences. Only the extreme tail distinguishes anything, and even a multi-year gap is often a variation or extension recorded against an older start date.",
+        "Values are commitments as published, never amounts paid.",
+      ],
+      method: "One publish-date window of grant awards; per-program and per-agency concentration (recipient count, " +
+              "top-recipient share, Herfindahl) grouped by ABN where published, and publication-to-start and " +
+              "start-to-end day counts across the same rows.",
+      source: "GrantConnect published awards (CC BY 4.0)",
+    }) });
+presentation:
+  href: /apps/grants-atlas.html
