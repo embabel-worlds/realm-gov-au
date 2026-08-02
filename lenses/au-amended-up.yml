@@ -50,7 +50,7 @@ spec:
         MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)
         WHERE 'contractAmendment' IN r.tags
           AND ($state = '' OR toUpper(coalesce(r.supplierRegion,'')) = $state)
-        RETURN DISTINCT r.cnId AS cnId, toFloat(r.amount) AS amount
+        RETURN r.cnId AS cnId, max(toFloat(r.amount)) AS amount
         ORDER BY amount DESC
       `,
       params: JSON.stringify({ window, state }),
@@ -64,13 +64,19 @@ spec:
     const truncatedWindow = warnings.some(w => asText(w).includes("MORE") || asText(w).includes("CAP"));
 
     // Hop 2: each notice's version chain — original vs current. Capped and SAID to be capped.
-    const cnIds = amended.map(x => x.cnId).slice(0, CAP);
+    // DISTINCT-BY-NOTICE, defensively: the CAP is a budget of CONTRACTS to open, and a repeated
+    // cnId silently spending it was how one notice came to occupy all 20 league slots.
+    const cnIds = [...new Set(amended.map(x => x.cnId).filter(Boolean))].slice(0, CAP);
     const league = [];
+    // Chains whose versions cannot be ordered (shared timestamps AND no amendment sequence).
+    // They are shown, never RANKED — "current" is unknown for them and a ratio would be fiction.
+    const unorderable = [];
     for (const cnId of cnIds) {
       const r = await gateway.kg.query({
         cypher: `
           MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
           RETURN v.releaseDate AS releaseDate, toFloat(v.amount) AS amount,
+                 v.amendmentIds AS amendmentIds,
                  v.supplierName AS supplierName, v.agencyName AS agencyName,
                  v.supplierRegion AS supplierRegion, v.supplierPostcode AS supplierPostcode,
                  v.description AS description, v.endDate AS endDate
@@ -78,16 +84,53 @@ spec:
         `,
         params: JSON.stringify({ cnId }),
       });
-      const vs = ((r && r.rows) ? r.rows : (r || []));
+      const raw = ((r && r.rows) ? r.rows : (r || []));
       const w = (r && r.warnings) || [];
       if (w.length) warnings.push({ cnId, warnings: w });
-      if (vs.length < 2) continue; // one version = nothing grew; a failed chain is in warnings
+      if (raw.length < 2) continue; // one version = nothing grew; a failed chain is in warnings
+
+      // ORDER BY THE AMENDMENT SEQUENCE, not the release date. Chains are routinely published
+      // with every amendment sharing ONE timestamp (a bulk re-publication): CN3350299 has 71
+      // versions and 2 distinct timestamps, so date-ordering left 70 rows in arbitrary order and
+      // "current" was whichever came back last — $13.4B reported against a real $17.4B.
+      const seqOf = (v) => {
+        const ids = Array.isArray(v.amendmentIds) ? v.amendmentIds : [v.amendmentIds];
+        let best = -1;
+        for (const id of ids) {
+          const m = /-A(\d+)\s*$/.exec(String(id || ""));
+          if (m) best = Math.max(best, Number(m[1]));
+        }
+        return best;
+      };
+      const vs = raw.slice().sort((a, b) => {
+        const sa = seqOf(a), sb = seqOf(b);
+        if (sa !== sb) return sa - sb;
+        return String(a.releaseDate || "").localeCompare(String(b.releaseDate || ""));
+      });
+      const seqs = vs.map(seqOf).filter(n => n >= 0);
+      const ordered = seqs.length === vs.length - 1 && new Set(seqs).size === seqs.length
+        ? "amendment sequence"
+        : (new Set(raw.map(v => String(v.releaseDate))).size === raw.length ? "release date" : "AMBIGUOUS");
       const orig = vs[0].amount, cur = vs[vs.length - 1].amount;
       if (!(orig > 0)) continue;
+      // An unorderable chain cannot support a growth CLAIM — it is reported separately, never
+      // ranked as though "current" were known.
       const head = vs[vs.length - 1];
-      league.push({
+      // The largest single step separates a RE-BASELINING (one jump: pilot → full program) from
+      // CREEP (many small rises). A first-vs-last ratio alone cannot tell them apart.
+      let largestStep = null;
+      for (let i = 1; i < vs.length; i++) {
+        const p = Number(vs[i - 1].amount), c = Number(vs[i].amount);
+        if (!(p > 0) || !(c > p)) continue;
+        const step = { fromAmount: p, toAmount: c, multiple: Math.round((c / p) * 100) / 100,
+                       afterAmendment: seqOf(vs[i]) >= 0 ? seqOf(vs[i]) : null };
+        if (!largestStep || (step.toAmount - step.fromAmount) > (largestStep.toAmount - largestStep.fromAmount)) largestStep = step;
+      }
+      (ordered === "AMBIGUOUS" ? unorderable : league).push({
         cnId,
         originalAmount: orig, currentAmount: cur,
+        orderedBy: ordered,
+        largestStep,
         delta: Math.round((cur - orig) * 100) / 100,
         growthPct: Math.round(((cur - orig) / orig) * 1000) / 10,
         amendments: vs.length - 1,
@@ -103,6 +146,11 @@ spec:
     await gateway.lens.present({ content: JSON.stringify({
       kind: "au-amended-up",
       window: { from, to }, state: state || null, rankBy,
+      unorderable: unorderable.map(x => ({
+        cnId: x.cnId, originalAmount: x.originalAmount, amendments: x.amendments,
+        supplierName: x.supplierName, agencyName: x.agencyName,
+        note: "This chain's versions share a release timestamp and carry no amendment sequence, so its CURRENT value is unknown and it is not ranked.",
+      })),
       status: failed ? "FAILED" : ((truncatedWindow || amended.length > CAP) ? "PARTIAL" : "COMPLETE"),
       warnings,
       queries: [
@@ -129,6 +177,8 @@ spec:
               "register's own original and current values. Growth is arithmetic; no model touches a number.",
       limits: [
         "AusTender records contract COMMITMENTS — growth is a contract amended past what was first agreed, NOT a budget overrun; budgets are a different document this register does not hold.",
+        "READ largestStep BEFORE the ratio. One large jump is a RE-BASELINING — a program moving past its initial tranche, a panel re-scoped — while many small rises are creep. A first-vs-last multiple cannot tell them apart, and the biggest AusTender chains are the former.",
+        "Version chains are ordered by AMENDMENT SEQUENCE where the register publishes one, because amendments are routinely re-published sharing a single timestamp; each row states which basis was used, and chains with neither are listed under `unorderable` rather than ranked.",
         "Downward and administrative amendments exist too; this lens ranks growth because that is what was asked, and says so.",
         "State is the SUPPLIER'S registered state, not where work is delivered.",
       ],

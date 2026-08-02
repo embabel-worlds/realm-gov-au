@@ -35,8 +35,38 @@ spec:
       `,
       params: JSON.stringify({ cnId }),
     });
-    const versions = ((r && r.rows) ? r.rows : (r || []));
+    const rawVersions = ((r && r.rows) ? r.rows : (r || []));
     const warnings = (r && r.warnings) || [];
+
+    // ---- ORDERING: releaseDate is NOT a total order over a version chain ---------------------
+    // Found on CN3350299 (Defence JSF sustainment): 71 versions, only TWO distinct release
+    // timestamps — the 2016 original, then all 70 amendments stamped with one 2025 instant
+    // (a bulk re-publication). Sorting by that date leaves 70 rows in whatever order the API
+    // returned, so "the last one" is arbitrary: the lens reported $13.4B as current when the
+    // real current value is $17.4B. Amendment IDS carry the sequence (`CN3350299-A70`), so
+    // order by that and fall back to the date only where no sequence exists.
+    const seqOf = (v) => {
+      const ids = Array.isArray(v.amendmentIds) ? v.amendmentIds : [v.amendmentIds];
+      let best = -1;
+      for (const id of ids) {
+        const m = /-A(\d+)\s*$/.exec(String(id || ""));
+        if (m) best = Math.max(best, Number(m[1]));
+      }
+      return best; // -1 = the original release (no amendment id)
+    };
+    const versions = rawVersions.slice().sort((a, b) => {
+      const sa = seqOf(a), sb = seqOf(b);
+      if (sa !== sb) return sa - sb;
+      return String(a.releaseDate || "").localeCompare(String(b.releaseDate || ""));
+    });
+    // Is the order TRUSTWORTHY? Sequenced when every amendment carries a distinct number;
+    // otherwise the chain has ties and "current" is a guess we must not present as a fact.
+    const seqs = versions.map(seqOf).filter(n => n >= 0);
+    const orderBasis = seqs.length === versions.length - 1 && new Set(seqs).size === seqs.length
+      ? "amendment sequence"
+      : (new Set(rawVersions.map(v => String(v.releaseDate))).size === rawVersions.length
+        ? "release date"
+        : "AMBIGUOUS");
     const isFetchFailure = (w) => {
       const t = (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
       return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") ||
@@ -120,13 +150,37 @@ spec:
         isAmendment: (v.tags || []).includes("contractAmendment"),
         amendmentIds: v.amendmentIds || [],
       })),
-      valueCurve: { originalAmount: first, currentAmount: last, growthPct,
-                    amendmentCount: versions.length - 1 },
+      valueCurve: {
+        originalAmount: first, currentAmount: last, growthPct,
+        amendmentCount: versions.length - 1,
+        orderedBy: orderBasis,
+        // The single biggest step distinguishes a RE-BASELINING (one large jump — a program
+        // moving from a pilot/initial tranche to its full scope) from CREEP (many small rises).
+        // Both look identical in a first-vs-last ratio, which is why that ratio alone misleads.
+        largestStep: (function () {
+          let best = null;
+          for (let i = 1; i < versions.length; i++) {
+            const prev = Number(versions[i - 1].amount), cur = Number(versions[i].amount);
+            if (!(prev > 0) || !(cur > prev)) continue;
+            const step = { fromAmount: prev, toAmount: cur, multiple: Math.round((cur / prev) * 100) / 100,
+                           afterAmendment: seqOf(versions[i]) >= 0 ? seqOf(versions[i]) : null };
+            if (!best || (step.toAmount - step.fromAmount) > (best.toAmount - best.fromAmount)) best = step;
+          }
+          return best;
+        })(),
+        orderNote: orderBasis === "AMBIGUOUS"
+          ? "This chain's versions do NOT carry a usable order — several share a release timestamp and no amendment sequence separates them. The original is reliable; 'current' is whichever row the register returned last and MUST NOT be read as the contract's present value."
+          : (orderBasis === "amendment sequence"
+            ? "Ordered by amendment sequence (the -A number), because this chain's release timestamps are shared across amendments and cannot order them."
+            : "Ordered by release date, which is a total order for this chain."),
+      },
       descriptionNote,
-      method: "Every row is a version AusTender published; growth is last over first. The " +
+      method: "Every row is a version AusTender published; growth is the last over the first IN THE ORDER STATED (see valueCurve.orderedBy). The " +
               "description scan is lexical and quoted — no model produces any figure or claim here.",
       limits: [
         "AusTender records contract COMMITMENTS: an amount is the value as agreed, not expenditure.",
+        "GROWTH IS NOT OVERRUN. A rise is the register recording a larger agreed commitment — scope added, options exercised, a program moving past its initial tranche. A budget overrun is a different document this register does not hold; look at the largest single step before reading a ratio as a story.",
+        "Some chains are published with every amendment sharing ONE release timestamp (a bulk re-publication). Where that happens the amendment sequence orders them; where even that is missing the order is reported as AMBIGUOUS and 'current' is not a claim.",
         "The consultancy and confidentiality flags shown on the AusTender website are not in this API.",
         "An absent supplier ABN is a register fact — some parties are published without one.",
         "A limited-tender reason is the agency's stated ground, reported verbatim — a recorded reason, not a finding.",
