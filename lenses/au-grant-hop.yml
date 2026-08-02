@@ -32,13 +32,15 @@ spec:
     const topic = String(lensArgs.topic || "").trim().replace(/\s+/g, " ").slice(0, 160);
     const iso = (value) => String(value || "").slice(0, 10);
     const today = new Date().toISOString().slice(0, 10);
-    const shiftDays = (value, days) => {
+    const shiftMonths = (value, months) => {
       const date = new Date(value + "T00:00:00Z");
-      date.setUTCDate(date.getUTCDate() + days);
-      return date.toISOString().slice(0, 10);
+      const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+      const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+      target.setUTCDate(Math.min(date.getUTCDate(), lastDay));
+      return target.toISOString().slice(0, 10);
     };
     const to = iso(lensArgs.to) || today;
-    const from = iso(lensArgs.from) || shiftDays(to, -89);
+    const from = iso(lensArgs.from) || shiftMonths(to, -2);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       throw new Error("Grant dates must use YYYY-MM-DD.");
     }

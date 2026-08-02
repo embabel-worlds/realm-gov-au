@@ -144,6 +144,10 @@ details.notes { margin-top: 15px; color: var(--muted); font-size: .72rem; line-h
 details.notes summary { cursor: pointer; color: var(--ink); font-weight: 850; }
 
 .map-card { padding: 14px; }
+.map-empty { min-height: 260px; display: grid; place-items: center; text-align: center; }
+.map-empty > div { max-width: 500px; }
+.map-empty h3 { margin: 7px 0; }
+.map-empty p { margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.55; }
 .map-top { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin: 2px 3px 8px; }
 .map-top h3 { margin: 0 0 3px; }
 .map-top p { margin: 0; color: var(--muted); font-size: .7rem; line-height: 1.45; max-width: 520px; }

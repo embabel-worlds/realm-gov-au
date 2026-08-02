@@ -267,8 +267,11 @@
 
   function renderMap(data) {
     var divisions = data.divisions || [];
+    var resultDivisions = divisions.filter(function (division) {
+      return Number(division.grants) > 0;
+    });
     var agencyCounts = {};
-    divisions.forEach(function (division) {
+    resultDivisions.forEach(function (division) {
       (division.awards || []).forEach(function (award) {
         var agency = (award.agency || "").trim();
         if (agency) agencyCounts[agency] = (agencyCounts[agency] || 0) + 1;
@@ -283,11 +286,15 @@
     var semanticSummary = data.matchBasis && data.matchBasis.criterion
       ? " Only awards a model judged relevant to “" + esc(data.matchBasis.criterion) + "” are included."
       : "";
-    var positive = divisions.map(function (division) { return Number(division.value) || 0; }).filter(function (value) { return value > 0; }).sort(function (a, b) { return a - b; });
+    if (!resultDivisions.length) {
+      $("map-result").innerHTML = '<article class="map-card map-empty"><div><div class="kicker">No result divisions</div><h3>There is nothing to plot for this result set</h3><p>No grant in the current results mapped unambiguously to a federal division. Change the filters or inspect the exclusion counts in Results.</p></div></article>';
+      return;
+    }
+    var positive = resultDivisions.map(function (division) { return Number(division.value) || 0; }).filter(function (value) { return value > 0; }).sort(function (a, b) { return a - b; });
     var thresholds = [0.2, 0.4, 0.6, 0.8].map(function (position) {
       return positive[Math.min(positive.length - 1, Math.floor(positive.length * position))] || 0;
     });
-    var points = spreadMapPoints(divisions.filter(function (division) {
+    var points = spreadMapPoints(resultDivisions.filter(function (division) {
       return isFinite(Number(division.centroidLat)) && isFinite(Number(division.centroidLon));
     }).map(mapPoint));
     var shapes = points.map(function (point) {
@@ -299,15 +306,15 @@
     }).join("");
     var outline = window.AUSTRALIA_PATH || "";
     var mapStatus = points.length
-      ? '<span class="map-status">' + points.length + ' division markers loaded</span>'
-      : '<span class="map-status map-status-error">No division coordinates were returned. Results remain available in the Results tab.</span>';
+      ? '<span class="map-status">' + points.length + ' result division' + (points.length === 1 ? '' : 's') + ' shown</span>'
+      : '<span class="map-status map-status-error">The result divisions have no usable coordinates. Their grants remain available in Results.</span>';
     var outlineStatus = outline ? "" : '<div class="map-warning">The Australia outline did not load. Division markers are still shown in their geographic positions.</div>';
     var boundaries = "M858.3 288L858.3 347M858.3 322.2L883.3 322.2M883.3 288L883.3 322.2M883.3 322.2L891.7 322.2L891.7 346M891.7 330.6L924 330.6";
-    $("map-result").innerHTML = '<article class="map-card"><div class="map-top"><div><h3>Divisions over geographic Australia</h3><p>Each marker starts at the median of its postcode centroids. Dense metropolitan markers are displaced slightly so they remain selectable; point or focus to preview, then click, tap or press Enter to open its grants.</p></div>' + mapStatus + '</div>' + outlineStatus +
-      '<div class="map-context"><strong>What these dots mean</strong><span>Australian Government grant awards published on GrantConnect—not all government spending.' + semanticSummary + ' Colour shows their total value in each mapped division.' + agencySummary + ' Open a division for the exact agency, program and recipient.</span></div>' +
-      '<svg class="cartogram" viewBox="808 277 125 108" role="img" aria-label="Map of Australia with federal divisions positioned approximately by postcode centroid">' +
+    $("map-result").innerHTML = '<article class="map-card"><div class="map-top"><div><h3>Where these results map</h3><p>Only divisions containing grants in the current result set are shown. Point or focus to preview one, then click, tap or press Enter to open its grants in Results.</p></div>' + mapStatus + '</div>' + outlineStatus +
+      '<div class="map-context"><strong>Result divisions only</strong><span>These are Australian Government grant awards published on GrantConnect—not all government spending.' + semanticSummary + ' Colour compares total value among the divisions in this result set.' + agencySummary + '</span></div>' +
+      '<svg class="cartogram" viewBox="808 277 125 108" role="img" aria-label="Map of Australia showing only federal divisions represented in the current grant results">' +
       '<path class="australia-outline" d="' + esc(outline) + '"></path><path class="state-boundaries" d="' + boundaries + '"></path>' + shapes +
-      '</svg><div class="map-footer"><div class="legend"><span>No mapped value</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><i class="level-5"></i><span>More</span></div>' +
+      '</svg><div class="map-footer"><div class="legend"><span>Lower result total</span><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><i class="level-5"></i><span>Higher</span></div>' +
       '<div class="map-preview" id="map-preview">Point to, focus or tap a division for its total.</div></div></article>';
   }
 
@@ -386,7 +393,9 @@
   }
 
   var today = new Date();
-  var start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 89);
+  var targetMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  var lastDayOfTargetMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
+  var start = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(today.getDate(), lastDayOfTargetMonth));
   $("to").value = isoLocal(today);
   $("from").value = isoLocal(start);
   $("to").max = isoLocal(today);
