@@ -92,3 +92,79 @@
       recordKeyField: abn
       producer: taxRecordByAbn
       description: "The ATO tax transparency row for a pinned ABN (2023-24 report; absence usually means income under the $100M threshold)."
+
+# ── The charity layer: the only open Australian source that puts an ADDRESS against an ABN ─────
+
+- name: CharityRecord
+  visibility: internal
+  description: >-
+    One entity on the ACNC Register of Australian Charities, matched by ABN. Carries the full
+    registered street address — the join that makes co-located providers visible — plus
+    registration and establishment dates (entity AGE without the 379 MB ASIC extract) and a
+    disability-beneficiary flag. A register entry about a charity, never a finding about it.
+    `responsiblePersons` is a COUNT: no open Australian source publishes officer NAMES in bulk,
+    so a shared-director graph cannot be built and no lens may imply one.
+  properties:
+    abn:
+      metadata: { identity: "true" }
+    charityName: "Registered legal name."
+    otherNames: "Other/trading names as registered — the name a grant may be published under."
+    addressLine1: "Registered address, line 1 — verbatim, unnormalized."
+    addressLine2: "Registered address, line 2."
+    town: "Town or city."
+    state: "State."
+    postcode: "Postcode."
+    website: "Charity website as registered."
+    registrationDate: "Date registered with the ACNC."
+    established: "Date the organisation itself was established — earlier than registration."
+    charitySize: "ACNC size band (small/medium/large), which is a REVENUE band, not a headcount."
+    responsiblePersons: "COUNT of responsible persons. Never names — they are not published in bulk."
+    servesPeopleWithDisabilities: "The register's own beneficiary flag for people with disabilities."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_CHARITY_RECORD
+      keyField: abn
+      recordKeyField: abn
+      producer: charityByAbn
+      description: "The charity register entry for a pinned ABN: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_CHARITY_RECORD]->(c:CharityRecord)`."
+
+- name: PostcodeArea
+  visibility: internal
+  description: >-
+    A postcode pinned in order to ask which registered charities share it — the anchor behind
+    co-location clustering. Postcode is the anchor rather than the street address because an
+    address is written many ways and only a consumer can normalize it.
+  properties:
+    postcode:
+      metadata: { identity: "true" }
+
+- name: CharityAtPostcode
+  visibility: internal
+  description: >-
+    One charity registered in a pinned postcode, with its verbatim address so a consumer can
+    normalize and cluster. Co-location is a fact about two REGISTERED ADDRESSES and nothing more:
+    shared premises are routine and lawful (a serviced office, a community hub, a shared
+    auspicing arrangement), so a cluster is a place to look, never a finding.
+  properties:
+    charityKey:
+      metadata: { identity: "true" }
+    postcode: "The pinned postcode, stamped from the anchor."
+    abn: "The charity's ABN — the join back to money."
+    charityName: "Registered legal name."
+    otherNames: "Other/trading names as registered."
+    addressLine1: "Registered address, line 1 — verbatim, unnormalized."
+    addressLine2: "Registered address, line 2."
+    town: "Town or city."
+    state: "State."
+    registrationDate: "Date registered with the ACNC."
+    established: "Date the organisation was established."
+    charitySize: "ACNC size band (a revenue band)."
+    responsiblePersons: "COUNT of responsible persons; never names."
+    servesPeopleWithDisabilities: "The register's own disability-beneficiary flag."
+  virtualJoins:
+    - anchorLabel: PostcodeArea
+      relationship: HAS_CHARITY
+      keyField: postcode
+      recordKeyField: postcode
+      producer: charitiesByPostcode
+      description: "Every registered charity in a pinned postcode: `MATCH (p:PostcodeArea {postcode:'2830'})-[:HAS_CHARITY]->(c:CharityAtPostcode)`."

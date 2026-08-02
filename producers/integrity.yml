@@ -71,3 +71,67 @@
     incomeYear: "Income year"
   fileCacheSeconds: 604800
   cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+
+# ── ACNC Register of Australian Charities ──────────────────────────────────────────────────────
+# The register that makes a provider NETWORK possible. ASIC's company dataset carries no address
+# and no officers, so shared-premises clustering is impossible for companies — but a large share
+# of NDIS and disability providers are registered charities, and the ACNC register publishes the
+# FULL STREET ADDRESS against the ABN. 14 MB, one file, no credentials.
+#
+# It also carries Registration_Date and Date_Organisation_Established, which give entity AGE at
+# the moment money was awarded WITHOUT the 379 MB ASIC company extract, and a
+# People_with_Disabilities beneficiary flag that isolates the sector.
+#
+# Number_of_Responsible_Persons is a COUNT, never names — no open Australian source publishes
+# director or responsible-person names in bulk, so a shared-officer graph remains impossible and
+# every consuming lens must say so rather than implying one.
+- name: charityByAbn
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/b050b242-4487-4306-abf5-07ca073e5594/resource/8fb32972-24e9-4c95-885e-7140be51be8a/download/datadotgov_main.csv"
+  keyColumn: "ABN"
+  keyMatch: digits
+  keyAs: abn
+  project:
+    charityName: "Charity_Legal_Name"
+    otherNames: "Other_Organisation_Names"
+    addressLine1: "Address_Line_1"
+    addressLine2: "Address_Line_2"
+    town: "Town_City"
+    state: "State"
+    postcode: "Postcode"
+    website: "Charity_Website"
+    registrationDate: "Registration_Date"
+    established: "Date_Organisation_Established"
+    charitySize: "Charity_Size"
+    responsiblePersons: "Number_of_Responsible_Persons"
+    servesPeopleWithDisabilities: "People_with_Disabilities"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# The SAME file keyed by POSTCODE, so a lens can ask "who else is registered around here" and
+# cluster on the address itself. Keyed on postcode rather than the address line because an
+# address is written a dozen ways ('73 Taylor St' / 'Suite 2, 73 Taylor Street') and only the
+# lens can normalize it; postcode is a clean column and bounds the candidate set cheaply.
+# The deployment file cache is shared with charityByAbn — same URL, one download.
+- name: charitiesByPostcode
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/b050b242-4487-4306-abf5-07ca073e5594/resource/8fb32972-24e9-4c95-885e-7140be51be8a/download/datadotgov_main.csv"
+  keyColumn: "Postcode"
+  keyMatch: digits
+  keyAs: postcode
+  rowIdAs: charityKey
+  project:
+    abn: "ABN"
+    charityName: "Charity_Legal_Name"
+    otherNames: "Other_Organisation_Names"
+    addressLine1: "Address_Line_1"
+    addressLine2: "Address_Line_2"
+    town: "Town_City"
+    state: "State"
+    registrationDate: "Registration_Date"
+    established: "Date_Organisation_Established"
+    charitySize: "Charity_Size"
+    responsiblePersons: "Number_of_Responsible_Persons"
+    servesPeopleWithDisabilities: "People_with_Disabilities"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }

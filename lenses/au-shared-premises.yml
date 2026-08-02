@@ -1,0 +1,245 @@
+id: au-shared-premises
+name: Providers sharing an address
+description: >-
+  The co-location join nobody can run today: which recipients of Commonwealth money are
+  registered at the SAME street address as other charities. ASIC's company dataset carries no
+  address, so this is only possible for the charity sector — but that is where much of the
+  disability and community-services estate sits. Shared premises are routine and lawful: serviced
+  offices, community hubs, auspicing arrangements, and a school's P&C at the school. A cluster is
+  therefore a PLACE TO LOOK, never a finding, and no officer link is implied — no open Australian
+  source publishes responsible-person names in bulk, so this lens cannot and does not claim one.
+params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Published to (inclusive)
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Only money at or above (AUD)
+    required: false
+    default: "50000"
+  - name: disabilityOnly
+    type: STRING
+    label: Restrict to disability-beneficiary charities (true/false)
+    required: false
+    default: "false"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const minValue = Number(lensArgs.minValue || 0) || 50000;
+    const disabilityOnly = String(lensArgs.disabilityOnly || "").toLowerCase() === "true";
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+    const warnings = [];
+    const ANCHORS_PER_QUERY = 150;   // the engine refuses more than 200 anchors on one fetch
+
+    const ask = async (label, cypher, params) => {
+      try {
+        const q = await gateway.kg.query({ cypher, params: JSON.stringify(params || {}) });
+        warnings.push(...((q && q.warnings) || []));
+        return { rows: ((q && q.rows) ? q.rows : (q || [])), ok: true };
+      } catch (e) {
+        warnings.push(label + " unavailable: " + String((e && e.message) || e));
+        return { rows: [], ok: false };
+      }
+    };
+    const batched = async (label, values, build) => {
+      const out = [];
+      for (let i = 0; i < values.length; i += ANCHORS_PER_QUERY) {
+        const batch = values.slice(i, i + ANCHORS_PER_QUERY);
+        const r = await ask(`${label} (${i + 1}-${i + batch.length})`, build(batch));
+        out.push(...r.rows);
+      }
+      return out;
+    };
+
+    // ---- 1. WHO GOT MONEY ------------------------------------------------------------------
+    const grants = await ask("GrantConnect window", `
+      MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+      WHERE g.value >= $minValue
+      RETURN g.gaId AS id, g.recipient AS party, g.recipientAbn AS abn, g.agency AS buyer,
+             g.program AS program, g.value AS value`, { windowKey, minValue });
+    const contracts = await ask("AusTender window", `
+      MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+      WHERE toFloat(r.amount) >= $minValue
+      RETURN r.cnId AS id, r.supplierName AS party, r.supplierAbn AS abn, r.agencyName AS buyer,
+             r.title AS program, toFloat(r.amount) AS value`,
+      { window: `${from}T00:00:00Z/${to}T23:59:59Z`, minValue });
+
+    const money = []
+      .concat(grants.rows.map(r => Object.assign({}, r, { kind: "grant" })))
+      .concat(contracts.rows.map(r => Object.assign({}, r, { kind: "contract" })))
+      .map(r => Object.assign({}, r, { abn: digits(r.abn) }))
+      .filter(r => r.abn.length === 11);
+    const moneyByAbn = {};
+    money.forEach(m => {
+      const e = (moneyByAbn[m.abn] = moneyByAbn[m.abn] || { abn: m.abn, party: m.party, items: 0, value: 0 });
+      e.items += 1; e.value += Number(m.value) || 0;
+    });
+    const paidAbns = Object.keys(moneyByAbn);
+
+    // ---- 2. WHICH OF THEM ARE CHARITIES (and therefore have a published address) ------------
+    const charityRows = await batched("Charity register", paidAbns, (batch) => `
+      MATCH (q:IntegrityQuery)-[:HAS_CHARITY_RECORD]->(c:CharityRecord)
+      WHERE q.abn IN [${batch.map(a => "'" + a + "'").join(", ")}]
+      RETURN q.abn AS abn, c.charityName AS charityName, c.addressLine1 AS addressLine1,
+             c.addressLine2 AS addressLine2, c.town AS town, c.state AS state,
+             c.postcode AS postcode, c.registrationDate AS registrationDate,
+             c.responsiblePersons AS responsiblePersons,
+             c.servesPeopleWithDisabilities AS disability`);
+    const charities = charityRows.filter(c => !disabilityOnly || String(c.disability || "").toUpperCase() === "Y");
+
+    // ---- 3. WHO ELSE IS REGISTERED IN THOSE POSTCODES ---------------------------------------
+    const postcodes = Array.from(new Set(charities.map(c => digits(c.postcode)).filter(p => p.length === 4)));
+    const neighbours = await batched("Charities by postcode", postcodes, (batch) => `
+      MATCH (p:PostcodeArea)-[:HAS_CHARITY]->(c:CharityAtPostcode)
+      WHERE p.postcode IN [${batch.map(p => "'" + p + "'").join(", ")}]
+      RETURN p.postcode AS postcode, c.abn AS abn, c.charityName AS charityName,
+             c.addressLine1 AS addressLine1, c.addressLine2 AS addressLine2,
+             c.town AS town, c.state AS state, c.registrationDate AS registrationDate,
+             c.responsiblePersons AS responsiblePersons,
+             c.servesPeopleWithDisabilities AS disability`);
+
+    // ---- 4. NORMALIZE AND CLUSTER ------------------------------------------------------------
+    // A street address is written a dozen ways ('73 Taylor St' / 'Suite 2, 73 TAYLOR STREET'), so
+    // clustering needs a normal form: case folded, punctuation dropped, common suffixes and unit
+    // prefixes collapsed. This is deliberately conservative — it would rather MISS a shared
+    // address than merge two different ones, because a false cluster names innocent parties.
+    const SUFFIX = { st: "street", rd: "road", ave: "avenue", av: "avenue", dr: "drive", cr: "crescent",
+                     cres: "crescent", ct: "court", pl: "place", tce: "terrace", hwy: "highway",
+                     pde: "parade", ln: "lane", cl: "close", bvd: "boulevard", blvd: "boulevard" };
+    const normAddress = (line1, line2, town) => {
+      const raw = [line1, line2].map(x => String(x || "").trim()).filter(Boolean).join(" ");
+      let s = raw.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+      if (!s) return null;
+      s = s.split(" ").map(w => SUFFIX[w] || w).join(" ");
+      const t = String(town || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+      return t ? s + " | " + t : s;
+    };
+    // A PO BOX IS NOT A PREMISES. Hundreds of unrelated charities share a post office, and
+    // clustering on one would produce a large, entirely meaningless "network" — the single most
+    // likely way this lens could defame someone. They are counted separately and never clustered.
+    const isPoBox = (line1, line2) => /\b(p\.?\s*o\.?\s*box|post(al)? office box|locked bag|gpo box|private bag)\b/i
+      .test([line1, line2].join(" "));
+
+    const clusters = {};
+    let poBoxSkipped = 0;
+    neighbours.forEach(n => {
+      if (isPoBox(n.addressLine1, n.addressLine2)) { poBoxSkipped++; return; }
+      const key = normAddress(n.addressLine1, n.addressLine2, n.town);
+      if (!key) return;
+      const c = (clusters[key] = clusters[key] || { key, members: [], addressShown: [n.addressLine1, n.addressLine2].filter(Boolean).join(", "), town: n.town, state: n.state, postcode: n.postcode });
+      if (c.members.some(m => digits(m.abn) === digits(n.abn))) return;   // same charity, two rows
+      c.members.push(n);
+    });
+
+    // A CORPORATE GROUP IS NOT A NETWORK. Four Aruma entities at one address, or a university and
+    // its student guild, share premises for the most ordinary reason there is. Those clusters
+    // swamp the ranking and are not what a reader is looking for, so a shared distinctive name
+    // stem is detected and reported — letting UNRELATED co-location, which is the only
+    // structurally interesting case, sort to the top instead of being buried.
+    const STOPWORDS = new Set(("the a an of and for incorporated limited ltd pty inc association " +
+      "foundation trust trustee fund services service group australia australian company co").split(/\s+/));
+    const stemOf = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ")
+      .split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w))[0] || null;
+
+    const paidSet = new Set(paidAbns);
+    const shared = Object.values(clusters)
+      .filter(c => c.members.length > 1)
+      .map(c => {
+        const paid = c.members.filter(m => paidSet.has(digits(m.abn)));
+        const paidValue = paid.reduce((n, m) => n + ((moneyByAbn[digits(m.abn)] || {}).value || 0), 0);
+        const stems = c.members.map(m => stemOf(m.charityName)).filter(Boolean);
+        const stemCounts = {};
+        stems.forEach(t => { stemCounts[t] = (stemCounts[t] || 0) + 1; });
+        const topStem = Object.keys(stemCounts).sort((a, b) => stemCounts[b] - stemCounts[a])[0] || null;
+        const sharedStemCount = topStem ? stemCounts[topStem] : 0;
+        // Every member sharing one distinctive word is a group or a campus, not a discovery.
+        const likelyCorporateGroup = sharedStemCount >= Math.max(2, Math.ceil(c.members.length * 0.6));
+        return {
+          address: c.addressShown, town: c.town, state: c.state, postcode: c.postcode,
+          charitiesAtAddress: c.members.length,
+          likelyCorporateGroup, sharedNameStem: likelyCorporateGroup ? topStem : null,
+          distinctNameStems: Object.keys(stemCounts).length,
+          fundedAtAddress: paid.length,
+          fundedValue: Math.round(paidValue),
+          disabilityCharities: c.members.filter(m => String(m.disability || "").toUpperCase() === "Y").length,
+          members: c.members.map(m => ({
+            abn: digits(m.abn), name: m.charityName,
+            registrationDate: m.registrationDate,
+            responsiblePersons: m.responsiblePersons,
+            servesPeopleWithDisabilities: String(m.disability || "").toUpperCase() === "Y",
+            receivedMoneyInWindow: paidSet.has(digits(m.abn)),
+            valueInWindow: Math.round(((moneyByAbn[digits(m.abn)] || {}).value || 0)),
+          })).sort((a, b) => (Number(b.receivedMoneyInWindow) - Number(a.receivedMoneyInWindow)) || (b.valueInWindow - a.valueInWindow)),
+        };
+      })
+      .filter(c => c.fundedAtAddress > 0)
+      // UNRELATED co-location first: same-name groups are ordinary and go to the bottom.
+      .sort((a, b) => (Number(a.likelyCorporateGroup) - Number(b.likelyCorporateGroup)) ||
+                      (b.fundedValue - a.fundedValue) || (b.charitiesAtAddress - a.charitiesAtAddress));
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-shared-premises",
+      window: { from, to }, minValue, disabilityOnly,
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        fundedEntities: paidAbns.length,
+        fundedEntitiesOnCharityRegister: charities.length,
+        postcodesExamined: postcodes.length,
+        charitiesInThosePostcodes: neighbours.length,
+        sharedAddressesWithFunding: shared.length,
+        sharedAddressesNotOneCorporateGroup: shared.filter(c => !c.likelyCorporateGroup).length,
+        valueAtSharedAddresses: shared.reduce((n, c) => n + c.fundedValue, 0),
+        poBoxRowsExcluded: poBoxSkipped,
+        note: charities.length
+          ? `${charities.length} of ${paidAbns.length} funded ABNs are on the charity register, which is the only ` +
+            `open source that puts an ADDRESS against an ABN. ${shared.length} street address(es) host more than one ` +
+            `registered charity AND received money in this window. Shared premises are routine — this is a list to read.`
+          : `None of the funded ABNs in this window appear on the charity register, so no address is available for any of them.`,
+      },
+      queries: [
+        { title: "Funded ABNs → charity register (address, dates, size)",
+          cypher: "MATCH (q:IntegrityQuery)-[:HAS_CHARITY_RECORD]->(c:CharityRecord)\nWHERE q.abn IN [<funded ABNs>] RETURN c" },
+        { title: "Everyone registered in those postcodes",
+          cypher: "MATCH (p:PostcodeArea)-[:HAS_CHARITY]->(c:CharityAtPostcode)\nWHERE p.postcode IN [<postcodes>] RETURN c" },
+        { title: "Clustering", note: "Computed in the lens: address case-folded, punctuation dropped, street suffixes normalized, PO boxes excluded entirely." },
+      ],
+      sharedAddresses: shared.slice(0, 30),
+      interpretation: {
+        factual: ["addresses, registration dates, charity counts, money — all as published"],
+        heuristic: ["likelyCorporateGroup / sharedNameStem — a name-word test, not a corporate-structure fact"],
+        judged: [],
+        note: "No model is involved. A cluster asserts only that two registered addresses normalize to the same string.",
+      },
+      limits: [
+        "CHARITIES ONLY. ASIC's company dataset publishes no address, so a company provider — however large — is invisible to this lens. An absence here means 'not a registered charity', never 'no shared premises'.",
+        "Shared premises are lawful and ordinary: serviced offices, community hubs, shared auspicing, a P&C at its school. This lens ranks and lists; it never characterises.",
+        "`likelyCorporateGroup` marks clusters whose members share a distinctive name word — a group or a campus, and the least interesting case. It is a NAME heuristic, so a group that renamed its subsidiaries reads as unrelated, and unrelated charities sharing a common word read as a group.",
+        "NO OFFICER LINK IS IMPLIED OR AVAILABLE. The register publishes a COUNT of responsible persons, never names, so a shared-director network cannot be built from open data and is not being claimed here.",
+        "PO boxes, locked bags and private bags are excluded outright — a shared post office is not shared premises, and clustering on one would name hundreds of unrelated charities.",
+        "Address normalization is deliberately conservative: it will miss a shared address written two very different ways rather than merge two different addresses.",
+        "The registered address is where the charity is REGISTERED, which is often an accountant or head office and not where services are delivered.",
+        "Money is bounded by the window; an entity's other funding is not considered.",
+      ],
+      method: "Funded ABNs from one window resolved against the ACNC charity register for their addresses, every charity " +
+              "in those postcodes fetched, addresses normalized and clustered, and clusters kept only where at least one " +
+              "member received money in the window.",
+      source: "ACNC Register of Australian Charities (CC BY 3.0 AU); GrantConnect (CC BY 4.0); AusTender OCDS (CC BY 3.0 AU)",
+    }) });
+presentation:
+  href: /apps/moneytrail.html
