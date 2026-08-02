@@ -1,0 +1,229 @@
+id: au-grant-theme
+name: Your theme, their money
+description: >-
+  Grants matched to a theme YOU define, in your own words — "youth mental health in regional
+  areas", "flood resilience", "domestic violence prevention". GrantConnect only offers a fixed
+  Category dropdown, and real policy questions cut straight across it: flood resilience is funded
+  from Infrastructure, Environment, Home Affairs and emergency-management programs with no shared
+  label anywhere. This reads every award's published PURPOSE text against your phrase, then does
+  pure arithmetic on what matched — including the negative space: which electorates received
+  nothing on your theme.
+params:
+  - name: theme
+    type: STRING
+    label: Your theme, in your own words
+    required: true
+    default: "youth mental health"
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-06-02"
+  - name: to
+    type: DATE
+    label: Published to
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Grants at or above (AUD)
+    required: false
+    default: "50000"
+  - name: strictness
+    type: STRING
+    label: How close a match must be (0.5 loose … 0.9 strict)
+    required: false
+    default: "0.7"
+spec:
+  kind: cypherscript
+  script: |
+    const theme = String(lensArgs.theme || "").trim();
+    // The GrantWindow key is the composite `from|to`; the producer renders each part into
+    // GrantConnect's own dd-MMM-yyyy. Dates arrive from a picker as plain ISO days.
+    const day = (d) => String(d || "").trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const minValue = Number(lensArgs.minValue || 0) || 50000;
+    // The ENGINE's relevance threshold is deliberately permissive (it must not hide results), and
+    // a topical criterion over prose scores ~15% of a grant window above it. That is too generous
+    // to call a match, so the lens applies its OWN floor over the returned fit and SAYS what it is.
+    const strictness = Math.min(Math.max(Number(lensArgs.strictness || 0.7) || 0.7, 0.1), 1);
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    if (!theme) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-grant-theme", status: "EMPTY", note: "Describe a theme to search for.",
+      }) });
+    } else {
+
+    // The criterion is INLINED as a quoted literal: the rewriter matches `ai.relevant(alias,'…')`
+    // TEXTUALLY, and a $param never matches it — passing the theme as a parameter silently
+    // behaves like no filter at all, which reads as "everything is on-theme".
+    const bare = theme.replace(/['"\\]/g, " ").replace(/\s+/g, " ").trim();
+    // PASS A TOPIC, NOT A RUBRIC. This lens used to send a whole scoring sentence as the criterion
+    // ("the grant purpose is substantially about X — the funded activity itself must address it,
+    // not merely share a policy area or a population"). The engine's prompt ALREADY states that
+    // rule and asks how well each item fits the criterion, so the model was being asked how well a
+    // grant is "about" a sentence about scoring. Measured on one real 40-item batch, that phrasing
+    // made a cheap model keep two unrelated awards that the plain topic left at 0.0. The narrowing
+    // rule now lives in the engine prompt, stated once, and the criterion is just the theme.
+    const criterion = bare;
+
+    // THE JUDGED FILTER: every fetched award's purpose text read against the caller's phrase.
+    // ai.relevant keeps the fits; ai.score ranks them; both are the SAME judgment, scored once.
+    const q = await gateway.kg.query({
+      cypher: `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        WHERE coalesce(toFloat(g.value), 0.0) >= $minValue
+          AND ai.relevant(g.purpose, '${criterion}')
+        RETURN g.gaId AS gaId, g.recipient AS recipient, g.agency AS agency,
+               g.program AS program, g.activity AS activity, g.purpose AS purpose,
+               g.value AS value, g.deliveryPostcode AS deliveryPostcode,
+               g.deliveryState AS deliveryState, g.publishDate AS publishDate,
+               g.selectionProcess AS selectionProcess,
+               ai.score(g.purpose, '${criterion}') AS fit
+        ORDER BY fit DESC
+        LIMIT 120
+      `,
+      params: JSON.stringify({ windowKey, minValue }),
+    });
+    const hits = ((q && q.rows) ? q.rows : (q || []))
+      .map(r => Object.assign({}, r, { valueNum: Number(String(r.value || "").replace(/[^0-9.]/g, "")) || 0 }))
+      .filter(r => r.valueNum >= minValue)
+      .filter(r => r.fit == null || Number(r.fit) >= strictness);
+    const warnings = [...((q && q.warnings) || [])];
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE"); });
+
+    // The DENOMINATOR — the same window, unfiltered — so a share is honest arithmetic and the
+    // reader can see how much of the window the theme actually is.
+    const allq = await gateway.kg.query({
+      cypher: `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        RETURN g.value AS value, g.publishDate AS publishDate,
+               coalesce(toFloat(g.value), 0.0) >= $minValue AS judged
+      `,
+      params: JSON.stringify({ windowKey, minValue }),
+    });
+    const allRaw = ((allq && allq.rows) ? allq.rows : (allq || []));
+    const allRows = allRaw.map(r => Number(String(r.value || "").replace(/[^0-9.]/g, "")) || 0);
+    const windowValue = allRows.reduce((n, v) => n + v, 0);
+    // How many awards the model actually READ — the population the theme filter ran over.
+    const judgedPopulation = allRaw.filter(r => r.judged === true || r.judged === "true").length;
+    const dates = ((allq && allq.rows) ? allq.rows : []).map(r => String(r.publishDate || "").slice(0, 10)).filter(Boolean).sort();
+
+    // Electorates: the delivery postcode is the ONLY honest geographic basis (a recipient address
+    // is a head office). Postcodes crossing divisions are excluded and counted, never guessed.
+    const eq = await gateway.kg.query({
+      cypher: `MATCH (e:Electorate) RETURN e.division AS division, e.state AS state,
+               e.marginBand AS marginBand, e.heldByAbbrev AS heldByAbbrev, e.postcodes AS postcodes`,
+      params: JSON.stringify({}),
+    });
+    const electorates = ((eq && eq.rows) ? eq.rows : (eq || []));
+    warnings.push(...((eq && eq.warnings) || []));
+    const pcMap = {};
+    for (const e of electorates) for (const pc of (e.postcodes || [])) (pcMap[pc] = pcMap[pc] || []).push(e);
+
+    const byDivision = {};
+    let noDelivery = 0, crossBoundary = 0, unmatched = 0;
+    for (const h of hits) {
+      const pc = String(h.deliveryPostcode || "").trim();
+      if (!pc) { noDelivery++; continue; }
+      const divs = pcMap[pc] || [];
+      if (!divs.length) { unmatched++; continue; }
+      if (divs.length > 1) { crossBoundary++; continue; }
+      const e = divs[0];
+      const d = (byDivision[e.division] = byDivision[e.division] || {
+        division: e.division, state: e.state, marginBand: e.marginBand,
+        heldByAbbrev: e.heldByAbbrev, grants: 0, value: 0,
+      });
+      d.grants++; d.value += h.valueNum;
+    }
+    const funded = Object.values(byDivision).map(d => ({ ...d, value: Math.round(d.value) }))
+      .sort((a, b) => b.value - a.value);
+    // THE NEGATIVE SPACE — the actionable half. Only meaningful over the ATTRIBUTED subset, so
+    // it is reported alongside how little of the theme could be placed at all.
+    const fundedNames = new Set(funded.map(d => d.division));
+    const unfunded = electorates.filter(e => !fundedNames.has(e.division))
+      .map(e => ({ division: e.division, state: e.state, marginBand: e.marginBand, heldByAbbrev: e.heldByAbbrev }));
+
+    const group = (keyOf) => {
+      const g = {};
+      for (const h of hits) {
+        const k = keyOf(h) || "(unstated)";
+        const e = (g[k] = g[k] || { name: k, grants: 0, value: 0 });
+        e.grants++; e.value += h.valueNum;
+      }
+      return Object.values(g).map(x => ({ ...x, value: Math.round(x.value) }))
+        .sort((a, b) => b.value - a.value);
+    };
+    const themeValue = hits.reduce((n, h) => n + h.valueNum, 0);
+    const attributed = funded.reduce((n, d) => n + d.grants, 0);
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-grant-theme",
+      theme, minValue, strictness, requestedWindow: { from, to },
+      criterion,
+      window: dates.length ? { firstPublished: dates[0], lastPublished: dates[dates.length - 1] } : null,
+      status: failed ? "FAILED" : (warnings.length ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        matched: hits.length,
+        matchedValue: Math.round(themeValue),
+        windowValue: Math.round(windowValue),
+        shareOfWindowPct: windowValue > 0 ? Math.round((themeValue / windowValue) * 1000) / 10 : null,
+        divisionsFunded: funded.length,
+        divisionsWithNothing: unfunded.length,
+        judgedPopulation,
+        windowAwards: allRows.length,
+        note: hits.length
+          ? `${hits.length} award(s) in the current window read as matching “${theme}”, worth $${(themeValue / 1e6).toFixed(1)}M — ` +
+            `${windowValue > 0 ? ((themeValue / windowValue) * 100).toFixed(1) : "?"}% of everything published in it. ` +
+            `${attributed} could be placed in exactly one electorate; ${unfunded.length} of ${electorates.length} divisions have nothing on this theme among those.`
+          : `Nothing in the current window read as matching “${theme}”. That is a fact about THIS window and this phrase — not about the theme's funding overall.`,
+      },
+      queries: [{
+        title: "Grant purposes read against your phrase",
+        note: "ai.relevant filters and ai.score ranks — ONE judgment per award, scoped to g.purpose so the model reads the PURPOSE TEXT and nothing else (unscoped, it would read a soup of ids, ABNs, postcodes and dates). The phrase is inlined because the rewriter matches it textually.",
+        cypher: "MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)\n" +
+                "WHERE ai.relevant(g.purpose, '<your theme>')\nRETURN g.recipient, g.purpose, g.value\nORDER BY ai.score(g.purpose, '<your theme>') DESC",
+      }],
+      byProgram: group(h => h.program).slice(0, 12),
+      byAgency: group(h => h.agency).slice(0, 12),
+      byDivision: funded.slice(0, 15),
+      divisionsWithNothing: unfunded.slice(0, 40),
+      geography: {
+        attributed,
+        noDeliveryPostcode: noDelivery,
+        crossBoundary,
+        unmatchedPostcode: unmatched,
+        note: "Only awards stating a DELIVERY postcode that falls in exactly one division are placed. Recipient addresses are head offices and are never mapped, and most awards state no delivery postcode at all — so the map is a SUBSET, and 'nothing on this theme' means nothing among the placed awards.",
+      },
+      // Purposes render VERBATIM: the reader judges the match, not our paraphrase of it.
+      awards: hits.slice(0, 40).map(h => ({
+        gaId: h.gaId, recipient: h.recipient, agency: h.agency, program: h.program,
+        activity: h.activity, value: Math.round(h.valueNum),
+        purpose: String(h.purpose || ""),
+        deliveryPostcode: h.deliveryPostcode || null, deliveryState: h.deliveryState || null,
+        selectionProcess: h.selectionProcess || null, publishDate: h.publishDate || null,
+        fit: h.fit != null ? Math.round(Number(h.fit) * 100) / 100 : null,
+      })),
+      interpretation: {
+        factual: ["values, counts and shares", "purposes quoted verbatim", "the postcode→division mapping and its exclusions"],
+        judged: ["which awards match your theme (ai.relevant)", "the fit ranking (ai.score)"],
+        note: "The MATCH is a model's reading of each published purpose against your phrase — every award is shown with its purpose so you can check it. Every figure beside them is arithmetic over whatever matched.",
+      },
+      limits: [
+        "The model reads only awards at or above the value floor — that narrowing is DETERMINISTIC and is stated as judgedPopulation; awards below it were never considered, on this theme or any other.",
+        "At most 120 matches are returned; a broad theme in a wide window will have more.",
+        "A match must score at or above the strictness floor (shown as `strictness`). Lower it to see near-misses, raise it for only unmistakable fits — the fit score is on every award so you can judge the cut yourself.",
+        "A model decides what your theme means, and the exact question it was asked is shown as `criterion`. Read the quoted purposes: a match you disagree with is visible, which is the point of showing them.",
+        "Semantic matching is GENEROUS at the edges — a purpose sharing your theme's population or policy area can score highly without being about it. Treat the list as candidates to read, never as a count to quote.",
+        "The purpose text is the agency's own — a program that describes itself vaguely will be missed by a precise theme, and that is a fact about disclosure, not about funding.",
+        "One rolling window of published awards, not a program's history; the window's own dates are shown.",
+        "'Divisions with nothing' covers only awards that could be placed geographically — most cannot be.",
+      ],
+      source: "GrantConnect published awards (rolling window) · AEC 2025 divisions + postcodes (seeded reference)",
+    }) });
+    }
+presentation:
+  href: /apps/grants-atlas.html
