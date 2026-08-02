@@ -1,0 +1,228 @@
+id: au-provider-network
+name: Adverse conduct next door
+description: >-
+  The join this whole realm was built to make. Take the money, resolve it to registered addresses,
+  find who else is registered there, then ask the adverse registers about EVERY neighbour — not
+  just the one that got paid. A funded provider whose co-tenants carry compliance actions is
+  invisible in every published list, because no list crosses premises with conduct. Co-location is
+  lawful and ordinary and a neighbour's record is not the funded entity's record: this produces an
+  address, the entities at it, and each one's register position, for a human to read. It asserts
+  no relationship between neighbours beyond a shared registered address.
+params:
+  - name: from
+    type: DATE
+    label: Published from
+    required: true
+    default: "2026-07-15"
+  - name: to
+    type: DATE
+    label: Published to (inclusive)
+    required: true
+    default: "2026-08-02"
+  - name: minValue
+    type: STRING
+    label: Only money at or above (AUD)
+    required: false
+    default: "50000"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const minValue = Number(lensArgs.minValue || 0) || 50000;
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const warnings = [];
+    const ANCHORS = 150;
+
+    const ask = async (label, cypher, params) => {
+      try {
+        const q = await gateway.kg.query({ cypher, params: JSON.stringify(params || {}) });
+        warnings.push(...((q && q.warnings) || []));
+        return { rows: ((q && q.rows) ? q.rows : (q || [])), ok: true };
+      } catch (e) {
+        warnings.push(label + " unavailable: " + String((e && e.message) || e));
+        return { rows: [], ok: false };
+      }
+    };
+    const batched = async (label, values, build) => {
+      const out = [];
+      for (let i = 0; i < values.length; i += ANCHORS) {
+        const b = values.slice(i, i + ANCHORS);
+        out.push(...(await ask(`${label} (${i + 1}-${i + b.length})`, build(b))).rows);
+      }
+      return out;
+    };
+    const quoted = (xs) => xs.map(x => "'" + x + "'").join(", ");
+
+    // 1. money → 2. charity address → 3. neighbours → 4. adverse register on EVERY neighbour
+    const grants = await ask("GrantConnect window", `
+      MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+      WHERE g.value >= $minValue
+      RETURN g.recipient AS party, g.recipientAbn AS abn, g.agency AS buyer, g.value AS value`,
+      { windowKey, minValue });
+    const contracts = await ask("AusTender window", `
+      MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+      WHERE toFloat(r.amount) >= $minValue
+      RETURN r.supplierName AS party, r.supplierAbn AS abn, r.agencyName AS buyer,
+             toFloat(r.amount) AS value`,
+      { window: `${from}T00:00:00Z/${to}T23:59:59Z`, minValue });
+
+    const moneyByAbn = {};
+    [].concat(grants.rows, contracts.rows).forEach(r => {
+      const a = digits(r.abn);
+      if (a.length !== 11) return;
+      const e = (moneyByAbn[a] = moneyByAbn[a] || { abn: a, party: r.party, value: 0, items: 0 });
+      e.value += Number(r.value) || 0; e.items += 1;
+    });
+    const paidAbns = Object.keys(moneyByAbn);
+
+    const funded = await batched("Charity register", paidAbns, (b) => `
+      MATCH (q:IntegrityQuery)-[:HAS_CHARITY_RECORD]->(c:CharityRecord)
+      WHERE q.abn IN [${quoted(b)}]
+      RETURN q.abn AS abn, c.charityName AS charityName, c.addressLine1 AS addressLine1,
+             c.addressLine2 AS addressLine2, c.town AS town, c.postcode AS postcode`);
+
+    const postcodes = Array.from(new Set(funded.map(c => digits(c.postcode)).filter(p => p.length === 4)));
+    const neighbours = await batched("Charities by postcode", postcodes, (b) => `
+      MATCH (p:PostcodeArea)-[:HAS_CHARITY]->(c:CharityAtPostcode)
+      WHERE p.postcode IN [${quoted(b)}]
+      RETURN c.abn AS abn, c.charityName AS charityName, c.addressLine1 AS addressLine1,
+             c.addressLine2 AS addressLine2, c.town AS town, c.state AS state,
+             c.registrationDate AS registrationDate,
+             c.servesPeopleWithDisabilities AS disability`);
+
+    const SUFFIX = { st: "street", rd: "road", ave: "avenue", av: "avenue", dr: "drive", cr: "crescent",
+                     cres: "crescent", ct: "court", pl: "place", tce: "terrace", hwy: "highway",
+                     pde: "parade", ln: "lane", cl: "close", bvd: "boulevard", blvd: "boulevard" };
+    const normAddress = (l1, l2, town) => {
+      let s = [l1, l2].map(x => String(x || "").trim()).filter(Boolean).join(" ")
+        .toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+      if (!s) return null;
+      s = s.split(" ").map(w => SUFFIX[w] || w).join(" ");
+      const t = String(town || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+      return t ? s + " | " + t : s;
+    };
+    const isPoBox = (l1, l2) => /\b(p\.?\s*o\.?\s*box|post(al)? office box|locked bag|gpo box|private bag)\b/i
+      .test([l1, l2].join(" "));
+
+    const clusters = {};
+    neighbours.forEach(n => {
+      if (isPoBox(n.addressLine1, n.addressLine2)) return;
+      const k = normAddress(n.addressLine1, n.addressLine2, n.town);
+      if (!k) return;
+      const c = (clusters[k] = clusters[k] || {
+        shown: [n.addressLine1, n.addressLine2].filter(Boolean).join(", "), town: n.town, state: n.state, members: [],
+      });
+      if (!c.members.some(m => digits(m.abn) === digits(n.abn))) c.members.push(n);
+    });
+
+    // THE JOIN. Ask the adverse register about every entity at every address that received money —
+    // the neighbours, not only the funded one. This is the step no published list performs.
+    const paidSet = new Set(paidAbns);
+    const live = Object.values(clusters).filter(c => c.members.some(m => paidSet.has(digits(m.abn))));
+    const allAbns = Array.from(new Set(live.flatMap(c => c.members.map(m => digits(m.abn)))
+      .filter(a => a.length === 11)));
+    const adverse = await batched("NDIS compliance register", allAbns, (b) => `
+      MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord)
+      WHERE q.abn IN [${quoted(b)}]
+      RETURN q.abn AS abn, x.register AS register, x.name AS name,
+             x.dateFrom AS dateFrom, x.dateTo AS dateTo, x.state AS state`);
+    const adverseByAbn = {};
+    adverse.forEach(a => { (adverseByAbn[digits(a.abn)] = adverseByAbn[digits(a.abn)] || []).push(a); });
+
+    const severityOf = (reg) => {
+      const r = String(reg || "").toLowerCase();
+      if (r.includes("banning")) return { rank: 3, severity: "banning order" };
+      if (r.includes("revocation") || r.includes("revoke")) return { rank: 3, severity: "revocation" };
+      if (r.includes("suspension") || r.includes("suspend")) return { rank: 2, severity: "suspension" };
+      if (r.includes("refusal") || r.includes("refuse")) return { rank: 2, severity: "refusal" };
+      if (r.includes("notice")) return { rank: 1, severity: "compliance notice" };
+      return { rank: 0, severity: "other action as published" };
+    };
+
+    const networks = live.map(c => {
+      const members = c.members.map(m => {
+        const abn = digits(m.abn);
+        const acts = (adverseByAbn[abn] || []).map(a => Object.assign(
+          { register: a.register, from: a.dateFrom, to: a.dateTo || null, stillInForce: !String(a.dateTo || "").trim() },
+          severityOf(a.register)));
+        return {
+          abn, name: m.charityName, registrationDate: m.registrationDate,
+          servesPeopleWithDisabilities: String(m.disability || "").toUpperCase() === "Y",
+          receivedMoneyInWindow: paidSet.has(abn),
+          valueInWindow: Math.round(((moneyByAbn[abn] || {}).value || 0)),
+          adverseActions: acts,
+          worstRank: acts.reduce((n, a) => Math.max(n, a.rank), 0),
+        };
+      }).sort((a, b) => (b.worstRank - a.worstRank) || (b.valueInWindow - a.valueInWindow));
+      const withActions = members.filter(m => m.adverseActions.length);
+      return {
+        address: c.shown, town: c.town, state: c.state,
+        entitiesAtAddress: members.length,
+        fundedAtAddress: members.filter(m => m.receivedMoneyInWindow).length,
+        fundedValue: members.reduce((n, m) => n + m.valueInWindow, 0),
+        entitiesWithAdverseRecord: withActions.length,
+        // The case that cannot be seen anywhere else: money here, a record next door.
+        fundedEntityIsClean: members.some(m => m.receivedMoneyInWindow && !m.adverseActions.length),
+        neighbourCarriesRecord: withActions.some(m => !m.receivedMoneyInWindow),
+        worstRankAtAddress: members.reduce((n, m) => Math.max(n, m.worstRank), 0),
+        members,
+      };
+    }).filter(n => n.entitiesWithAdverseRecord > 0)
+      .sort((a, b) => (b.worstRankAtAddress - a.worstRankAtAddress) ||
+                      (b.entitiesWithAdverseRecord - a.entitiesWithAdverseRecord) ||
+                      (b.fundedValue - a.fundedValue));
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-provider-network",
+      window: { from, to }, minValue,
+      status: failed ? "FAILED" : "COMPLETE",
+      warnings,
+      headline: {
+        fundedEntities: paidAbns.length,
+        onCharityRegister: funded.length,
+        addressesExamined: Object.keys(clusters).length,
+        addressesWithFunding: live.length,
+        entitiesScreened: allAbns.length,
+        addressesTouchingAdverseRecord: networks.length,
+        addressesWhereOnlyANeighbourHasARecord: networks.filter(n => n.neighbourCarriesRecord && n.fundedEntityIsClean).length,
+        note: networks.length
+          ? `${networks.length} address(es) hosting funded entities also host at least one entity with an NDIS ` +
+            `compliance record. Co-location is lawful and ordinary and a neighbour's record is NOT the funded ` +
+            `entity's record — this is an address list to read, and severity is the register's own wording.`
+          : `No address hosting a funded entity in this window also hosts an entity with a compliance record.`,
+      },
+      queries: [
+        { title: "Funded ABNs → charity addresses",
+          cypher: "MATCH (q:IntegrityQuery)-[:HAS_CHARITY_RECORD]->(c:CharityRecord) WHERE q.abn IN [<funded>] RETURN c" },
+        { title: "Everyone at those postcodes",
+          cypher: "MATCH (p:PostcodeArea)-[:HAS_CHARITY]->(c:CharityAtPostcode) WHERE p.postcode IN [<postcodes>] RETURN c" },
+        { title: "The adverse register, for EVERY entity at those addresses",
+          cypher: "MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord) WHERE q.abn IN [<every neighbour>] RETURN x" },
+      ],
+      networks: networks.slice(0, 25),
+      interpretation: {
+        factual: ["addresses, entity names, registration dates, register entries, money — all as published"],
+        judged: [],
+        note: "No model is involved. 'Severity' reads the register's own action-type wording.",
+      },
+      limits: [
+        "A NEIGHBOUR'S RECORD IS NOT THE FUNDED ENTITY'S RECORD. Sharing a registered address establishes nothing about control, ownership or conduct, and this lens asserts no relationship between co-tenants beyond the address itself.",
+        "CHARITIES ONLY — ASIC publishes no company addresses, so a company provider is invisible here regardless of size.",
+        "NO OFFICER LINK IS AVAILABLE. Responsible-person NAMES are not published in bulk anywhere, so the classic shared-director network cannot be built and is not implied.",
+        "A compliance notice is the lowest rung of the register and is common; a banning order is not. Never total across severities.",
+        "The registered address is often an accountant or head office, not a service location — two entities can share one without sharing anything else.",
+        "PO boxes are excluded outright; a shared post office is not shared premises.",
+        "Money is bounded by the window, and the NDIS register is a snapshot, so absence means 'not in this snapshot', never 'clean'.",
+      ],
+      method: "Window money → ABNs → ACNC addresses → every charity at those postcodes → addresses normalized and " +
+              "clustered → the NDIS compliance register asked about EVERY entity at each funded address.",
+      source: "GrantConnect (CC BY 4.0); AusTender OCDS (CC BY 3.0 AU); ACNC Register of Australian Charities; NDIS Commission compliance actions",
+    }) });
+presentation:
+  href: /apps/moneytrail.html
