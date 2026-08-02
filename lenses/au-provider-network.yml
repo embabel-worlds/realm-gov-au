@@ -142,6 +142,16 @@ spec:
       return { rank: 0, severity: "other action as published" };
     };
 
+    // A CORPORATE GROUP IS NOT A NETWORK. Five entities all named 'Aruma' at one address, one of
+    // which is funded and another of which carries a notice, satisfies every structural test here
+    // and discovers nothing — they are one organisation. au-shared-premises already learned this;
+    // without the same discriminator the ranking fills with groups and the genuinely arm's-length
+    // co-location, which is the only interesting case, never surfaces.
+    const STOPWORDS = new Set(("the a an of and for incorporated limited ltd pty inc association " +
+      "foundation trust trustee fund services service group australia australian company co").split(/\s+/));
+    const stemOf = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ")
+      .split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w))[0] || null;
+
     const networks = live.map(c => {
       const members = c.members.map(m => {
         const abn = digits(m.abn);
@@ -158,8 +168,14 @@ spec:
         };
       }).sort((a, b) => (b.worstRank - a.worstRank) || (b.valueInWindow - a.valueInWindow));
       const withActions = members.filter(m => m.adverseActions.length);
+      const stemCounts = {};
+      members.map(m => stemOf(m.name)).filter(Boolean).forEach(t => { stemCounts[t] = (stemCounts[t] || 0) + 1; });
+      const topStem = Object.keys(stemCounts).sort((a, b) => stemCounts[b] - stemCounts[a])[0] || null;
+      const sharedStem = topStem ? stemCounts[topStem] : 0;
+      const likelyCorporateGroup = members.length > 1 && sharedStem >= Math.max(2, Math.ceil(members.length * 0.6));
       return {
         address: c.shown, town: c.town, state: c.state,
+        likelyCorporateGroup, sharedNameStem: likelyCorporateGroup ? topStem : null,
         entitiesAtAddress: members.length,
         fundedAtAddress: members.filter(m => m.receivedMoneyInWindow).length,
         fundedValue: members.reduce((n, m) => n + m.valueInWindow, 0),
@@ -167,11 +183,16 @@ spec:
         // The case that cannot be seen anywhere else: money here, a record next door.
         fundedEntityIsClean: members.some(m => m.receivedMoneyInWindow && !m.adverseActions.length),
         neighbourCarriesRecord: withActions.some(m => !m.receivedMoneyInWindow),
+        // The real question: an UNRELATED entity at this address carries a record.
+        unrelatedNeighbourCarriesRecord: !likelyCorporateGroup && withActions.some(m => !m.receivedMoneyInWindow),
         worstRankAtAddress: members.reduce((n, m) => Math.max(n, m.worstRank), 0),
         members,
       };
     }).filter(n => n.entitiesWithAdverseRecord > 0)
-      .sort((a, b) => (b.worstRankAtAddress - a.worstRankAtAddress) ||
+      // Arm's-length co-location with a record first; corporate groups last.
+      .sort((a, b) => (Number(b.unrelatedNeighbourCarriesRecord) - Number(a.unrelatedNeighbourCarriesRecord)) ||
+                      (Number(a.likelyCorporateGroup) - Number(b.likelyCorporateGroup)) ||
+                      (b.worstRankAtAddress - a.worstRankAtAddress) ||
                       (b.entitiesWithAdverseRecord - a.entitiesWithAdverseRecord) ||
                       (b.fundedValue - a.fundedValue));
 
@@ -191,6 +212,8 @@ spec:
         entitiesScreened: allAbns.length,
         addressesTouchingAdverseRecord: networks.length,
         addressesWhereOnlyANeighbourHasARecord: networks.filter(n => n.neighbourCarriesRecord && n.fundedEntityIsClean).length,
+        addressesWhereAnUNRELATEDNeighbourHasARecord: networks.filter(n => n.unrelatedNeighbourCarriesRecord).length,
+        corporateGroupAddresses: networks.filter(n => n.likelyCorporateGroup).length,
         note: networks.length
           ? `${networks.length} address(es) hosting funded entities also host at least one entity with an NDIS ` +
             `compliance record. Co-location is lawful and ordinary and a neighbour's record is NOT the funded ` +
@@ -205,7 +228,10 @@ spec:
         { title: "The adverse register, for EVERY entity at those addresses",
           cypher: "MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord) WHERE q.abn IN [<every neighbour>] RETURN x" },
       ],
-      networks: networks.slice(0, 25),
+      // The headline counts every address; a flat slice would report 49 and show 25, hiding exactly
+      // the rare case this lens is for. The interesting ones are carried in full, then the rest fill.
+      networks: networks.filter(n => n.unrelatedNeighbourCarriesRecord)
+        .concat(networks.filter(n => !n.unrelatedNeighbourCarriesRecord).slice(0, 25)),
       interpretation: {
         factual: ["addresses, entity names, registration dates, register entries, money — all as published"],
         judged: [],
@@ -215,6 +241,7 @@ spec:
         "A NEIGHBOUR'S RECORD IS NOT THE FUNDED ENTITY'S RECORD. Sharing a registered address establishes nothing about control, ownership or conduct, and this lens asserts no relationship between co-tenants beyond the address itself.",
         "CHARITIES ONLY — ASIC publishes no company addresses, so a company provider is invisible here regardless of size.",
         "NO OFFICER LINK IS AVAILABLE. Responsible-person NAMES are not published in bulk anywhere, so the classic shared-director network cannot be built and is not implied.",
+        "`likelyCorporateGroup` marks addresses whose entities share a distinctive name word — one organisation, not a network, and the least interesting case. It is a NAME test: a group whose subsidiaries were renamed reads as unrelated.",
         "A compliance notice is the lowest rung of the register and is common; a banning order is not. Never total across severities.",
         "The registered address is often an accountant or head office, not a service location — two entities can share one without sharing anything else.",
         "PO boxes are excluded outright; a shared post office is not shared premises.",
