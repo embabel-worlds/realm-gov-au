@@ -20,10 +20,16 @@ params:
     label: Minimum grant value (AUD)
     required: false
     default: "100000"
+  - name: topic
+    type: STRING
+    label: Grants to do with (optional)
+    required: false
+    default: ""
 spec:
   kind: cypherscript
   script: |
     const minValue = Math.max(0, Number(lensArgs.minValue || 0) || 100000);
+    const topic = String(lensArgs.topic || "").trim().replace(/\s+/g, " ").slice(0, 160);
     const iso = (value) => String(value || "").slice(0, 10);
     const today = new Date().toISOString().slice(0, 10);
     const shiftDays = (value, days) => {
@@ -50,15 +56,31 @@ spec:
 
     // The explicit inclusive range is part of the virtual anchor key. Traversing this relationship
     // makes the producer fetch exactly that GrantConnect export, then share it via the file cache.
-    const queries = await Promise.all([gateway.kg.query({
-      cypher: `
+    // A topic is deliberately optional. With none, the atlas remains a deterministic register read.
+    // With one, ai.relevant performs one batched LLM judgment over the already date/value-scoped
+    // virtual GrantAward rows; ai.score orders the survivors. The rewriter recognizes an inlined
+    // quoted criterion, not a $parameter, so normalize it before interpolating the Cypher literal.
+    const criterion = topic.replace(/['"\\]/g, " ").replace(/\s+/g, " ").trim();
+    const semanticFloor = minValue > 0 ? minValue * 0.9 : 0;
+    const grantCypher = criterion ? `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        WHERE g.value >= $semanticFloor
+          AND ai.relevant(g, '${criterion}')
+        RETURN g.agency AS agency, g.recipient AS recipient, g.program AS program, g.activity AS activity,
+               g.value AS value, g.deliveryPostcode AS deliveryPostcode,
+               g.deliveryState AS deliveryState, g.selectionProcess AS selectionProcess,
+               g.publishDate AS publishDate, g.gaId AS gaId, g.goId AS goId
+        ORDER BY ai.score(g, '${criterion}') DESC
+      ` : `
         MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
         RETURN g.agency AS agency, g.recipient AS recipient, g.program AS program, g.activity AS activity,
                g.value AS value, g.deliveryPostcode AS deliveryPostcode,
                g.deliveryState AS deliveryState, g.selectionProcess AS selectionProcess,
                g.publishDate AS publishDate, g.gaId AS gaId, g.goId AS goId
-      `,
-      params: JSON.stringify({ windowKey }),
+      `;
+    const queries = await Promise.all([gateway.kg.query({
+      cypher: grantCypher,
+      params: JSON.stringify({ windowKey, semanticFloor }),
     }), gateway.kg.query({
       cypher: `
         MATCH (e:Electorate)
@@ -138,6 +160,7 @@ spec:
       minValue,
       coverage: {
         from, to, requestedDays, rowsFetched: all.length,
+        semanticApplied: Boolean(criterion),
         observedFrom: observedDates[0] || null,
         observedTo: observedDates[observedDates.length - 1] || null,
         exactRequest: !failed && !truncated,
@@ -150,13 +173,16 @@ spec:
         noDeliveryPostcode: noDelivery,
         crossBoundary: multiDivision,
         unmatchedPostcode: unmatched,
-        note: `${attributed} of ${grants.length} grants ≥ ${shortAud(minValue)} published from ${from} to ${to} map to exactly ONE division by delivery postcode. ` +
+        note: `${attributed} of ${grants.length} ${criterion ? "model-matched " : ""}grants ≥ ${shortAud(minValue)} published from ${from} to ${to} map to exactly ONE division by delivery postcode. ` +
               `${noDelivery} state no delivery postcode, ${multiDivision} cross a boundary, ${unmatched} match no division — all EXCLUDED from money totals, never guessed.`,
       },
       queries: [{
-        title: "Grant awards × seeded electorates",
-        note: "Delivery postcode only — recipient addresses are head offices and are never mapped.",
-        cypher: "MATCH (w:GrantWindow {key:$from + '|' + $to})-[:PUBLISHED_GRANT]->(g:GrantAward)\nMATCH (e:Electorate) WHERE g.deliveryPostcode IN e.postcodes RETURN e.division, e.marginBand, count(g), sum(g.value)",
+        title: criterion ? "Semantically filtered grant awards × seeded electorates" : "Grant awards × seeded electorates",
+        note: (criterion ? `ai.relevant keeps awards a model judges to be about “${topic}”; ai.score ranks them before the deterministic geographic join. ` : "") +
+          "Delivery postcode only — recipient addresses are head offices and are never mapped.",
+        cypher: criterion
+          ? `MATCH (w:GrantWindow {key:$from + '|' + $to})-[:PUBLISHED_GRANT]->(g:GrantAward)\nWHERE g.value >= $minimum AND ai.relevant(g, '${criterion}')\nRETURN g ORDER BY ai.score(g, '${criterion}') DESC\n// then join g.deliveryPostcode to the one matching seeded Electorate`
+          : "MATCH (w:GrantWindow {key:$from + '|' + $to})-[:PUBLISHED_GRANT]->(g:GrantAward)\nMATCH (e:Electorate) WHERE g.deliveryPostcode IN e.postcodes RETURN e.division, e.marginBand, count(g), sum(g.value)",
       }],
       byMarginBand: bandRows,
       divisions,
@@ -170,15 +196,27 @@ spec:
         })),
         note: "The selected minimum is a display filter, not proof of a statutory or program threshold. Bunching may reflect published program caps, award design, delegation settings, co-funding or coincidence; the register rows alone cannot establish why.",
       },
+      matchBasis: criterion ? {
+        kind: "SEMANTIC — an LLM judged each grant against your subject",
+        criterion: topic,
+        note: "ai.relevant filters and ai.score ranks the date/value-scoped register rows. This is a model judgment, not a GrantConnect category; an LLM failure fails open rather than silently hiding grants.",
+      } : {
+        kind: "REGISTER — no semantic filter",
+        criterion: null,
+        note: "No model decided which grants to include.",
+      },
       interpretation: {
         factual: ["award rows verbatim", "2025 election margins (seeded AEC facts)", "the postcode→division mapping and its exclusions"],
-        judged: [],
-        note: "Pure arithmetic. This answers WHERE money lands relative to margins; it establishes nothing about why any grant was made.",
+        judged: criterion ? [`Whether each grant is relevant to “${topic}”, and its semantic ordering`] : [],
+        note: criterion
+          ? "Grant relevance is model-judged; award values, agencies and geographic joins remain register facts. This answers WHERE matched money lands and establishes nothing about why any grant was made."
+          : "Pure arithmetic. This answers WHERE money lands relative to margins; it establishes nothing about why any grant was made.",
       },
       limits: [
         "Delivery postcode is as published; a program delivered nationally from one postcode concentrates falsely — read the top divisions with that in mind.",
         "Cross-boundary postcodes and blank delivery fields are excluded from totals and counted openly; the mapping is 2025 boundaries.",
         "The selected publish-date range is inclusive. Large uncached ranges can take several minutes because GrantConnect supplies an XLSX export, not a query API.",
+        ...(criterion ? ["Semantic filtering adds a batched LLM relevance pass over date/value-scoped rows. It is slower and non-deterministic; clear the subject for a deterministic register view."] : []),
       ],
       source: "GrantConnect published awards (selected publish-date range) · GeoNames postcode centroids × AEC 2025 boundaries · AEC 2025 final results",
     }) });

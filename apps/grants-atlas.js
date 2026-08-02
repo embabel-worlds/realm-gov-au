@@ -119,6 +119,9 @@
     } else {
       hint.innerHTML = "<strong>" + days + " inclusive days.</strong> This is a very large public export and may take several minutes. You can leave this view and return while the gateway operation continues.";
     }
+    if ($("topic").value.trim()) {
+      hint.innerHTML += ' <strong>Semantic filter on.</strong> After the export, a model must judge the date/value-scoped grants; this can add several minutes for a large result set.';
+    }
   }
 
   function switchTab(id, focus) {
@@ -167,8 +170,16 @@
     var observed = coverage.observedFrom && coverage.observedTo
       ? "Observed publish dates " + dateText(coverage.observedFrom) + "–" + dateText(coverage.observedTo) + "."
       : "No publish dates were returned for this request.";
+    var rowLabel = coverage.semanticApplied ? " model-matched candidate rows." : " source rows.";
     return '<div class="coverage"><div><strong>' + rangeLabel + '</strong> ' + dateText(coverage.from) + "–" + dateText(coverage.to) +
-      " · " + esc(coverage.requestedDays || 0) + ' inclusive days</div><div><strong>' + esc(coverage.rowsFetched || 0) + " source rows.</strong> " + esc(observed) + "</div></div>";
+      " · " + esc(coverage.requestedDays || 0) + ' inclusive days</div><div><strong>' + esc(coverage.rowsFetched || 0) + rowLabel + "</strong> " + esc(observed) + "</div></div>";
+  }
+
+  function semanticHtml(data) {
+    var basis = data.matchBasis || {};
+    if (!basis.criterion) return "";
+    return '<div class="semantic-basis"><strong>Model-judged subject</strong><span>Only awards judged relevant to “' + esc(basis.criterion) +
+      '” are shown. This is semantic relevance, not a GrantConnect category; clear the field for a deterministic register view.</span></div>';
   }
 
   function renderResults(data) {
@@ -190,7 +201,7 @@
         ' grants</span></span></summary><div class="awards"><div class="meta">Open to load the underlying awards.</div></div></details>';
     }).join("");
 
-    $("result").innerHTML = coverageHtml(data) + '<div class="headline"><div class="big">' + esc(headline.attributed || 0) + " / " +
+    $("result").innerHTML = coverageHtml(data) + semanticHtml(data) + '<div class="headline"><div class="big">' + esc(headline.attributed || 0) + " / " +
       esc(headline.grantsConsidered || 0) + "</div><p>" + esc(headline.note || "No grants met this threshold.") +
       '</p></div>' + thresholdHtml(data) + '<div class="grid"><article class="card"><h3>By 2025 margin band</h3>' + (bandHtml || '<p class="meta">No attributable grants.</p>') +
       '</article><article class="card"><h3>Divisions · open for individual grants</h3><div class="division-list">' +
@@ -269,6 +280,9 @@
     var agencySummary = agencies.length
       ? " Most represented here: " + agencies.slice(0, 3).map(esc).join(" · ") + "."
       : " The responsible agency is shown on each expanded grant.";
+    var semanticSummary = data.matchBasis && data.matchBasis.criterion
+      ? " Only awards a model judged relevant to “" + esc(data.matchBasis.criterion) + "” are included."
+      : "";
     var positive = divisions.map(function (division) { return Number(division.value) || 0; }).filter(function (value) { return value > 0; }).sort(function (a, b) { return a - b; });
     var thresholds = [0.2, 0.4, 0.6, 0.8].map(function (position) {
       return positive[Math.min(positive.length - 1, Math.floor(positive.length * position))] || 0;
@@ -290,7 +304,7 @@
     var outlineStatus = outline ? "" : '<div class="map-warning">The Australia outline did not load. Division markers are still shown in their geographic positions.</div>';
     var boundaries = "M858.3 288L858.3 347M858.3 322.2L883.3 322.2M883.3 288L883.3 322.2M883.3 322.2L891.7 322.2L891.7 346M891.7 330.6L924 330.6";
     $("map-result").innerHTML = '<article class="map-card"><div class="map-top"><div><h3>Divisions over geographic Australia</h3><p>Each marker starts at the median of its postcode centroids. Dense metropolitan markers are displaced slightly so they remain selectable; point or focus to preview, then click, tap or press Enter to open its grants.</p></div>' + mapStatus + '</div>' + outlineStatus +
-      '<div class="map-context"><strong>What these dots mean</strong><span>Australian Government grant awards published on GrantConnect—not all government spending. Colour shows their total value in each mapped division.' + agencySummary + ' Open a division for the exact agency, program and recipient.</span></div>' +
+      '<div class="map-context"><strong>What these dots mean</strong><span>Australian Government grant awards published on GrantConnect—not all government spending.' + semanticSummary + ' Colour shows their total value in each mapped division.' + agencySummary + ' Open a division for the exact agency, program and recipient.</span></div>' +
       '<svg class="cartogram" viewBox="808 277 125 108" role="img" aria-label="Map of Australia with federal divisions positioned approximately by postcode centroid">' +
       '<path class="australia-outline" d="' + esc(outline) + '"></path><path class="state-boundaries" d="' + boundaries + '"></path>' + shapes +
       '</svg><div class="map-footer"><div class="legend"><span>No mapped value</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><i class="level-5"></i><span>More</span></div>' +
@@ -321,9 +335,11 @@
     renderResults(data);
     renderMap(data);
     var coverage = data.coverage || {};
+    var basis = data.matchBasis || {};
     $("method-coverage").textContent = "For " + dateText(coverage.from) + " to " + dateText(coverage.to) +
-      ", Virtual Cypher materialised " + (coverage.rowsFetched || 0) +
-      " GrantConnect rows, then joined their delivery postcodes to the geographic correspondence and AEC election facts before applying the value and exclusion rules.";
+      ", Virtual Cypher traversed the GrantConnect window" + (basis.criterion
+        ? ", used ai.relevant and ai.score to judge awards against “" + basis.criterion + "”,"
+        : "") + " then joined delivery postcodes to the geographic correspondence and AEC election facts before applying the exclusion rules.";
   }
 
   async function run() {
@@ -333,6 +349,7 @@
     }
     if (!$("controls").reportValidity() || syncAmount(true) == null) return;
     var days = selectedDays();
+    var topic = $("topic").value.trim();
     var button = $("run");
     button.disabled = true;
     button.textContent = "Working…";
@@ -341,16 +358,19 @@
       var event = await runner.lens("au-grant-hop", {
         from: $("from").value,
         to: $("to").value,
-        minValue: $("minimum").value
+        minValue: $("minimum").value,
+        topic: topic
       }, {
         waitSeconds: 15,
         state: $("operation"),
-        message: "Fetching grants and joining delivery postcodes to electorates…",
-        expectation: days > 365
+        message: topic
+          ? "Fetching grants, then judging subject relevance before the electorate join…"
+          : "Fetching grants and joining delivery postcodes to electorates…",
+        expectation: (topic ? "Semantic matching adds a batched model review after the public export and may add several minutes. " : "") + (days > 365
           ? "This very large GrantConnect export may take several minutes. The gateway operation continues even if you leave this view."
           : days > 90
             ? "A larger uncached date range may take a few minutes; repeated runs use the shared file cache."
-            : "A cold GrantConnect export can take about a minute; repeated runs use the shared file cache."
+            : "A cold GrantConnect export can take about a minute; repeated runs use the shared file cache.")
       });
       var data = dataOf(event);
       if (!data) throw new Error("The grant lens returned no readable result.");
@@ -376,6 +396,7 @@
 
   $("from").addEventListener("input", updateRangeHint);
   $("to").addEventListener("input", updateRangeHint);
+  $("topic").addEventListener("input", updateRangeHint);
   $("minimum-display").addEventListener("input", function () { syncAmount(false); });
   $("minimum-display").addEventListener("blur", normaliseAmount);
   $("minimum-display").addEventListener("keydown", function (event) {
@@ -423,6 +444,6 @@
   });
 
   if (E && E.progress) E.progress.label(function (name) {
-    return /grant/i.test(name) ? "the GrantConnect awards export" : /division|elector/i.test(name) ? "the AEC electorate geography" : String(name || "the public source");
+    return /semantic|relevan|score|llm|model/i.test(name) ? "the semantic grant relevance review" : /grant/i.test(name) ? "the GrantConnect awards export" : /division|elector/i.test(name) ? "the AEC electorate geography" : String(name || "the public source");
   });
 })();

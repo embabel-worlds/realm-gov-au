@@ -35,7 +35,9 @@
     publishDate: "Publish date, as published."
     startDate: "Grant start date."
     endDate: "Grant end date."
-    value: "Value (AUD), as published."
+    value:
+      type: number
+      description: "Value (AUD), as published. Numeric so deterministic thresholds can narrow before optional LLM relevance judging."
     recipientPostcode: "Recipient postcode — a HEAD OFFICE, never a basis for geographic claims."
     recipientState: "Recipient state."
     deliveryState: "Delivery state, as published."

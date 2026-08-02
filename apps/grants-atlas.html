@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Grants Atlas — where published grants are delivered</title>
   <meta name="description" content="Commonwealth grants in a chosen publish-date range, mapped by delivery postcode to 2025 federal electorates, with every boundary exclusion counted.">
-  <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css?v=20260802-4">
-  <link rel="stylesheet" href="./grants-atlas.css?v=20260802-4">
-  <script src="/api/v1/apps-runtime/v1/embabel.js?v=20260802-4"></script>
+  <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css?v=20260802-5">
+  <link rel="stylesheet" href="./grants-atlas.css?v=20260802-5">
+  <script src="/api/v1/apps-runtime/v1/embabel.js?v=20260802-5"></script>
   <script type="application/embabel-app+json">
   {"version":1,"name":"grants-atlas","requires":{"lenses":["au-grant-hop"],"views":[],"realms":["gov-au"],"namespaces":[]}}
   </script>
@@ -53,6 +53,11 @@
           <option value="5m" label="$5 million"></option>
         </datalist>
         <div class="field-help" id="minimum-help">Try 500k or 1.1m · ↑↓ changes $100k</div>
+      </div>
+      <div class="field">
+        <label for="topic">Grants to do with</label>
+        <input id="topic" name="topic" type="text" maxlength="160" placeholder="e.g. Indigenous health" aria-describedby="topic-help">
+        <div class="field-help" id="topic-help">Optional model judgement · leave blank for the exact register view</div>
       </div>
       <button class="run" id="run" type="submit">Map grants</button>
       <div class="range-hint" id="range-hint" aria-live="polite"></div>
@@ -103,15 +108,19 @@
           <div>
             <div class="kicker">The virtual traversal</div>
             <h3>One query joins register, place and election facts</h3>
-            <p id="method-coverage">Virtual Cypher materialises the requested GrantConnect window only when the relationship is traversed, then joins its delivery postcodes to the seeded geographic and election reference data.</p>
+            <p id="method-coverage">Virtual Cypher materialises the requested GrantConnect window only when the relationship is traversed. An optional <code>ai.relevant</code> stage can judge which awards are about your subject before their delivery postcodes join to the seeded geographic and election reference data.</p>
           </div>
           <pre><code>MATCH (w:GrantWindow {
   key: $from + '|' + $to
 })-[:PUBLISHED_GRANT]-&gt;(g:GrantAward)
+WHERE g.value &gt;= $minimum
+  // This line is added only when a subject is supplied:
+  AND ai.relevant(g, '&lt;your subject&gt;')
+WITH g
+// This ordering is likewise added only for a subject:
+ORDER BY ai.score(g, '&lt;your subject&gt;') DESC
 MATCH (e:Electorate)
 WHERE g.deliveryPostcode IN e.postcodes
-  AND toFloat(replace(replace(
-        g.value, '$', ''), ',', '')) &gt;= $minimum
 RETURN e.division, e.member,
        e.heldByAbbrev, e.marginBand,
        collect({
@@ -132,7 +141,7 @@ RETURN e.division, e.member,
     </footer>
   </main>
 </embabel-app-shell>
-<script src="./australia-path.js?v=20260802-4"></script>
-<script src="./grants-atlas.js?v=20260802-4"></script>
+<script src="./australia-path.js?v=20260802-5"></script>
+<script src="./grants-atlas.js?v=20260802-5"></script>
 </body>
 </html>
