@@ -1,0 +1,261 @@
+id: au-phoenix-check
+name: Banned people who registered a business afterwards
+description: >-
+  A banning order stops a person providing NDIS supports. It does not stop them registering a
+  business. This lens takes the individuals the NDIS Commission has banned, looks each family
+  name up in the Australian Business Register — the only open source that dates registration for
+  every Australian entity — and keeps the records where the GIVEN names also agree and the ABN's
+  current status took effect AFTER the ban. The result is a list of PEOPLE TO CHECK, never people
+  identified: names repeat, and an active ABN is not NDIS work — a banned support worker may
+  lawfully run a cafe. What makes a row worth a human's time is the combination the lens prints
+  in full: the ban's own words and dates, the new registration's date and trading names, and how
+  close the two sit in time.
+params:
+  - name: maxSubjects
+    type: STRING
+    label: Banned individuals to check (each is a full-register scan; keep small)
+    required: false
+    default: "12"
+  - name: sinceDate
+    type: DATE
+    label: Only bans effective on or after
+    required: false
+    default: "2024-01-01"
+  - name: seasonDays
+    type: STRING
+    label: Only bans at least this many days old (a fresh ban cannot yet show a new registration)
+    required: false
+    default: "180"
+  - name: assess
+    type: STRING
+    label: Read the ban narratives for what the person was doing (yes/no)
+    required: false
+    default: "yes"
+spec:
+  kind: cypherscript
+  script: |
+    const maxSubjects = Math.min(25, Number(lensArgs.maxSubjects || 12) || 12);
+    const sinceDate = String(lensArgs.sinceDate || "2024-01-01").slice(0, 10);
+    const assess = !/^(n|no|false|0)$/i.test(String(lensArgs.assess || "yes"));
+    const warnings = [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const ask = async (label, cypher, retries) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const r = await gateway.kg.query({ cypher, params: JSON.stringify({}) });
+          warnings.push(...((r && r.warnings) || []));
+          return { rows: ((r && r.rows) ? r.rows : (r || [])), ok: true };
+        } catch (e) {
+          if (attempt < (retries || 0)) continue;
+          warnings.push(label + " unavailable: " + String((e && e.message) || e));
+          return { rows: [], ok: false };
+        }
+      }
+    };
+    const day = (v) => {
+      const s = String(v || "").trim();
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
+      m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    };
+    const isoFromCompact = (v) => { const m = String(v || "").match(/^(\d{4})(\d{2})(\d{2})$/); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z\s'-]/g, " ").split(/\s+/).filter(Boolean);
+
+    // ── 1. The banned INDIVIDUALS, from the latest extract ───────────────────────────────────
+    const cat = (await ask("catalogue", `
+      MATCH (s:CatalogueSearch {query:'NDIS Commission Compliance Actions'})-[:HAS_DATASET]->(d:CatalogueDataset)
+      RETURN d.title AS title, d.datasetId AS datasetId, d.resourceId AS resourceId, d.resourceUrl AS resourceUrl`, 1)).rows;
+    const snaps = cat.map(d => {
+      const m = String(d.title || "").match(/(\d{2})\.(\d{2})\.(\d{4})\s*$/);
+      const file = String(d.resourceUrl || "").split("/download/")[1] || "";
+      return m && file ? { date: `${m[3]}-${m[2]}-${m[1]}`, key: `${d.datasetId}|${d.resourceId}|${file}` } : null;
+    }).filter(Boolean).sort((a, b) => a.date < b.date ? 1 : -1);
+    if (!snaps.length) {
+      await gateway.lens.present({ content: JSON.stringify({ kind: "au-phoenix-check", status: "FAILED", warnings,
+        headline: { note: "No dated compliance extract found in the catalogue." } }) });
+      return;
+    }
+    const latest = snaps[0];
+    const actions = (await ask(`extract ${latest.date}`, `
+      MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]->(a:SnapshotAction)
+      WHERE a.register CONTAINS 'Banning'
+      RETURN a.name AS name, a.abn AS abn, a.state AS state, a.dateFrom AS dateFrom,
+             a.dateTo AS dateTo, a.detail AS detail`, 1)).rows;
+
+    // An INDIVIDUAL, as the register writes them: a personal name with no company suffix. The
+    // trading-as tail is stripped ("Kayla Pethybridge trading as J & K Loyalty" is a person).
+    //
+    // NAME FORMS, all present in the register and all previously mis-parsed into a false zero:
+    //   · "TANTS, Jacob Alfred"          — surname FIRST; taking the last token searched "alfred"
+    //   · "Kristy Louise Rabnott (Orpin)" — a second surname in brackets
+    //   · "Lisa Nicole Wardle aka Brenecki" — an alias
+    // Every plausible surname is searched, because searching the wrong one returns nothing and
+    // looks exactly like an honest miss.
+    const COMPANY = /(pty|ltd|limited|inc\b|incorporated|trust|foundation|association|services|group|holdings|company|co\b)/i;
+    const subjects = [];
+    actions.forEach(a => {
+      const raw0 = String(a.name || "").replace(/\s+(trading as|t\/as|t\/a)\s+.*$/i, "").trim();
+      if (!raw0 || COMPANY.test(raw0)) return;
+      const from = day(a.dateFrom);
+      if (!from || from < sinceDate) return;
+      const alts = [];
+      const bracket = raw0.match(/\(([^)]{2,40})\)/);
+      const aka = raw0.match(/\b(?:aka|a\.k\.a\.?|also known as)\s+([A-Za-z' -]{2,40})/i);
+      const core = raw0.replace(/\([^)]*\)/g, " ").replace(/\b(?:aka|a\.k\.a\.?|also known as)\s+[A-Za-z' -]{2,40}/i, " ").trim();
+      let family, given;
+      if (core.includes(",")) {                       // "SURNAME, Given Given"
+        const [famPart, givenPart] = core.split(",", 2);
+        family = norm(famPart).slice(-1)[0];
+        given = norm(givenPart);
+      } else {
+        const tokens = norm(core);
+        if (tokens.length < 2 || tokens.length > 6) return;
+        family = tokens[tokens.length - 1];
+        given = tokens.slice(0, -1);
+      }
+      if (!family || !given || !given.length) return;
+      if (bracket) alts.push(norm(bracket[1]).slice(-1)[0]);
+      if (aka) alts.push(norm(aka[1]).slice(-1)[0]);
+      subjects.push({
+        person: raw0, family, given,
+        alsoSearched: alts.filter(x => x && x !== family),
+        banFrom: from, banTo: day(a.dateTo), state: a.state || null,
+        banNarrative: String(a.detail || "").trim().slice(0, 400) || null,
+      });
+    });
+    // SEASONING. A ban imposed three weeks ago cannot yet show a post-ban registration, so
+    // checking the newest bans first guarantees a zero that means nothing. Subjects are limited
+    // to bans old enough for a re-registration to be observable, newest-first WITHIN that window.
+    const seasonDays = Math.max(0, Number(lensArgs.seasonDays || 180) || 180);
+    const cutoff = new Date(Date.now() - seasonDays * 86400000).toISOString().slice(0, 10);
+    const seasoned = subjects.filter(s => s.banFrom <= cutoff);
+    seasoned.sort((a, b) => a.banFrom < b.banFrom ? 1 : -1);
+    const chosen = seasoned.slice(0, maxSubjects);
+    if (!chosen.length) {
+      await gateway.lens.present({ content: JSON.stringify({ kind: "au-phoenix-check", status: "COMPLETE", warnings,
+        headline: { bannedIndividualsConsidered: subjects.length,
+          note: `No banning order against an individual is effective on or after ${sinceDate} in the ${latest.date} extract.` } }) });
+      return;
+    }
+
+    // ── 2. The register, by family name — ONE batched scan for every surname at once ─────────
+    // Each uncached key batch is a full pass over ~19M records, so the surnames go in together.
+    const families = Array.from(new Set([].concat(...chosen.map(s => [s.family].concat(s.alsoSearched)))));
+    const inList = families.map(f => JSON.stringify(f)).join(", ");
+    const abrRows = (await ask("ABR by family name", `
+      MATCH (f:FamilyNameQuery)-[:HAS_ABR_PERSON]->(p:AbrPerson)
+      WHERE f.familyName IN [${inList}]
+      RETURN f.familyName AS familyName, p.abn AS abn, p.abnStatus AS status,
+             p.abnStatusFrom AS statusFrom, p.givenNames AS givenNames, p.entityType AS entityType,
+             p.state AS state, p.postcode AS postcode, p.otherNames AS otherNames, p.gstStatus AS gst`, 1)).rows;
+    const byFamily = {};
+    abrRows.forEach(r => (byFamily[String(r.familyName || "").toLowerCase()] = byFamily[String(r.familyName || "").toLowerCase()] || []).push(r));
+
+    // ── 3. Match: given names must agree, and the ABN must post-date the ban ─────────────────
+    const results = chosen.map(s => {
+      const pool = [].concat(...[s.family].concat(s.alsoSearched).map(f => byFamily[f] || []));
+      const sameName = pool.filter(p => {
+        const g = norm(p.givenNames);
+        return s.given.some(x => g.includes(x));       // at least one given name in common
+      });
+      const rows = sameName.map(p => {
+        const regDate = isoFromCompact(p.statusFrom);
+        const daysAfterBan = regDate ? Math.round((Date.parse(regDate) - Date.parse(s.banFrom)) / 86400000) : null;
+        return {
+          abn: p.abn, abnStatus: p.status, registeredOrStatusFrom: regDate,
+          daysAfterBan, entityType: p.entityType, givenNamesOnRecord: p.givenNames,
+          state: p.state || null, postcode: p.postcode || null,
+          tradingNames: String(p.otherNames || "").trim() || null,
+          gstRegistered: p.gst || null,
+          sameStateAsBan: !!(p.state && s.state && String(p.state).toUpperCase() === String(s.state).toUpperCase()),
+        };
+      });
+      const after = rows.filter(r => r.daysAfterBan != null && r.daysAfterBan >= 0);
+      const activeAfter = after.filter(r => String(r.abnStatus || "").toUpperCase() === "ACT");
+      return {
+        person: s.person, state: s.state, banFrom: s.banFrom, banTo: s.banTo || "open-ended",
+        banNarrative: s.banNarrative,
+        abrRecordsSameName: rows.length,
+        registeredOrChangedAfterBan: after.length,
+        activeAndAfterBan: activeAfter.length,
+        candidates: after.sort((a, b) => (a.daysAfterBan || 0) - (b.daysAfterBan || 0)).slice(0, 8),
+        note: rows.length ? null : "No individual ABN record shares this family and given name — nothing to check.",
+      };
+    });
+    const withCandidates = results.filter(r => r.activeAndAfterBan > 0)
+      .sort((a, b) => (a.candidates[0]?.daysAfterBan ?? 1e9) - (b.candidates[0]?.daysAfterBan ?? 1e9));
+
+    // ── 4. Read the ban narratives — only for subjects that produced a candidate ─────────────
+    // What was this person banned FOR, in the Commission's words? The register mostly states
+    // scope, not conduct, so this is a genuine subjective read over a handful of rows: the
+    // model summarizes, and the verbatim narrative sits beside it on every row.
+    if (assess && withCandidates.length) {
+      const names = withCandidates.slice(0, 10).map(r => JSON.stringify(r.person)).join(", ");
+      const digests = (await ask("ban narrative reading", `
+        MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]->(a:SnapshotAction)
+        WHERE a.name IN [${names}]
+        RETURN a.name AS person,
+               summarize(a.detail, 'what this order prohibits and, if the text says so, what conduct led to it — one sentence') AS digest,
+               holds(a.detail, 'the text states a reason or conduct behind the order, rather than only describing what is prohibited') AS statesAReason`, 1)).rows;
+      const byPerson = {};
+      digests.forEach(d => { byPerson[d.person] = d; });
+      withCandidates.forEach(r => {
+        const d = byPerson[r.person];
+        if (!d) return;
+        const dig = typeof d.digest === "string" && !/^UNAVAILABLE/i.test(d.digest) ? d.digest : null;
+        r.banRead = { digest: dig, statesAReason: d.statesAReason,
+          note: "Model summary of the Commission's narrative — judged; the verbatim text is on this row." };
+      });
+    }
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-phoenix-check",
+      extractDate: latest.date, sinceDate,
+      status: failed ? "FAILED" : (abrRows.length ? "COMPLETE" : "PARTIAL"),
+      warnings,
+      headline: {
+        bannedIndividualsInWindow: subjects.length,
+        oldEnoughToShowARegistration: seasoned.length,
+        seasonDays,
+        checked: chosen.length,
+        abrRecordsMatchedBySurname: abrRows.length,
+        withAnAbnRegisteredOrChangedAfterTheBan: withCandidates.length,
+        note: `${chosen.length} individual(s) banned on or after ${sinceDate} were looked up in the Australian Business Register by family name; ` +
+          `${withCandidates.length} have an ACTIVE ABN, held by someone of the same family AND given name, whose status took effect AFTER the ban. ` +
+          `That is a coincidence of NAMES AND DATES in two public registers — not an identification, and not evidence of NDIS work: ` +
+          `a banning order does not prohibit holding an ABN or running an unrelated business.`,
+      },
+      queries: [
+        { title: "Banned individuals", cypher: "MATCH (n:NdisSnapshot {snapshotKey:'<latest>'})-[:HAS_ACTION]->(a:SnapshotAction) WHERE a.register CONTAINS 'Banning' RETURN a" },
+        { title: "The register, by surname", cypher: "MATCH (f:FamilyNameQuery)-[:HAS_ABR_PERSON]->(p:AbrPerson) WHERE f.familyName IN [<surnames>] RETURN p" },
+        { title: "The match", note: "Computed in the lens: at least one given name in common AND the ABN's status date on or after the ban date." },
+      ],
+      peopleToCheck: withCandidates.slice(0, 20),
+      allSubjects: results.slice(0, 25),
+      interpretation: {
+        factual: ["ban dates, states and narratives — the compliance register verbatim",
+          "ABNs, statuses, status dates, trading names — the Australian Business Register verbatim",
+          "the name and date comparisons — string and arithmetic"],
+        judged: assess ? ["banRead.digest — a model's one-sentence summary of the Commission's narrative", "statesAReason — whether the text gives a reason at all"] : [],
+        note: "The match is mechanical. Whether the two records are the same human being is NOT established here and cannot be from these sources.",
+      },
+      limits: [
+        "A ban must be OLD ENOUGH for a new registration to be observable; seasonDays enforces that, and a zero over fresh bans would mean nothing at all.",
+        "abrRecordsMatchedBySurname shows the lookup worked: a zero result with zero surname matches is a failed join, not a clean cohort.",
+        "SAME NAME IS NOT SAME PERSON. The ABR publishes no date of birth and no address beyond state and postcode; a common name will match strangers. Every row is a person to check, and publishing one as an identification would be wrong.",
+        "An ABN is not NDIS work. A banning order restricts NDIS supports; registering a business, and being GST-registered, is lawful for a banned person. The row shows trading names precisely so a reader can see what the business appears to be.",
+        "abnStatusFrom dates the CURRENT status, not necessarily first registration: an ABN reactivated after the ban shows a post-ban date though the entity is older. Both readings are visible in the row (status + date), neither is assumed.",
+        "Individuals only, and only where the register writes a personal name. A banned person operating through a company is invisible to this check — the company's own ABN would need the organisation-name path.",
+        "The compliance register names people whose ban may since have been varied or revoked; this lens reads one extract, and au-register-diff is where lifecycle lives.",
+        "Every ABR lookup is a full scan of ~19M records; the subject cap exists for that reason, so a small result may reflect the cap rather than the world.",
+      ],
+      method: "Banning orders against individuals in the latest extract are parsed into family and given names; every surname is looked up " +
+              "in the ABN Bulk Extract in one batched scan; records sharing a given name whose ABN status post-dates the ban are kept, " +
+              "sorted by how soon after the ban they appear; narratives for the survivors are summarized.",
+      source: "NDIS Commission compliance actions (data.gov.au, latest extract); ABN Bulk Extract (Australian Business Register, data.gov.au)",
+    }) });
+presentation:
+  href: /apps/scrutiny-room.html

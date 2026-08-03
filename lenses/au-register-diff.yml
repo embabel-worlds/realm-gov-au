@@ -1,0 +1,347 @@
+id: au-register-diff
+name: What entered and left the compliance register
+description: >-
+  The register as a time series. The NDIS Commission publishes compliance actions as dated
+  catalogue extracts, each CURRENT STATE only — so nothing published shows when an action
+  appeared, and nothing at all shows when one disappeared. This lens enumerates every extract
+  via the data.gov.au catalogue, diffs consecutive extracts, and reports both directions: an
+  APPEARANCE is an enforcement event dated to a snapshot interval even where the register's own
+  date is blank; a DISAPPEARANCE is classified against the row's own published end date —
+  removal after expiry is lifecycle, removal while nominally in force is the signal nobody
+  tracks. A removal is a fact about the register's contents and nothing more: the register does
+  not say why a row left, and an ART overturn, a Commission correction, and a data error all
+  look identical here.
+params:
+  - name: q
+    type: STRING
+    label: Register series (catalogue title phrase)
+    required: false
+    default: "NDIS Commission Compliance Actions"
+  - name: fromDate
+    type: DATE
+    label: Compare extracts from (blank = earliest)
+    required: false
+  - name: toDate
+    type: DATE
+    label: Compare extracts to (blank = latest)
+    required: false
+  - name: followUp
+    type: STRING
+    label: "Chase each durable removal into AustLII and the news index (yes/no)"
+    required: false
+    default: "no"
+spec:
+  kind: cypherscript
+  script: |
+    const q = String(lensArgs.q || "NDIS Commission Compliance Actions").trim();
+    const fromDate = String(lensArgs.fromDate || "").slice(0, 10);
+    const toDate = String(lensArgs.toDate || "").slice(0, 10);
+    const warnings = [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    const ask = async (label, cypher) => {
+      try {
+        const r = await gateway.kg.query({ cypher, params: JSON.stringify({}) });
+        warnings.push(...((r && r.warnings) || []));
+        return ((r && r.rows) ? r.rows : (r || []));
+      } catch (e) {
+        warnings.push(label + " unavailable: " + String((e && e.message) || e));
+        return [];
+      }
+    };
+
+    // ── 1. The series, from the catalogue — never from a hardcoded list ──────────────────────
+    const cat = await ask("data.gov.au catalogue", `
+      MATCH (s:CatalogueSearch {query:'${q.replace(/'/g, "\\'")}'})-[:HAS_DATASET]->(d:CatalogueDataset)
+      RETURN d.title AS title, d.datasetId AS datasetId, d.resourceId AS resourceId,
+             d.resourceUrl AS resourceUrl, d.resourceFormat AS fmt`);
+    const snapshots = cat
+      .filter(d => String(d.title || "").toLowerCase().includes(q.toLowerCase()))
+      .map(d => {
+        const m = String(d.title || "").match(/(\d{2})\.(\d{2})\.(\d{4})\s*$/);
+        const file = String(d.resourceUrl || "").split("/download/")[1] || "";
+        return m && d.datasetId && d.resourceId && file
+          ? { date: `${m[3]}-${m[2]}-${m[1]}`, title: d.title,
+              key: `${d.datasetId}|${d.resourceId}|${file}` }
+          : null;
+      })
+      .filter(Boolean)
+      .filter(s => (!fromDate || s.date >= fromDate) && (!toDate || s.date <= toDate))
+      .sort((a, b) => a.date < b.date ? -1 : 1);
+    if (snapshots.length < 2) {
+      await gateway.lens.present({ content: JSON.stringify({
+        kind: "au-register-diff", q, status: "FAILED", warnings,
+        headline: { note: `Only ${snapshots.length} dated extract(s) matched '${q}' in the catalogue window — a diff needs two. ` +
+          `Catalogue rows seen: ${cat.length}.` } }) });
+      return;
+    }
+
+    // ── 2. Every extract, whole ───────────────────────────────────────────────────────────────
+    // Both date shapes the Commission has published: '28/08/2025 17:00' (local) and
+    // '2026-08-31T07:00:00' (UTC). The SAME action renders differently across extracts, and an
+    // early-morning local time crosses the UTC day boundary — so identity comparison is by day
+    // WITH a ±1-day tolerance, never by raw string.
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+    const normName = (s) => String(s || "").toLowerCase().replace(/[,;]/g, " ").split(/\s+/).filter(Boolean).join(" ");
+    const day = (v) => {
+      const s = String(v || "").trim();
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
+      m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    };
+    const shiftDay = (iso, dd) => {
+      const t = Date.parse(iso + "T12:00:00Z");
+      return isNaN(t) ? iso : new Date(t + dd * 86400000).toISOString().slice(0, 10);
+    };
+
+    const perSnapshot = [];
+    for (const s of snapshots) {
+      const rows = await ask(`extract ${s.date}`, `
+        MATCH (n:NdisSnapshot {snapshotKey:'${s.key}'})-[:HAS_ACTION]->(a:SnapshotAction)
+        RETURN a.rowKey AS rowKey, a.register AS register, a.name AS name, a.abn AS abn,
+               a.city AS city, a.state AS state, a.dateFrom AS dateFrom, a.dateTo AS dateTo,
+               a.detail AS detail`);
+      const byType = {};
+      rows.forEach(r => { byType[r.register] = (byType[r.register] || 0) + 1; });
+      perSnapshot.push({ snap: s, rows, byType });
+      if (!rows.length) warnings.push(`extract ${s.date} returned 0 rows — its diffs are unreliable`);
+    }
+
+    const whoOf = (r) => { const d = digits(r.abn); return d.length === 11 ? "abn:" + d : "name:" + normName(r.name); };
+    const identOf = (r) => `${String(r.register || "").trim()} ${whoOf(r)} ${day(r.dateFrom) || ""}`;
+
+    // Multiset of identities per extract, plus the match surfaces a disappearance is tested
+    // against: every row's ABN form AND name form, at its day and ±1 day.
+    const index = perSnapshot.map(ps => {
+      const counts = {}; const sample = {};
+      const surfaces = new Set(); const tokens = [];
+      ps.rows.forEach(r => {
+        const id = identOf(r);
+        counts[id] = (counts[id] || 0) + 1;
+        sample[id] = sample[id] || r;
+        const t = String(r.register || "").trim(); const d = day(r.dateFrom);
+        const forms = ["name:" + normName(r.name)];
+        const ab = digits(r.abn); if (ab.length === 11) forms.push("abn:" + ab);
+        for (const f of forms) for (const dd of [-1, 0, 1])
+          surfaces.add(`${t} ${f} ${d ? shiftDay(d, dd) : ""}`);
+        tokens.push({ t, d, toks: new Set(normName(r.name).split(" ")) });
+      });
+      return { ...ps, counts, sample, surfaces, tokens };
+    });
+
+    const matchesNewer = (r, newer) => {
+      const t = String(r.register || "").trim(); const d = day(r.dateFrom);
+      const forms = ["name:" + normName(r.name)];
+      const ab = digits(r.abn); if (ab.length === 11) forms.push("abn:" + ab);
+      for (const f of forms) if (newer.surfaces.has(`${t} ${f} ${d || ""}`)) return true;
+      for (const f of forms) for (const dd of [-1, 1])
+        if (d && newer.surfaces.has(`${t} ${f} ${shiftDay(d, dd)}`)) return true;
+      // Name reformatting ('X Pty Ltd' → 'X Pty Ltd, trading as Y'): same type, ±1 day, ≥2 shared tokens.
+      const toks = new Set(normName(r.name).split(" "));
+      return newer.tokens.some(n => n.t === t && n.d && d && Math.abs(Date.parse(n.d) - Date.parse(d)) <= 86400000 &&
+        [...toks].filter(x => n.toks.has(x)).length >= 2);
+    };
+
+    // ── 3. Consecutive diffs ──────────────────────────────────────────────────────────────────
+    const pairs = [];
+    const removedInForce = [];
+    for (let i = 1; i < index.length; i++) {
+      const older = index[i - 1], newer = index[i];
+      const appearedByType = {}; let appearedRows = 0;
+      Object.keys(newer.counts).forEach(id => {
+        const extra = newer.counts[id] - (older.counts[id] || 0);
+        if (extra > 0) {
+          const r = newer.sample[id];
+          if (matchesNewer(r, older)) return; // present in the older extract under another form — not an appearance
+          appearedRows += extra;
+          appearedByType[r.register] = (appearedByType[r.register] || 0) + extra;
+        }
+      });
+      let expired = 0, rekeyed = 0; const removedHere = [];
+      Object.keys(older.counts).forEach(id => {
+        const gone = older.counts[id] - (newer.counts[id] || 0);
+        if (gone <= 0) return;
+        const r = older.sample[id];
+        if (matchesNewer(r, newer)) { rekeyed += gone; return; }
+        const to = day(r.dateTo);
+        // An end date within 2 days of the newer extract counts as expiry: the register has
+        // rendered the same instant in two clocks a day apart, and an extract's generation
+        // time is unknowable, so the boundary is not a claim this lens can make.
+        if (to && to <= shiftDay(newer.snap.date, 2)) { expired += gone; return; }
+        const ab = digits(r.abn);
+        removedHere.push({
+          register: r.register, name: r.name,
+          abn: ab.length === 11 ? ab : null,
+          state: r.state || null, effectiveFrom: day(r.dateFrom),
+          publishedUntil: to || "open-ended",
+          daysOfPublishedForceRemaining: to
+            ? Math.round((Date.parse(to) - Date.parse(newer.snap.date)) / 86400000)
+            : null,
+          leftRegisterBetween: `${older.snap.date} and ${newer.snap.date}`,
+          // The Commission's own words, from the LAST extract that carried the row.
+          commissionNarrative: String(r.detail || "").trim().slice(0, 600) || null,
+          _raw: r, _pairIdx: i,
+        });
+      });
+      removedInForce.push(...removedHere);
+      pairs.push({
+        from: older.snap.date, to: newer.snap.date,
+        rows: { before: older.rows.length, after: newer.rows.length },
+        appeared: { rows: appearedRows, byType: appearedByType },
+        disappeared: { removedWhileInForce: removedHere.length, expiredAndRemoved: expired, reformattedOrRekeyed: rekeyed },
+      });
+    }
+    // READ the removed rows' narratives — deterministically, because measurement showed the
+    // words are structured: compliance-notice narratives CITE the instrument breached in
+    // near-boilerplate ("Practice Standards—Worker Screening Rules", "section 73J"), and
+    // banning-order narratives state only the SCOPE of the prohibition, never the conduct —
+    // an LLM label was tried first and misread even explicit citations, so the register's own
+    // citations and its own "on the basis that…" clause are extracted verbatim instead. A
+    // narrative citing nothing and stating no basis is reported as exactly that, which for
+    // banning orders is a fact about the register: it does not say why anyone is banned.
+    const SPECIFIC_INSTRUMENTS = [
+      [/worker screening/i, "Worker Screening Rules"],
+      [/incident management and reportable incidents/i, "Incident Management & Reportable Incidents Rules"],
+      [/code of conduct/i, "Code of Conduct Rules"],
+      [/provider registration and practice standards/i, "Provider Registration & Practice Standards Rules"],
+      [/section 73J|mid-term audit|conditional audit|quality audit/i, "audit obligation (s73J / quality audit)"],
+      [/behaviour support/i, "Behaviour Support Rules"],
+      [/restrictive practice/i, "Restrictive Practices Rules"],
+    ];
+    const citedRules = (text) => {
+      const t = String(text || "");
+      const found = SPECIFIC_INSTRUMENTS.filter(([re]) => re.test(t)).map(([, label]) => label);
+      if (!found.length && /practice standards/i.test(t)) found.push("Practice Standards (unspecified)");
+      return found;
+    };
+    const statedBasis = (text) => {
+      const t = String(text || "").replace(/\s+/g, " ");
+      const m = t.match(/(on the basis that|reasonably believes? that|has contravened|charged with|convicted of)[^.]{5,300}\./i);
+      return m ? m[0].trim() : null;
+    };
+    // A removal that REAPPEARS in a later extract is a transient gap (one extract's data glitch,
+    // or a brief withdrawal) — a different object from a durable removal, and conflating them
+    // manufactured a false removal (caught when a "removed" notice turned up alive two extracts
+    // later). Durable = absent from every later extract.
+    removedInForce.forEach(r => {
+      r.citesRules = citedRules(r._raw.detail);
+      r.statedBasis = statedBasis(r._raw.detail);
+      r.reappearedInLaterExtract = null;
+      for (let j = r._pairIdx + 1; j < index.length; j++) {
+        if (matchesNewer(r._raw, index[j])) { r.reappearedInLaterExtract = index[j].snap.date; break; }
+      }
+      delete r._raw; delete r._pairIdx;
+    });
+    const durableRemovals = removedInForce.filter(r => !r.reappearedInLaterExtract);
+    const transientGaps = removedInForce.filter(r => r.reappearedInLaterExtract);
+
+    // ── FOLLOW-UP: chase each durable removal into the wider record ──────────────────────────
+    // The register says nothing about why a row left; the two places that CAN say are tribunal
+    // and court decisions (AustLII — a successful review is the strongest candidate explanation
+    // for a mid-force removal) and the press. Both go through real search indexes that cannot
+    // fabricate a result; hits are quoted verbatim with their URLs, and a person's name matching
+    // a decision or an article establishes nothing beyond the match — the reader opens it.
+    const followUp = /^(y|yes|true|1)$/i.test(String(lensArgs.followUp || ""));
+    if (followUp && durableRemovals.length) {
+      const cleanName = (n) => String(n || "")
+        .replace(/\s+(trading as|t\/as|t\/a)\s+.*$/i, "").replace(/;.*$/, "").replace(/["']/g, "").trim();
+      const targets = durableRemovals.slice(0, 15).map(r => ({ r, name: cleanName(r.name) })).filter(t => t.name.length >= 5);
+      const austliiPhrases = targets.map(t => `site:austlii.edu.au "${t.name}"`);
+      const newsPhrases = targets.map(t => `"${t.name}" NDIS`);
+      const inList = (arr) => arr.map(p => JSON.stringify(p)).join(", ");
+      const web = targets.length ? await ask("AustLII probe", `
+        MATCH (q:CoverageQuery)-[:HAS_WEB_RESULT]->(w:WebHit)
+        WHERE q.phrase IN [${inList(austliiPhrases)}]
+        RETURN q.phrase AS phrase, w.url AS url, w.title AS title, w.snippet AS snippet`) : [];
+      const news = targets.length ? await ask("news probe", `
+        MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:ContractCoverage)
+        WHERE q.phrase IN [${inList(newsPhrases)}]
+          AND ai.relevant(c, 'about NDIS provider regulation, a banning or compliance action, or a tribunal or court review involving the person or entity the search names')
+        RETURN q.phrase AS phrase, c.url AS url, c.title AS title, c.snippet AS snippet, c.age AS age`) : [];
+      targets.forEach((t, i) => {
+        t.r.followUp = {
+          searched: t.name,
+          austlii: web.filter(h => h.phrase === austliiPhrases[i]).slice(0, 5)
+            .map(h => ({ url: h.url, title: h.title, snippet: String(h.snippet || "").slice(0, 240) })),
+          news: news.filter(h => h.phrase === newsPhrases[i]).slice(0, 5)
+            .map(h => ({ url: h.url, title: h.title, snippet: String(h.snippet || "").slice(0, 240), age: h.age || null })),
+        };
+      });
+    }
+
+    const sevRank = (reg) => { const r = String(reg || "").toLowerCase();
+      return r.includes("banning") ? 3 : (r.includes("revocation") || r.includes("suspension") || r.includes("refusal")) ? 2 : 1; };
+    removedInForce.sort((a, b) => (sevRank(b.register) - sevRank(a.register)) ||
+      (String(a.leftRegisterBetween) < String(b.leftRegisterBetween) ? -1 : 1));
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+    const totalAppeared = pairs.reduce((n, p) => n + p.appeared.rows, 0);
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-register-diff",
+      q, window: { from: snapshots[0].date, to: snapshots[snapshots.length - 1].date },
+      status: failed ? "FAILED" : (truncated ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        extractsCompared: snapshots.length,
+        registerRows: { atFirst: index[0].rows.length, atLast: index[index.length - 1].rows.length },
+        appearedAcrossSeries: totalAppeared,
+        removedWhileInForce: durableRemovals.length,
+        transientGaps: transientGaps.length,
+        note: `${snapshots.length} dated extracts of '${q}' compared pairwise. ` +
+          `${totalAppeared} action(s) appeared across the series — each an enforcement event dated to a snapshot interval. ` +
+          `${durableRemovals.length} row(s) left the register while their own published end date had not arrived and never returned — ` +
+          `the register does not say why, and an appeal outcome, a correction and an error are indistinguishable here. ` +
+          `${transientGaps.length} row(s) vanished from one extract but reappeared later (a gap, not a removal).`,
+      },
+      queries: [
+        { title: "The series (live from the catalogue)",
+          cypher: "MATCH (s:CatalogueSearch {query:'" + q + "'})-[:HAS_DATASET]->(d:CatalogueDataset) RETURN d.title, d.resourceUrl" },
+        { title: "One extract, whole",
+          cypher: "MATCH (n:NdisSnapshot {snapshotKey:'<datasetId|resourceId|filename>'})-[:HAS_ACTION]->(a:SnapshotAction) RETURN a" },
+        { title: "The diff", note: "Computed in the lens: multiset diff of (action type, ABN-or-name, effective day) per consecutive pair, with ±1-day and renamed/re-keyed guards." },
+      ],
+      // WATCH CONTRACT: a stable key per observation, so a scheduled run can report only what is
+      // new. Removals key on (entity, action type, effective day, the pair it vanished between);
+      // the newest extract date is the vintage a watcher stores to know whether the Commission
+      // has published anything at all since last time.
+      watch: {
+        latestExtract: index[index.length - 1].snap.date,
+        removalKeys: durableRemovals.map(r => [r.abn || ("name:" + String(r.name || "").toLowerCase()),
+          r.register, r.effectiveFrom, r.leftRegisterBetween].join("|")).sort(),
+        note: "Diff removalKeys against a previous run for new deletions; a change in latestExtract means the Commission published a new extract, which is when appearances are worth re-reading.",
+      },
+      extracts: index.map(x => ({ date: x.snap.date, rows: x.rows.length, byType: x.byType })),
+      pairs,
+      removedWhileInForce: durableRemovals.slice(0, 60),
+      transientGaps: transientGaps.slice(0, 20),
+      interpretation: {
+        factual: ["every count, date and row — multiset arithmetic over the extracts' own rows",
+          "commissionNarrative — the register's own text, verbatim",
+          "citesRules / statedBasis — pattern-extracted quotations of the instruments and basis clauses the narrative itself names"],
+        judged: [],
+        note: "No model touches this lens. citesRules and statedBasis are extracted from the Commission's own boilerplate by pattern, and an empty citesRules on a banning order reflects the register's practice of stating the prohibition's scope, not the conduct behind it.",
+      },
+      limits: [
+        "An appearance is dated to a SNAPSHOT INTERVAL (irregular — days to six weeks apart), not to a day; the register's own effective date can precede publication by months.",
+        "A removal is a fact about the register's CONTENTS between two extract dates. It is not exoneration and not a scandal: an ART/Federal Court overturn, a Commission correction, a lapsed undertaking and a publishing error all look identical. Removal after the row's own end date is ordinary lifecycle and is counted separately.",
+        "Row identity across extracts is constructed (action type + ABN-or-name + effective day, ±1 day) because the register publishes no row id. Rows whose name AND key form both changed between extracts can read as one removal plus one appearance; the reformattedOrRekeyed count shows how often near-misses occur.",
+        "~18% of rows publish no clean ABN and are keyed by name; a person named identically to another reads as one identity within the same action type and day.",
+        "Two extracts render the same instant in different clocks (local vs UTC); comparison is by day with ±1-day tolerance, so a same-type same-entity action genuinely re-issued one day apart would be missed. For the same reason a row whose end date falls within 2 days of the newer extract is counted as expiry, never as removal.",
+        "A removal can be GOOD news for the named party — a withdrawn notice or a successful review. It is listed because it is unpublished anywhere else, not because it is adverse.",
+        "The narrative describes the action as IMPOSED and says nothing about why the row left the register. For banning orders the Commission's published narrative states the SCOPE of the prohibition, not the conduct behind it — an empty citesRules is that practice, not a missing extraction.",
+        "citesRules matches a fixed list of instrument names; a narrative citing an instrument outside that list shows in the verbatim text but not in the extracted field.",
+        "followUp hits are search-index results for a NAME: a common name matches unrelated people, and an AustLII hit is a decision the name appears in, not necessarily a review of this action. The news list is model-filtered for relevance (judged); the AustLII list is unfiltered. Absence of hits means the indexes hold nothing findable under that phrase — never that no review happened.",
+        "Extract coverage is what the Commission published to data.gov.au — Feb 2026 onward. Nothing before the first extract is visible, and a row that appeared AND disappeared between two extracts is invisible.",
+        "This is the NDIS Commission's register only, matched within itself — no other register or money source is joined here.",
+      ],
+      method: "The catalogue is searched live for the extract series; every extract is fetched whole; consecutive extracts are " +
+              "diffed as multisets of (action type, ABN-or-name, day-normalized effective date) with ±1-day, cross-key and " +
+              "renamed-row guards; disappearances are classified against the row's own published end date.",
+      source: "NDIS Commission compliance actions — dated extracts on data.gov.au; series enumerated via the data.gov.au CKAN catalogue API",
+    }) });
+presentation:
+  href: /apps/scrutiny-room.html

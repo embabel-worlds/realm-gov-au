@@ -1,0 +1,371 @@
+id: au-provider-ledger
+name: The provider ledger, reconstructed from the providers' own filings
+description: >-
+  The NDIA publishes no per-provider payments, so this lens reconstructs the ledger from the
+  counterparties' own disclosures (docs/adr/0001): every ACNC-registered charity classified as
+  serving people with disabilities, joined by ABN to its own FY2024 Annual Information
+  Statement — self-reported government revenue, goods-and-services revenue (where NDIS
+  fee-for-service often books), staff FTE, employee expenses, grants it made — then to the
+  published Commonwealth money registers and the NDIS compliance register. Two arithmetic
+  surfaces come out: the RESIDUAL (self-reported government revenue minus what GrantConnect and
+  AusTender account for — the part of the public ledger no register itemizes), and the
+  LOW-STAFF-HIGH-REVENUE shape (revenue a filing says was earned with almost no staff, almost no
+  employee expense and almost no pass-through grants — the arithmetic a phantom-services claim
+  would have to survive). Both are places to look, never findings; every number is the
+  charity's own or the register's own.
+params:
+  - name: from
+    type: DATE
+    label: Published-money window from
+    required: true
+    default: "2023-07-01"
+  - name: to
+    type: DATE
+    label: Published-money window to
+    required: true
+    default: "2024-06-30"
+  - name: minRevenue
+    type: STRING
+    label: Ledger floor (AUD, self-reported)
+    required: false
+    default: "1000000"
+  - name: scope
+    type: STRING
+    label: "Candidates: 'programs' (self-classified disability programs) or 'roll' (whole beneficiary-flag roll)"
+    required: false
+    default: "programs"
+spec:
+  kind: cypherscript
+  script: |
+    const day = (d) => String(d || '').trim().slice(0, 10);
+    const from = day(lensArgs.from), to = day(lensArgs.to);
+    const windowKey = from + "|" + to;
+    const isoAt = (d, end) => !d ? d : (/T/.test(d) ? d : d + (end ? 'T23:59:59Z' : 'T00:00:00Z'));
+    const window = `${isoAt(from)}/${isoAt(to, true)}`;
+    const minRevenue = Number(lensArgs.minRevenue || 0) || 1000000;
+    const warnings = [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+    const num = (v) => { const n = Number(String(v == null ? "" : v).replace(/,/g, "").trim()); return isFinite(n) && String(v).trim() !== "" ? n : null; };
+
+    // retries exist for the long window sweeps: a multi-month materialization can outlive a
+    // single gateway HTTP call (observed: the server kept fetching while the socket died under
+    // load), and the RETRY lands on the warm, already-materialized window — cheap and correct.
+    const ask = async (label, cypher, params, retries) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const q = await gateway.kg.query({ cypher, params: JSON.stringify(params || {}) });
+          warnings.push(...((q && q.warnings) || []));
+          return { rows: ((q && q.rows) ? q.rows : (q || [])), ok: true };
+        } catch (e) {
+          if (attempt < (retries || 0)) continue;
+          warnings.push(label + " unavailable: " + String((e && e.message) || e));
+          return { rows: [], ok: false };
+        }
+      }
+    };
+
+    // ── 1. Candidates, in the register's OWN words, at two sharpnesses ───────────────────────
+    // The beneficiary flag ('serves people with disabilities') is broad — hospitals and
+    // universities carry it, and their government revenue is largely state health and education
+    // money. The PROGRAM taxonomy is the charity's own claim to be in the disability business.
+    // Default scope is the program slice; 'roll' widens to the whole flag.
+    const scope = String(lensArgs.scope || "programs").trim().toLowerCase() === "roll" ? "roll" : "programs";
+    const DISABILITY_CLASSES = ["Disability services", "Disability sports",
+      "Housing for people with disabilities", "Disabled persons' rights", "Family disability resources"];
+    // One enumerated batch (engine ≥ 2026-08-02 scans IN-list members as real string literals —
+    // "Disabled persons' rights" seeds intact; me#673 was the silent drop that cost 64 providers).
+    const progRows = (await ask("ACNC program classifications", `
+      MATCH (p:ProgramClass)-[:HAS_PROGRAM]->(g:CharityProgram)
+      WHERE p.classification IN [${DISABILITY_CLASSES.map(c => JSON.stringify(c)).join(", ")}]
+      RETURN g.abn AS abn, g.charityName AS charityName, g.programName AS programName,
+             g.classification AS classification`, null, 1)).rows;
+    const programsByAbn = {};
+    progRows.forEach(p => { const a = digits(p.abn); if (a.length === 11)
+      (programsByAbn[a] = programsByAbn[a] || []).push({ program: p.programName, classification: p.classification, name: p.charityName }); });
+
+    const roll = (await ask("ACNC disability roll", `
+      MATCH (r:DisabilityServiceRoll {marker:'Y'})-[:HAS_CHARITY]->(c:DisabilityCharity)
+      RETURN c.abn AS abn, c.charityName AS charityName, c.otherNames AS otherNames,
+             c.state AS state, c.town AS town, c.charitySize AS charitySize,
+             c.registrationDate AS registrationDate`, null, 1)).rows;
+    const byAbn = {};
+    roll.forEach(c => { const a = digits(c.abn); if (a.length === 11 && !byAbn[a]) byAbn[a] = c; });
+    const rollAbns = scope === "roll"
+      ? Array.from(new Set(Object.keys(byAbn).concat(Object.keys(programsByAbn))))
+      : Object.keys(programsByAbn);
+
+    // ── 2. Each candidate's OWN filing, in ABN batches the engine accepts ─────────────────────
+    // Enumerated seeds mint one anchor per literal; >200 anchors per fetch is refused, so the
+    // roll is asked in batches and concatenated — a silently dropped ABN would read downstream
+    // as "filed nothing", which is worse than slow.
+    const BATCH = 150;
+    const ais = [];
+    for (let i = 0; i < rollAbns.length; i += BATCH) {
+      const batch = rollAbns.slice(i, i + BATCH);
+      const inList = batch.map(a => "'" + a + "'").join(", ");
+      const rows = (await ask(`AIS returns (ABNs ${i + 1}-${i + batch.length})`, `
+        MATCH (q:IntegrityQuery)-[:HAS_AIS]->(a:AisReturn)
+        WHERE q.abn IN [${inList}]
+        RETURN q.abn AS abn, a.charityName AS name, a.consolidated AS consolidated,
+               a.reportingPeriodFrom AS periodFrom, a.reportingPeriodTo AS periodTo,
+               a.fteTotal AS fteTotal, a.staffVolunteers AS volunteers,
+               a.employeeExpenses AS employeeExpenses,
+               a.revenueGovernment AS revenueGovernment,
+               a.revenueGoodsServices AS revenueGoodsServices,
+               a.donationsBequests AS donationsBequests, a.revenueTotal AS revenueTotal,
+               a.grantsMadeAustralia AS grantsMadeAustralia,
+               a.grantsMadeOverseas AS grantsMadeOverseas,
+               a.relatedPartyTransactions AS relatedParty`, null, 1)).rows;
+      ais.push(...rows);
+    }
+
+    // ── 3. The published Commonwealth money for the window, grouped per ABN ───────────────────
+    // Swept in MONTHLY sub-windows, not one year-long query. Two reasons, both observed on the
+    // first full-year attempts: (a) a single ~20-minute kg call maximizes exposure to a gateway
+    // socket dying while the server keeps materializing, and (b) each month is cached
+    // independently, so a run killed by the 30-minute background backstop leaves durable
+    // progress and the NEXT run converges instead of starting over. One retry per month lands
+    // on that month's warm cache.
+    const months = [];
+    {
+      let cur = from.slice(0, 7) + "-01";
+      while (cur <= to) {
+        const t = Date.parse(cur + "T00:00:00Z");
+        const d = new Date(t); d.setUTCMonth(d.getUTCMonth() + 1);
+        const next = d.toISOString().slice(0, 10);
+        months.push({
+          from: cur < from ? from : cur,
+          to: (next > to ? to : new Date(Date.parse(next + "T00:00:00Z") - 86400000).toISOString().slice(0, 10)),
+        });
+        cur = next;
+      }
+    }
+    let grantsOk = true, contractsOk = true;
+    const published = {};
+    const addMoney = (rows, kind) => rows.forEach(r => {
+      const a = digits(r.abn);
+      if (a.length === 11) (published[a] = published[a] || { grants: 0, contracts: 0 })[kind] += Number(r.value) || 0;
+    });
+    for (const m of months) {
+      const g = await ask(`GrantConnect ${m.from}`, `
+        MATCH (w:GrantWindow {key:$windowKey})-[:PUBLISHED_GRANT]->(g:GrantAward)
+        RETURN g.recipientAbn AS abn, g.value AS value`, { windowKey: m.from + "|" + m.to }, 1);
+      if (!g.ok) grantsOk = false; else addMoney(g.rows, "grants");
+      const c = await ask(`AusTender ${m.from}`, `
+        MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
+        RETURN r.supplierAbn AS abn, toFloat(r.amount) AS value`,
+        { window: `${isoAt(m.from)}/${isoAt(m.to, true)}` }, 1);
+      if (!c.ok) contractsOk = false; else addMoney(c.rows, "contracts");
+    }
+    const moneyOk = grantsOk && contractsOk;
+
+    // ── 4. Arithmetic, with the cross-checks that keep it honest ─────────────────────────────
+    // A naive revenue-per-FTE flag mostly finds REPORTING ARTIFACTS: a $30M provider filing
+    // fteTotal=0 with $30M employee expenses mis-keyed a form field, and a consolidated group
+    // report makes per-entity division meaningless. The low-staff shape therefore requires ALL
+    // of: low FTE, low employee-expense share, low pass-through-grants share, not consolidated.
+    let consolidatedCount = 0, unparseable = 0;
+    const rowsOut = [];
+    ais.forEach(r => {
+      const a = digits(r.abn);
+      const c = byAbn[a] || {};
+      const fte = num(r.fteTotal), emp = num(r.employeeExpenses);
+      const gov = num(r.revenueGovernment), goods = num(r.revenueGoodsServices);
+      const total = num(r.revenueTotal);
+      const grantsMade = (num(r.grantsMadeAustralia) || 0) + (num(r.grantsMadeOverseas) || 0);
+      const consolidated = String(r.consolidated || "").trim().toLowerCase() === "y";
+      if (consolidated) consolidatedCount++;
+      if (gov == null || total == null) { unparseable++; return; }
+      const pub = published[a] || { grants: 0, contracts: 0 };
+      const progs = programsByAbn[a] || [];
+      rowsOut.push({
+        abn: a, name: r.name || c.charityName || (progs[0] && progs[0].name),
+        state: c.state || null, town: c.town || null,
+        charitySize: c.charitySize || null, consolidated,
+        disabilityPrograms: progs.slice(0, 4).map(p => `${p.program} [${p.classification}]`),
+        reportingPeriod: `${r.periodFrom || "?"} → ${r.periodTo || "?"}`,
+        selfReported: {
+          revenueGovernment: gov, revenueGoodsServices: goods, revenueTotal: total,
+          donationsBequests: num(r.donationsBequests), fteTotal: fte,
+          employeeExpenses: emp, grantsMade: grantsMade,
+          relatedPartyTransactions: String(r.relatedParty || "").trim().toLowerCase() || null,
+        },
+        derived: {
+          revenuePerFte: fte && fte > 0 && total != null ? Math.round(total / fte) : null,
+          employeeExpenseShare: total > 0 && emp != null ? Math.round(emp / total * 1000) / 1000 : null,
+          grantsMadeShare: total > 0 ? Math.round(grantsMade / total * 1000) / 1000 : null,
+        },
+        // A residual computed against a FAILED money source would read as "all of it is
+        // unpublished" — the exact overstatement this lens exists to avoid. No money, no residual.
+        publishedCommonwealth: moneyOk ? {
+          grantConnect: Math.round(pub.grants), ausTender: Math.round(pub.contracts),
+          total: Math.round(pub.grants + pub.contracts),
+        } : null,
+        residualGovernmentRevenue: moneyOk ? Math.round(gov - (pub.grants + pub.contracts)) : null,
+      });
+    });
+
+    // The RESIDUAL ledger: self-reported government revenue the Commonwealth registers do not
+    // account for. State/territory/local money is invisible to both registers and LEGITIMATELY
+    // explains residuals — the residual locates unitemized public money, it never accuses.
+    const ledger = rowsOut
+      .filter(r => !r.consolidated && r.selfReported.revenueGovernment >= minRevenue)
+      .sort((a, b) => moneyOk
+        ? b.residualGovernmentRevenue - a.residualGovernmentRevenue
+        : b.selfReported.revenueGovernment - a.selfReported.revenueGovernment);
+
+    // The LOW-STAFF-HIGH-REVENUE shape, with every guard visible in the row. Gated on
+    // PUBLIC/SERVICE money (government + goods-and-services revenue), not total revenue — an
+    // asset revaluation or a bequest can make a staffless year look enormous without a dollar
+    // of service delivery being claimed.
+    const serviceRevenue = (r) => (r.selfReported.revenueGovernment || 0) + (r.selfReported.revenueGoodsServices || 0);
+    const lowStaff = rowsOut.filter(r =>
+      !r.consolidated &&
+      serviceRevenue(r) >= minRevenue &&
+      r.selfReported.fteTotal != null && r.selfReported.fteTotal <= 5 &&
+      r.derived.employeeExpenseShare != null && r.derived.employeeExpenseShare < 0.2 &&
+      (r.derived.grantsMadeShare == null || r.derived.grantsMadeShare < 0.2)
+    ).sort((a, b) => serviceRevenue(b) - serviceRevenue(a));
+
+    // ── 5. The registers a reader will actually look at, for the OUTPUT rows only ────────────
+    const interesting = Array.from(new Set([]
+      .concat(ledger.slice(0, 40), lowStaff.slice(0, 40)).map(r => r.abn)));
+    // Compliance actions WITH the Commission's own narrative, READ deterministically: the
+    // narratives cite the instrument breached in near-boilerplate, and where a reason exists it
+    // sits in an "on the basis that…" clause — both are extracted VERBATIM. (An LLM label was
+    // tried and misread explicit citations; the register's own words are stronger evidence.)
+    const SPECIFIC_INSTRUMENTS = [
+      [/worker screening/i, "Worker Screening Rules"],
+      [/incident management and reportable incidents/i, "Incident Management & Reportable Incidents Rules"],
+      [/code of conduct/i, "Code of Conduct Rules"],
+      [/provider registration and practice standards/i, "Provider Registration & Practice Standards Rules"],
+      [/section 73J|mid-term audit|conditional audit|quality audit/i, "audit obligation (s73J / quality audit)"],
+      [/behaviour support/i, "Behaviour Support Rules"],
+      [/restrictive practice/i, "Restrictive Practices Rules"],
+    ];
+    const citedRules = (text) => {
+      const t = String(text || "");
+      const found = SPECIFIC_INSTRUMENTS.filter(([re]) => re.test(t)).map(([, label]) => label);
+      if (!found.length && /practice standards/i.test(t)) found.push("Practice Standards (unspecified)");
+      return found;
+    };
+    const statedBasis = (text) => {
+      const t = String(text || "").replace(/\s+/g, " ");
+      const m = t.match(/(on the basis that|reasonably believes? that|has contravened|charged with|convicted of)[^.]{5,300}\./i);
+      return m ? m[0].trim() : null;
+    };
+    const adverse = [];
+    for (let i = 0; i < interesting.length; i += BATCH) {
+      const inList = interesting.slice(i, i + BATCH).map(a => "'" + a + "'").join(", ");
+      adverse.push(...(await ask(`NDIS compliance register (${i + 1}-${Math.min(i + BATCH, interesting.length)})`, `
+        MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord)
+        WHERE q.abn IN [${inList}]
+        RETURN q.abn AS abn, x.register AS register, x.dateFrom AS dateFrom, x.dateTo AS dateTo,
+               x.detail AS detail`, null, 1)).rows);
+    }
+    const adverseByAbn = {};
+    adverse.forEach(x => (adverseByAbn[digits(x.abn)] = adverseByAbn[digits(x.abn)] || []).push({
+      register: x.register, from: x.dateFrom || null, to: x.dateTo || null,
+      commissionNarrative: String(x.detail || "").trim().slice(0, 500) || null,
+      citesRules: citedRules(x.detail),
+      statedBasis: statedBasis(x.detail),
+    }));
+    // The ABN register: entity age (status from-date), type, GST, and every trading name — the
+    // alias surface. Batched; the backing extract is huge, so a failure degrades THIS field only.
+    const abr = [];
+    let abrOk = true;
+    for (let i = 0; i < interesting.length; i += BATCH) {
+      const inList = interesting.slice(i, i + BATCH).map(a => "'" + a + "'").join(", ");
+      const r = await ask(`ABN register (${i + 1}-${Math.min(i + BATCH, interesting.length)})`, `
+        MATCH (q:IntegrityQuery)-[:HAS_ABR]->(e:AbrEntity)
+        WHERE q.abn IN [${inList}]
+        RETURN q.abn AS abn, e.abnStatus AS status, e.abnStatusFrom AS statusFrom,
+               e.entityType AS entityType, e.otherNames AS otherNames, e.gstStatus AS gst`, null, 1);
+      if (!r.ok) abrOk = false;
+      abr.push(...r.rows);
+    }
+    const abrByAbn = {};
+    const asIsoDay = (v) => { const m = String(v || "").match(/^(\d{4})(\d{2})(\d{2})$/); return m ? `${m[1]}-${m[2]}-${m[3]}` : (v || null); };
+    abr.forEach(e => { abrByAbn[digits(e.abn)] = {
+      abnStatus: e.status || null,
+      statusSince: asIsoDay(e.statusFrom),
+      entityType: e.entityType || null,
+      tradingNames: String(e.otherNames || "").trim() || null,
+      gstRegistered: String(e.gst || "").trim() || null,
+    }; });
+    const stamp = (r) => Object.assign({}, r, {
+      businessRegister: abrByAbn[r.abn] ||
+        (abrOk ? { note: "No ABR record matched this ABN in the bulk extract." }
+               : { note: "ABN register unavailable this run." }),
+      complianceActions: adverseByAbn[r.abn] || [],
+      complianceNote: adverseByAbn[r.abn] ? null :
+        "Not in the NDIS compliance-actions snapshot — a fact about that register only.",
+    });
+
+    // The filing side failing is fatal (there is no ledger without the filings); the money side
+    // failing degrades to PARTIAL with residuals withheld — both are stated, never inferred
+    // from warning-string spelunking, which is how a dead sweep once presented as COMPLETE.
+    const failed = !ais.length || warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    const truncated = warnings.some(w => asText(w).includes("TRUNCAT") || asText(w).includes("CAP"));
+
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-provider-ledger",
+      window: { from, to }, minRevenue, scope,
+      publishedMoneyAvailable: moneyOk,
+      status: failed ? "FAILED" : ((!moneyOk || truncated) ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        candidates: rollAbns.length,
+        withFy24Filing: ais.length,
+        filingCoverage: rollAbns.length ? Math.round(ais.length / rollAbns.length * 100) + "%" : null,
+        consolidatedExcluded: consolidatedCount,
+        unparseableExcluded: unparseable,
+        ledgerEntities: ledger.length,
+        lowStaffShape: lowStaff.length,
+        note: `${rollAbns.length} candidates — ${scope === "programs"
+            ? "charities whose OWN FY24 filing classifies a program as disability services/sports/housing/rights/resources"
+            : "the whole ACNC disability-beneficiary roll plus the program-classified slice (hospitals and universities carry the flag; their government revenue is largely state health and education money)"}; ` +
+          `${ais.length} filed an FY24 AIS. ` +
+          `${ledger.length} self-reported ≥ $${minRevenue.toLocaleString()} government revenue (consolidated group reports excluded); ` +
+          (moneyOk
+            ? `the residual column is the part no Commonwealth register itemizes — for a disability provider it is largely NDIS and state money, ` +
+              `and it locates unpublished public money rather than accusing anyone of anything.`
+            : `published-money sources were UNAVAILABLE this run, so residuals are withheld — the ledger shows self-reported figures only, sorted by government revenue.`),
+      },
+      queries: [
+        { title: "The roll (the ACNC's own classification)",
+          cypher: "MATCH (r:DisabilityServiceRoll {marker:'Y'})-[:HAS_CHARITY]->(c:DisabilityCharity) RETURN c" },
+        { title: "Each provider's own filing",
+          cypher: "MATCH (q:IntegrityQuery)-[:HAS_AIS]->(a:AisReturn) WHERE q.abn IN [<roll ABNs, batched ≤150>] RETURN a" },
+        { title: "The residual", note: "Computed in the lens: revenueGovernment (self-reported, FY24) minus GrantConnect+AusTender totals for the window." },
+      ],
+      ledger: ledger.slice(0, 40).map(stamp),
+      lowStaffHighRevenue: lowStaff.slice(0, 40).map(stamp),
+      interpretation: {
+        factual: ["every revenue, staff and expense figure — the charity's own AIS filing", "published money — register totals for the window", "the residual and the shares — division and subtraction", "ABN status, entity type, trading names, GST — the ABR bulk extract verbatim", "compliance narratives — the Commission's own text, verbatim"],
+        judged: [],
+        note: "No model touches this lens. citesRules and statedBasis are pattern-extracted quotations of what the Commission's own narrative names; the numbers are the charity's own or the registers' own.",
+      },
+      limits: [
+        "Charities only: an unregistered (non-charity) NDIS provider is invisible here, and both classifications are the charity's own — the beneficiary flag at registration, the program class at filing. Absence from either means unclassified, never 'not a disability provider'.",
+        "The default 'programs' scope is the charity's own program taxonomy. A provider that filed its disability work under a generic class ('Community service organisations') is missed — widen with scope='roll' to the whole beneficiary flag, at the cost of hospitals and universities whose government revenue is largely state health and education money.",
+        "Everything self-reported is SELF-reported, lagged to FY24, and small charities file reduced detail. A blank is a filing fact, not a zero.",
+        "Self-reported 'revenue from government' spans ALL levels of government; GrantConnect and AusTender publish COMMONWEALTH grants and contracts only. State, territory and local money legitimately explains residuals, and NDIS plan-managed payments appear in no register at all — which is the point of the residual, not a flaw in it.",
+        "NDIS fee-for-service is often booked under 'revenue from goods and services', not 'revenue from government' — read both columns; which one a provider uses is itself informative and both are shown.",
+        "The published-money window is a parameter and rarely matches each charity's own reporting period (shown per row). A window shorter than the reporting period overstates the residual.",
+        "Consolidated group reports are excluded from arithmetic (the figures cover a group, not the entity); the excluded count is in the headline.",
+        "Matching is by ABN alone; a corporate group's other ABNs are invisible, and a group can legitimately book revenue and staff on different ABNs — a low-staff shape can be an intra-group service arrangement.",
+        "A compliance-register hit is a register entry about a provider, matched by ABN, never a determination about any money shown here; a miss is about that register's snapshot only.",
+        "A compliance NOTICE is weak evidence about a provider: 93% of the notices in this register cite the same instrument (section 73J audit obligation) and ~90% share six effective dates — they arrive as mass batches. Read the action TYPE and its narrative, never the mere presence of a hit.",
+        "citesRules and statedBasis quote what the narrative itself names, matched against a fixed instrument list — an empty citesRules on a banning order reflects the Commission's practice of publishing the prohibition's scope, not the conduct behind it.",
+        "ABR fields are registration facts: statusSince dates the CURRENT ABN status, not the organisation's founding, and a trading name is a registered alias, not evidence of anything.",
+      ],
+      method: "The ACNC register's disability-serving slice is enumerated whole; each charity's FY24 AIS is fetched by ABN in " +
+              "batches; GrantConnect and AusTender are scanned once for the window and grouped by ABN; the residual is " +
+              "subtraction, the shares are division, and the low-staff shape is a guarded conjunction of the filing's own numbers.",
+      source: "ACNC Register of Australian Charities and 2024 Annual Information Statement (data.gov.au); GrantConnect (CC BY 4.0); AusTender OCDS (CC BY 3.0 AU); NDIS Commission compliance actions register",
+    }) });
+presentation:
+  href: /apps/scrutiny-room.html

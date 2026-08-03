@@ -21,7 +21,7 @@
   url: 'https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:hansardr,hansards Content:"{key}"'
   redirectMeansEmpty: true
   keyAs: searchPhrase
-  maxItems: 8
+  maxItems: 40
   userAgent: browser
   minIntervalMs: 1000
   cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
@@ -31,23 +31,30 @@
   url: 'https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:commsen,commjnt Content:"{key}"'
   redirectMeansEmpty: true
   keyAs: searchPhrase
-  maxItems: 8
+  maxItems: 40
   userAgent: browser
   minIntervalMs: 1000
   cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
 
+# maxItems/follow.maxPages RAISED for integrity work (2026-08-03). The former 8/3 were a demo
+# politeness choice, not a source limit — the engine's ceilings are maxItems 200 and follow.maxPages 5
+# (exceeding EITHER makes the loader drop this WHOLE file, taking every parliament producer with it:
+# observed as 'Unknown producer' at query time and a bare 'loading problems: 6' in the log) — and they
+# were the reason a
+# record search reported PARTIAL and only 5 of 18 matched pages had a readable excerpt. Pacing
+# (minIntervalMs) does NOT move: ParlInfo is a shared public service.
 - name: estimatesMentions
   kind: feed
   url: 'https://parlinfo.aph.gov.au/parlInfo/feeds/rss.w3p;query=Dataset:estimate Content:"{key}"'
   redirectMeansEmpty: true
   keyAs: searchPhrase
-  maxItems: 8
+  maxItems: 60
   userAgent: browser
   minIntervalMs: 1000
   # FOLLOW the top transcripts and keep phrase-anchored excerpts — the actual exchanges, with
   # ParlInfo's speaker attribution intact ("Senator ROBERTS: …"). This is what lets a summarize
   # over m.content honestly say WHAT was discussed and BY WHOM, instead of reading titles.
-  follow: { maxPages: 3, match: "{key}", excerptChars: 4000 }
+  follow: { maxPages: 5, match: "{key}", excerptChars: 4000 }
   cache: { kind: ttl, seconds: 3600, negativeTtlSeconds: 3600 }
 
 # Composite key `phrase|fromIso|toIso`; the date parts render in ParlInfo's own dd/MM/yyyy.

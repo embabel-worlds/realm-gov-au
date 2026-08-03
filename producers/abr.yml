@@ -1,0 +1,80 @@
+# Isolated in its own file ON PURPOSE: `format: xml` requires the 2026-08-02 tabular reader,
+# and a realm file that fails to parse is dropped WHOLE by the loader — this way an older
+# binary loses only the ABR join, never the compliance/AIS/charity producers beside it.
+
+# ── ABN Bulk Extract — entity age, status and trading names for EVERY entity ──────────────────
+# The Australian Business Register's full public extract (docs/adr/0001 source 3): free, no
+# credentials, published XSD, weekly refresh. TWO ~495MB zips of split XML form ONE register
+# (~19M ABNs) — `urls` makes them one producer, because two producers would force every consumer
+# to union two joins and a missed union silently halves the register. Per ABN: status
+# (ACT/CAN) WITH its from-date (entity age without the 379MB ASIC extract), entity type,
+# legal/main name, state/postcode, GST registration, and every trading/business name — the alias
+# resolution the charity register can't give for non-charities.
+# COST every consumer should know: the whole register is scanned per uncached key batch
+# (streaming, bounded memory; ~19M records), so this join is for BATCHED screening with a warm
+# record cache, never a per-row hot path. First touch also downloads ~1GB, deployment-wide.
+# NOTE: requires the xml/zip tabular reader (me ≥ the 2026-08-02 build); on an older JVM the
+# producer fails to load with "format must be one of", which is the correct loud failure.
+- name: abrByAbn
+  kind: tabular
+  format: xml
+  recordElement: ABR
+  url: "https://data.gov.au/data/dataset/5bd7fcab-e315-42cb-8daf-50b7efc2027e/resource/0ae4d427-6fa8-4d40-8e76-c6909b5a071b/download/public_split_1_10.zip"
+  urls:
+    - "https://data.gov.au/data/dataset/5bd7fcab-e315-42cb-8daf-50b7efc2027e/resource/635fcb95-7864-4509-9fa7-a62a6e32b62d/download/public_split_11_20.zip"
+  keyColumn: "ABN"
+  keyMatch: digits
+  keyAs: abn
+  maxRows: 25000000
+  project:
+    abnStatus: "ABN@status"
+    abnStatusFrom: "ABN@ABNStatusFromDate"
+    entityTypeCode: "EntityType/EntityTypeInd"
+    entityType: "EntityType/EntityTypeText"
+    legalName: "MainEntity/NonIndividualName/NonIndividualNameText"
+    familyName: "LegalEntity/IndividualName/FamilyName"
+    givenNames: "LegalEntity/IndividualName/GivenName"
+    mainState: "MainEntity/BusinessAddress/AddressDetails/State"
+    mainPostcode: "MainEntity/BusinessAddress/AddressDetails/Postcode"
+    legalState: "LegalEntity/BusinessAddress/AddressDetails/State"
+    legalPostcode: "LegalEntity/BusinessAddress/AddressDetails/Postcode"
+    gstStatus: "GST@status"
+    gstFrom: "GST@GSTStatusFromDate"
+    otherNames: "OtherEntity/NonIndividualName/NonIndividualNameText"
+    lastUpdated: "@recordLastUpdatedDate"
+  # The publisher refreshes weekly; the file cache holds the two zips deployment-wide and the
+  # record cache keeps screened ABNs hot for a day.
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+
+# The SAME register keyed by a PERSON'S FAMILY NAME, so the phoenix question is answerable:
+# a person banned from NDIS work who registers a NEW business afterwards. The ABR is the only
+# open source that dates an entity's registration for every entity, and its individual/sole-trader
+# records carry given and family names. Common surnames return many rows (maxRowsPerKey bounds
+# it) and a name match is NEVER an identity claim — the consuming lens must require given-name
+# agreement and still present the result as a person to check, not a person identified.
+- name: abrByFamilyName
+  kind: tabular
+  format: xml
+  recordElement: ABR
+  url: "https://data.gov.au/data/dataset/5bd7fcab-e315-42cb-8daf-50b7efc2027e/resource/0ae4d427-6fa8-4d40-8e76-c6909b5a071b/download/public_split_1_10.zip"
+  urls:
+    - "https://data.gov.au/data/dataset/5bd7fcab-e315-42cb-8daf-50b7efc2027e/resource/635fcb95-7864-4509-9fa7-a62a6e32b62d/download/public_split_11_20.zip"
+  keyColumn: "LegalEntity/IndividualName/FamilyName"
+  keyMatch: ci
+  keyAs: familyName
+  rowIdAs: abrRowKey
+  maxRows: 25000000
+  maxRowsPerKey: 400
+  project:
+    abn: "ABN"
+    abnStatus: "ABN@status"
+    abnStatusFrom: "ABN@ABNStatusFromDate"
+    entityType: "EntityType/EntityTypeText"
+    givenNames: "LegalEntity/IndividualName/GivenName"
+    state: "LegalEntity/BusinessAddress/AddressDetails/State"
+    postcode: "LegalEntity/BusinessAddress/AddressDetails/Postcode"
+    otherNames: "OtherEntity/NonIndividualName/NonIndividualNameText"
+    gstStatus: "GST@status"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }

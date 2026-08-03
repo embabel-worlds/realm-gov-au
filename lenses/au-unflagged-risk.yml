@@ -1,0 +1,478 @@
+id: au-unflagged-risk
+name: Shapes the regulator has not acted on
+description: >-
+  The compliance register lists providers already caught. This lens looks for the SHAPES that
+  caught cases had — in the filings of providers with no register entry at all. Seven arithmetic
+  screens over two years of the providers' own Annual Information Statements: a service-revenue
+  surge with no matching staff growth; a filing that contradicts itself (government revenue
+  above total revenue, staff expenses without staff); labour costs too thin for a workforce
+  business at that scale; a workforce model that flipped from wages to something else in one
+  year; money leaving as unspecified 'other expenses'; a first-ever filing already at multi-million scale; and a disability
+  program declared last year and not this year. Each survivor is then checked against the NDIS
+  compliance register — those with NO entry are the point of the lens — and only that shortlist
+  is read subjectively: published coverage is fetched per name and per registered trading name,
+  every item must LITERALLY NAME the organisation to be considered, and only those items are
+  reduced to what they say, whether they report an allegation or action, and whether they explain
+  a disappearance benignly. Generic sector coverage is discarded rather than judged, because a
+  model asked "is this about X" will pass an article about the scheme as an article about X.
+  Every row carries a stable findingKey so a scheduled run can report only what is NEW. A screen hit is an ANOMALY IN A SELF-REPORT, not an
+  allegation: reporting-period changes, group restructures, capital grants and plain data-entry
+  error produce every one of these shapes innocently, which is exactly why each row is a place
+  to look and never a finding.
+params:
+  - name: minService
+    type: STRING
+    label: Service-revenue floor (AUD, self-reported gov + goods/services)
+    required: false
+    default: "1000000"
+  - name: assess
+    type: STRING
+    label: Read published coverage for the shortlist (yes/no)
+    required: false
+    default: "yes"
+  - name: maxAssessed
+    type: STRING
+    label: Cap on entities sent for coverage reading
+    required: false
+    default: "24"
+spec:
+  kind: cypherscript
+  script: |
+    const minService = Number(lensArgs.minService || 0) || 1000000;
+    const assess = !/^(n|no|false|0)$/i.test(String(lensArgs.assess || "yes"));
+    const maxAssessed = Math.min(40, Number(lensArgs.maxAssessed || 24) || 24);
+    const warnings = [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+    const num = (v) => { const n = Number(String(v == null ? "" : v).replace(/,/g, "").trim()); return isFinite(n) && String(v).trim() !== "" ? n : null; };
+    const ask = async (label, cypher, retries) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const r = await gateway.kg.query({ cypher, params: JSON.stringify({}) });
+          warnings.push(...((r && r.warnings) || []));
+          return { rows: ((r && r.rows) ? r.rows : (r || [])), ok: true };
+        } catch (e) {
+          if (attempt < (retries || 0)) continue;
+          warnings.push(label + " unavailable: " + String((e && e.message) || e));
+          return { rows: [], ok: false };
+        }
+      }
+    };
+    const DISABILITY_CLASSES = ["Disability services", "Disability sports",
+      "Housing for people with disabilities", "Disabled persons' rights", "Family disability resources"];
+    const classList = DISABILITY_CLASSES.map(c => JSON.stringify(c)).join(", ");
+    const BATCH = 150;
+
+    // ── 1. Who declares disability work, this year and last ──────────────────────────────────
+    const now = (await ask("FY24 disability programs", `
+      MATCH (p:ProgramClass)-[:HAS_PROGRAM]->(g:CharityProgram)
+      WHERE p.classification IN [${classList}]
+      RETURN g.abn AS abn, g.charityName AS name`, 1)).rows;
+    const prior = (await ask("FY23 disability programs", `
+      MATCH (p:PriorProgramClass)-[:HAS_PROGRAM]->(g:PriorCharityProgram)
+      WHERE p.classification IN [${classList}]
+      RETURN g.abn AS abn, g.charityName AS name`, 1)).rows;
+    const nameOf = {};
+    const abnsNow = new Set(), abnsPrior = new Set();
+    now.forEach(r => { const a = digits(r.abn); if (a.length === 11) { abnsNow.add(a); nameOf[a] = nameOf[a] || r.name; } });
+    prior.forEach(r => { const a = digits(r.abn); if (a.length === 11) { abnsPrior.add(a); nameOf[a] = nameOf[a] || r.name; } });
+    // Everyone who declared disability work in EITHER year — the disappearance screen needs both.
+    const candidates = Array.from(new Set([...abnsNow, ...abnsPrior]));
+
+    // ── 2. Both years' filings, batched ──────────────────────────────────────────────────────
+    const fetchYears = async (rel, label, alias) => {
+      const out = {};
+      for (let i = 0; i < candidates.length; i += BATCH) {
+        const inList = candidates.slice(i, i + BATCH).map(a => "'" + a + "'").join(", ");
+        const rows = (await ask(`${label} (${i + 1}-${Math.min(i + BATCH, candidates.length)})`, `
+          MATCH (q:IntegrityQuery)-[:${rel}]->(a:${alias})
+          WHERE q.abn IN [${inList}]
+          RETURN q.abn AS abn, a.charityName AS name, a.consolidated AS consolidated,
+                 a.reportingPeriodTo AS periodTo, a.fteTotal AS fte, a.employeeExpenses AS emp,
+                 a.revenueGovernment AS gov, a.revenueGoodsServices AS goods,
+                 a.revenueTotal AS total, a.expensesTotal AS expenses,
+                 a.otherExpenses AS otherExpenses,
+                 a.relatedPartyTransactions AS relatedParty`, 1)).rows;
+        rows.forEach(r => { const a = digits(r.abn); if (a.length === 11 && !out[a]) out[a] = r; });
+      }
+      return out;
+    };
+    const fy24 = await fetchYears("HAS_AIS", "FY24 filings", "AisReturn");
+    const fy23 = await fetchYears("HAS_AIS_PRIOR", "FY23 filings", "AisPriorReturn");
+
+    // ── 3. The screens — arithmetic only, each with its numbers printed ──────────────────────
+    const svc = (r) => r ? (num(r.gov) || 0) + (num(r.goods) || 0) : 0;
+    const isCons = (r) => String((r && r.consolidated) || "").trim().toLowerCase() === "y";
+    const flags = {};
+    const flag = (abn, screen, why, evidence) => {
+      const f = (flags[abn] = flags[abn] || { abn, name: nameOf[abn] || (fy24[abn] || fy23[abn] || {}).name || null, screens: [], evidence: {} });
+      f.screens.push({ screen, why });
+      Object.assign(f.evidence, evidence);
+    };
+    let consolidatedSkipped = 0;
+    candidates.forEach(abn => {
+      const r24 = fy24[abn], r23 = fy23[abn];
+      if (r24 && isCons(r24)) { consolidatedSkipped++; return; }   // group figures: arithmetic meaningless
+      const s24 = svc(r24), s23 = svc(r23);
+      const f24 = r24 ? num(r24.fte) : null, f23 = r23 ? num(r23.fte) : null;
+      const e24 = r24 ? (num(r24.emp) || 0) : 0;
+      const t24 = r24 ? (num(r24.total) || 0) : 0, g24 = r24 ? (num(r24.gov) || 0) : 0;
+      const x24 = r24 ? (num(r24.expenses) || 0) : 0;
+      const shared = r24 ? {
+        serviceRevenueFy24: Math.round(s24), serviceRevenueFy23: r23 ? Math.round(s23) : null,
+        fteFy24: f24, fteFy23: f23, employeeExpensesFy24: Math.round(e24),
+        totalRevenueFy24: Math.round(t24), reportingPeriodTo: r24.periodTo || null,
+        relatedPartyTransactions: String(r24.relatedParty || "").trim().toLowerCase() || null,
+      } : {};
+
+      // (a) surge without staff
+      if (r24 && r23 && s24 >= minService && s23 > 50000 && s24 / s23 >= 2.5 && (f24 || 0) <= (f23 || 0) * 1.25) {
+        flag(abn, "revenue surge without staff growth",
+          `service revenue ${(s24 / s23).toFixed(1)}x year on year ($${Math.round(s23).toLocaleString()} → $${Math.round(s24).toLocaleString()}) while FTE went ${f23} → ${f24}`, shared);
+      }
+      // (b) the filing contradicts itself
+      if (r24) {
+        const contradictions = [];
+        if (g24 > t24 * 1.02 && g24 > 100000) contradictions.push(`government revenue $${Math.round(g24).toLocaleString()} exceeds TOTAL revenue $${Math.round(t24).toLocaleString()}`);
+        if ((f24 || 0) === 0 && e24 > 500000) contradictions.push(`zero FTE reported alongside $${Math.round(e24).toLocaleString()} of employee expenses`);
+        if (s24 >= minService && x24 < s24 * 0.2) contradictions.push(`total expenses $${Math.round(x24).toLocaleString()} under 20% of service revenue`);
+        if (contradictions.length) flag(abn, "filing contradicts itself", contradictions.join("; "), shared);
+      }
+      // (c) labour too thin for a workforce business AT SCALE (distinct from the near-staffless
+      //     shape au-provider-ledger already reports: this one HAS staff, just implausibly few costs)
+      if (r24 && s24 >= Math.max(minService, 2000000) && f24 && f24 > 5 && e24 / Math.max(s24, 1) < 0.25) {
+        flag(abn, "labour cost thin for the scale",
+          `$${Math.round(s24).toLocaleString()} service revenue with ${f24} FTE and employee expenses at ${(e24 / s24 * 100).toFixed(0)}% of it`, shared);
+      }
+      // (c2) THE WORKFORCE-MODEL FLIP — the screen the rows taught. A provider whose employee
+      //      expenses were most of its costs one year and a fraction the next, at the same or
+      //      greater revenue, has restructured how the work is done: staff moved to labour
+      //      hire or contracting, or delivery moved to other providers. Both are lawful and
+      //      both are the documented precondition of sham contracting and of billing
+      //      intermediation, which is why the year-on-year pair is the honest place to look.
+      if (r24 && r23) {
+        const e23 = num(r23.emp) || 0;
+        const share24 = s24 > 0 ? e24 / s24 : null, share23 = s23 > 0 ? e23 / s23 : null;
+        if (s24 >= minService && share23 != null && share24 != null && share23 >= 0.5 && share24 < 0.3) {
+          flag(abn, "workforce model flipped in one year",
+            `employee expenses fell from ${(share23 * 100).toFixed(0)}% of service revenue to ${(share24 * 100).toFixed(0)}% ` +
+            `($${Math.round(e23).toLocaleString()} → $${Math.round(e24).toLocaleString()}) while service revenue went ` +
+            `$${Math.round(s23).toLocaleString()} → $${Math.round(s24).toLocaleString()} and FTE went ${f23} → ${f24}`,
+            Object.assign({}, shared, { employeeExpensesFy23: Math.round(e23),
+              otherExpensesFy23: Math.round(num(r23.otherExpenses) || 0),
+              otherExpensesFy24: Math.round(num(r24.otherExpenses) || 0) }));
+        }
+      }
+      // (c3) PASS-THROUGH OPACITY — most of the money leaves as "all other expenses" rather
+      //      than wages or named grants. That is the brokerage/plan-management shape: lawful,
+      //      common, and the one place where public money's ultimate recipient is named in NO
+      //      public register. Reported because it is unmapped, not because it is wrong.
+      if (r24) {
+        const other24 = num(r24.otherExpenses) || 0;
+        const tot24x = x24 || (other24 + e24);
+        if (s24 >= Math.max(minService, 2000000) && tot24x > 0 && other24 / tot24x >= 0.8 && e24 / Math.max(s24, 1) < 0.35) {
+          flag(abn, "money leaves as unspecified 'other expenses'",
+            `$${Math.round(other24).toLocaleString()} of $${Math.round(tot24x).toLocaleString()} total expenses is 'all other expenses' ` +
+            `(${(other24 / tot24x * 100).toFixed(0)}%), against $${Math.round(e24).toLocaleString()} of employee expenses`,
+            Object.assign({}, shared, { otherExpensesFy24: Math.round(other24) }));
+        }
+      }
+      // (d) first filing already large
+      if (r24 && !r23 && s24 >= Math.max(minService, 2000000)) {
+        flag(abn, "first filing already at scale",
+          `$${Math.round(s24).toLocaleString()} service revenue in its first Annual Information Statement`, shared);
+      }
+      // (e) declared disability work last year, not this year
+      if (r23 && !r24 && s23 >= minService) {
+        flag(abn, "stopped filing after a funded year",
+          `$${Math.round(s23).toLocaleString()} FY23 service revenue, then no FY24 Annual Information Statement`,
+          { serviceRevenueFy23: Math.round(s23), fteFy23: f23, reportingPeriodToFy23: r23.periodTo || null });
+      }
+    });
+
+    // ── 4. The register test: which of these has the regulator already acted on? ─────────────
+    const flagged = Object.values(flags).sort((a, b) =>
+      (b.screens.length - a.screens.length) ||
+      ((b.evidence.serviceRevenueFy24 || b.evidence.serviceRevenueFy23 || 0) - (a.evidence.serviceRevenueFy24 || a.evidence.serviceRevenueFy23 || 0)));
+    const abnsToCheck = flagged.map(f => f.abn);
+    const adverse = [];
+    for (let i = 0; i < abnsToCheck.length; i += BATCH) {
+      const inList = abnsToCheck.slice(i, i + BATCH).map(a => "'" + a + "'").join(", ");
+      adverse.push(...(await ask(`compliance register (${i + 1}-${Math.min(i + BATCH, abnsToCheck.length)})`, `
+        MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord)
+        WHERE q.abn IN [${inList}]
+        RETURN q.abn AS abn, x.register AS register, x.dateFrom AS dateFrom, x.detail AS detail`, 1)).rows);
+    }
+    const byAbn = {};
+    adverse.forEach(x => (byAbn[digits(x.abn)] = byAbn[digits(x.abn)] || []).push({
+      register: x.register, from: x.dateFrom || null,
+      narrative: String(x.detail || "").trim().slice(0, 300) || null }));
+    flagged.forEach(f => {
+      f.complianceActions = byAbn[f.abn] || [];
+      f.regulatorHasActed = (byAbn[f.abn] || []).length > 0;
+    });
+    // A STABLE KEY PER FINDING, so this lens can be watched: run it on a schedule, diff the keys
+    // against the previous run, and what appears is new. The key deliberately includes the
+    // screens fired (a provider tripping a NEW screen is a new finding) and the data vintage
+    // (the same shape in a new filing year is a new finding), but not the money, which drifts.
+    flagged.forEach(f => {
+      f.findingKey = [f.abn, "fy24-fy23", f.screens.map(x => x.screen).sort().join("+")].join("|");
+    });
+    const unflagged = flagged.filter(f => !f.regulatorHasActed);
+    const alreadyKnown = flagged.filter(f => f.regulatorHasActed);
+
+    // ── 4b. The PROGRAM MIX for every flagged entity — without it a row misleads ─────────────
+    // The AIS reports ONE government-revenue line covering everything a charity does. An entity
+    // reached through its disability program may earn most of that money from aged care or
+    // housing, and its shape then has an ordinary explanation. Measured case: a $29.1M / 2-FTE
+    // entity whose 99% pass-through is brokered HOME CARE, visible only in the mix.
+    for (let i = 0; i < abnsToCheck.length; i += BATCH) {
+      const inList = abnsToCheck.slice(i, i + BATCH).map(a => "'" + a + "'").join(", ");
+      const rows = (await ask(`declared programs (${i + 1}-${Math.min(i + BATCH, abnsToCheck.length)})`, `
+        MATCH (q:IntegrityQuery)-[:HAS_DECLARED_PROGRAM]->(p:DeclaredProgram)
+        WHERE q.abn IN [${inList}]
+        RETURN q.abn AS abn, p.programName AS programName, p.classification AS classification`, 1)).rows;
+      const grouped = {};
+      rows.forEach(r => { const a = digits(r.abn); (grouped[a] = grouped[a] || []).push(r); });
+      flagged.filter(f => grouped[f.abn]).forEach(f => {
+        const mine = grouped[f.abn];
+        const classes = Array.from(new Set(mine.map(m => String(m.classification || "").trim()).filter(Boolean)));
+        const disabilityClasses = classes.filter(c => DISABILITY_CLASSES.some(d => d.toLowerCase() === c.toLowerCase()));
+        f.declaredPrograms = {
+          classifications: classes.slice(0, 12),
+          programs: mine.slice(0, 12).map(m => `${m.programName} [${m.classification}]`),
+          disabilityIsTheWholeMix: classes.length > 0 && classes.length === disabilityClasses.length,
+          note: classes.length > disabilityClasses.length
+            ? "This charity declares NON-disability programs too — its single government-revenue figure covers all of them, so the flagged shape may belong to other work entirely."
+            : null,
+        };
+      });
+    }
+
+    // ── 5. Read the shortlist — the only place a model judges anything ───────────────────────
+    // Deterministic screens narrowed thousands of filings to a handful; NOW the subjective
+    // question is worth asking, over few rows: what does published coverage say about this
+    // provider, does it report any allegation or action, and — for a disappearance — does it
+    // explain it benignly (a merger, an administration, an acquisition)? Coverage is fetched
+    // from a real index (it cannot fabricate a result), model-filtered for relevance, and
+    // REDUCED; the digest is the model's words and is labelled as such on every row.
+    let assessed = 0;
+    if (assess && unflagged.length) {
+      const shortlist = unflagged.slice(0, maxAssessed);
+      // The name to search is not always the name on the filing. The ABN register carries the
+      // TRADING name — what the press actually calls the organisation — so the shortlist's ABNs
+      // are looked up first and both names are searched. Measured: an exact-quoted legal name
+      // returns almost nothing ("Bedford Services and Advisory Ltd" → 1 hit) while the plain
+      // name with context returns a full page (Bedford + NDIS + state → 8, incl. the
+      // administration story that explains the disappearance).
+      const abrByAbn = {};
+      for (let i = 0; i < shortlist.length; i += BATCH) {
+        const inList = shortlist.slice(i, i + BATCH).map(f => "'" + f.abn + "'").join(", ");
+        (await ask(`ABN register (${i + 1}-${Math.min(i + BATCH, shortlist.length)})`, `
+          MATCH (q:IntegrityQuery)-[:HAS_ABR]->(e:AbrEntity)
+          WHERE q.abn IN [${inList}]
+          RETURN q.abn AS abn, e.otherNames AS tradingNames, e.mainState AS state,
+                 e.abnStatus AS abnStatus, e.abnStatusFrom AS abnStatusFrom`, 1)).rows
+          .forEach(e => { abrByAbn[digits(e.abn)] = e; });
+      }
+      const clean = (n) => String(n || "")
+        .replace(/\b(Pty|Ltd|Limited|Inc|Incorporated|Association|Assoc)\b\.?/gi, " ")
+        .replace(/\s+as Trustee for.*$/i, " ").replace(/[^A-Za-z0-9!&' ]/g, " ")
+        .replace(/\s+/g, " ").trim();
+      const targets = [];
+      shortlist.forEach(f => {
+        const abr = abrByAbn[f.abn] || {};
+        f.businessRegister = abr.abnStatus ? { abnStatus: abr.abnStatus, statusFrom: abr.abnStatusFrom || null,
+          tradingNames: String(abr.tradingNames || "").trim() || null } : null;
+        const state = String(abr.state || "").trim();
+        const base = clean(f.name);
+        const phrases = [];
+        if (base.length >= 5) phrases.push(`${base} NDIS${state ? " " + state : ""}`.slice(0, 90));
+        const trade = String(abr.tradingNames || "").split("|")[0].trim();
+        const cleanTrade = clean(trade);
+        if (cleanTrade.length >= 5 && cleanTrade.toLowerCase() !== base.toLowerCase()) {
+          phrases.push(`${cleanTrade} NDIS${state ? " " + state : ""}`.slice(0, 90));
+        }
+        if (phrases.length) targets.push({ f, phrases });
+      });
+      const allPhrases = Array.from(new Set([].concat(...targets.map(t => t.phrases))));
+      const inList = allPhrases.map(x => JSON.stringify(x)).join(", ");
+
+      // THE NAME GATE. Model relevance judgment was tried here and is NOT safe for this job:
+      // asked whether an article was about a named provider, it passed generic sector stories
+      // (the ACCC referrals piece, the plan-manager crackdown) as entity-specific, which would
+      // have stamped "reports an allegation" on organisations the article never mentions. The
+      // gate is now literal: the entity's distinctive name tokens MUST appear in the item's own
+      // title or snippet before any judgment is applied to it, and the matched items are listed
+      // so a reader sees the basis. Generic-sector context is not evidence about anyone.
+      // THE NAME GATE — the entity's own leading phrase must appear in an item's text before any
+      // judgment touches it. Model relevance was tried and is NOT safe here: asked "is this about
+      // X", it passed generic sector stories (the ACCC referrals piece, the plan-manager
+      // crackdown) as entity-specific, which would have stamped "reports an allegation" on
+      // organisations those articles never mention.
+      //
+      // The phrase is built from the FRONT of the name, because organisations lead with what is
+      // distinctive. Three defects found by unit-testing the gate against the titles this lens
+      // actually retrieved, each fixed here:
+      //   · ranking tokens by LENGTH picked the place name — "melbourne" for Giant Steps
+      //     Melbourne, "tasmania" for Para-Quad Tasmania — so a compliance story about a
+      //     different Tasmanian provider matched. Places and sector words can never lead.
+      //   · a single short token matched inside a longer word ("campbell" in "Campbellfield"),
+      //     so matching is space-padded and boundary-safe.
+      //   · dropping small words broke real names ("Leap In!" became "leap australia"), so only
+      //     legal forms and connectives are removed, and a multi-word phrase also matches its
+      //     concatenated form ("para quad" finds "ParaQuad").
+      const LEGAL = new Set(["ltd","limited","pty","inc","incorporated","association","assoc","group",
+        "holdings","foundation","trust","the","and","for","of"]);
+      const NEVER_PRIMARY = new Set(["melbourne","sydney","brisbane","adelaide","perth","canberra","hobart",
+        "darwin","victoria","victorian","queensland","tasmania","tasmanian","australia","australian","nsw",
+        "vic","qld","wa","sa","tas","nt","act","national","community","support","supports","disability",
+        "disabilities","employment","housing","accommodation","respite","autism","autistic","aged","health",
+        "people","living","services","service","care","centre","center","new","south","western","northern",
+        "east","west","central","regional","statewide","options","connections","choices","access","plus",
+        "next","step","steps","life","lifestyle","independent"]);
+      const flatten = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+      const gateFor = (name) => {
+        const stripped = String(name || "").toLowerCase().replace(/\s+(as trustee for|trading as|t\/as)\s+.*$/i, " ");
+        const w = flatten(stripped).split(" ").filter(x => x && !LEGAL.has(x));
+        if (!w.length) return null;
+        if (w[0].length >= 6 && !NEVER_PRIMARY.has(w[0])) return w[0];
+        // Both leading words generic ("Independent Living Villages", "Community Connections for
+        // Inclusion") still admits sector articles, so take a third word when one exists.
+        const twoGeneric = w.length >= 2 && NEVER_PRIMARY.has(w[0]) && NEVER_PRIMARY.has(w[1]);
+        const take = twoGeneric && w.length >= 3 ? 3 : 2;
+        return w.length >= 2 ? w.slice(0, take).join(" ") : w[0];
+      };
+      const gateMatches = (gate, text) => {
+        if (!gate) return false;
+        const hay = " " + flatten(text) + " ";
+        if (hay.includes(" " + gate + " ")) return true;
+        return gate.includes(" ") ? hay.replace(/ /g, "").includes(gate.replace(/ /g, "")) : false;
+      };
+      const hostOf = (u) => { const m = String(u || "").match(/^https?:\/\/([^/]+)/i); return m ? m[1].toLowerCase() : ""; };
+
+      const itemRows = (await ask("coverage items", `
+        MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:ContractCoverage)
+        WHERE q.phrase IN [${inList}]
+        RETURN q.phrase AS phrase, c.title AS title, c.url AS url, c.snippet AS snippet`, 1)).rows;
+      const itemsByPhrase = {};
+      itemRows.forEach(r => (itemsByPhrase[r.phrase] = itemsByPhrase[r.phrase] || []).push(r));
+
+      for (const t of targets) {
+        assessed++;
+        const gate = gateFor(t.f.name);
+        const pool = [].concat(...t.phrases.map(p => itemsByPhrase[p] || []));
+        const seen = new Set();
+        const named = pool.filter(it => {
+          if (!gateMatches(gate, String(it.title || "") + " " + String(it.snippet || ""))) return false;
+          if (seen.has(it.url)) return false;
+          seen.add(it.url); return true;
+        });
+        // An organisation's own site is not coverage OF it. A digest built from marketing copy
+        // ("named Most Outstanding Provider") tells a reader nothing, so the two are separated.
+        const bare = (gate || "").replace(/ /g, "");
+        const selfPublished = named.filter(it => flatten(hostOf(it.url)).replace(/ /g, "").includes(bare));
+        const thirdParty = named.filter(it => !selfPublished.includes(it));
+        if (!thirdParty.length) {
+          t.f.coverageRead = { searched: t.phrases, nameGate: gate,
+            itemsNamingThisEntity: named.length, selfPublishedItems: selfPublished.length, thirdPartyItems: 0,
+            note: named.length
+              ? "Only the organisation's own pages name it in the index — no third-party coverage. Nothing here is evidence either way."
+              : "No indexed item names this organisation. Generic NDIS-sector coverage was found and DISCARDED — it is not evidence about this entity." };
+          continue;
+        }
+        // Reduce ONLY third-party items naming the entity. Cypher cannot express adjacent-phrase
+        // containment, so its clauses AND the gate's words and the exact item list — already
+        // phrase-filtered here — is what the reader checks.
+        const clauses = gate.split(" ").map(tok => `(toLower(c.title) CONTAINS ${JSON.stringify(tok)} OR toLower(c.snippet) CONTAINS ${JSON.stringify(tok)})`).join(" AND ");
+        const hosts = Array.from(new Set(selfPublished.map(i => hostOf(i.url)))).filter(Boolean);
+        const hostClauses = hosts.length ? " AND NOT (" + hosts.map(h => `c.url CONTAINS ${JSON.stringify(h)}`).join(" OR ") + ")" : "";
+        const phraseList = t.phrases.map(x => JSON.stringify(x)).join(", ");
+        const red = (await ask(`coverage reduction: ${t.f.name}`, `
+          MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:ContractCoverage)
+          WHERE q.phrase IN [${phraseList}] AND ${clauses}${hostClauses}
+          RETURN summarize(c.snippet, 'what this coverage says about this organisation, in two sentences') AS digest,
+                 holds(c.snippet, 'this coverage reports an investigation, an allegation of misused public money, or regulatory action against THIS organisation') AS reportsAllegationOrAction,
+                 holds(c.snippet, 'this coverage reports THIS organisation merging, being acquired, entering administration, or closing') AS reportsMergerOrClosure`, 1)).rows[0] || {};
+        const digest = typeof red.digest === "string" && !/^UNAVAILABLE/i.test(red.digest) ? red.digest : null;
+        t.f.coverageRead = {
+          searched: t.phrases, nameGate: gate,
+          itemsNamingThisEntity: named.length,
+          selfPublishedItems: selfPublished.length,
+          thirdPartyItems: thirdParty.length,
+          items: thirdParty.slice(0, 5).map(i => ({ title: i.title, url: i.url })),
+          digest,
+          reportsAllegationOrAction: red.reportsAllegationOrAction ?? null,
+          reportsMergerOrClosure: red.reportsMergerOrClosure ?? null,
+          note: "Judged from THIRD-PARTY items whose text names this organisation; its own pages and generic sector coverage were excluded. Open the items before relying on the summary.",
+        };
+      }
+    }
+    const worthAHumanFirst = unflagged.filter(f => f.coverageRead &&
+      (f.coverageRead.reportsAllegationOrAction === true ||
+       (f.screens.length >= 2 && f.coverageRead.reportsMergerOrClosure !== true)));
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-unflagged-risk",
+      minService, assessed: assess,
+      status: failed ? "FAILED" : (Object.keys(fy24).length ? "COMPLETE" : "PARTIAL"),
+      warnings,
+      watch: {
+        findingKeys: flagged.map(f => f.findingKey).sort(),
+        note: "Stable per (entity, screens fired, filing-year pair). Diff these against a previous run to see only what is new; a key that disappears means the shape no longer holds in the current data.",
+      },
+      headline: {
+        candidatesScreened: candidates.length,
+        withFy24Filing: Object.keys(fy24).length,
+        withFy23Filing: Object.keys(fy23).length,
+        consolidatedSkipped,
+        entitiesFlaggedByAnyScreen: flagged.length,
+        alreadyInComplianceRegister: alreadyKnown.length,
+        noRegisterEntry: unflagged.length,
+        coverageRead: assessed,
+        note: `${candidates.length} entities declared disability programs in FY23 or FY24; ${flagged.length} show at least one arithmetic anomaly in their OWN filings. ` +
+          `${alreadyKnown.length} of those the Commission has already acted on. ${unflagged.length} have NO entry in the compliance register — ` +
+          `that gap is the point of this lens, and it is a gap in a REGISTER, not evidence of wrongdoing: every screen here has innocent explanations ` +
+          `(a changed reporting period, a group restructure, a capital grant, a keying error) and the row shows the numbers so a reader can tell.`,
+      },
+      queries: [
+        { title: "Two years of filings", cypher: "MATCH (q:IntegrityQuery)-[:HAS_AIS|HAS_AIS_PRIOR]->(a) WHERE q.abn IN [<candidate ABNs, batched>] RETURN a" },
+        { title: "The screens", note: "Computed in the lens: ratios and comparisons over the filings' own figures, each printed beside its verdict." },
+        { title: "The register test", cypher: "MATCH (q:IntegrityQuery)-[:HAS_ADVERSE]->(x:AdverseRecord) WHERE q.abn IN [<flagged ABNs>] RETURN x" },
+        { title: "Reading the shortlist", note: "ai.relevant filters indexed coverage per name; summarize/holds reduce it. The ONLY judged step, and it runs on the shortlist only." },
+      ],
+      noRegisterEntry: unflagged.slice(0, 40),
+      worthAHumanFirst: worthAHumanFirst.slice(0, 15).map(f => ({ abn: f.abn, name: f.name,
+        screens: f.screens.map(s => s.screen), coverage: f.coverageRead })),
+      alreadyInComplianceRegister: alreadyKnown.slice(0, 15),
+      interpretation: {
+        factual: ["every figure and ratio — the charity's own Annual Information Statements, two years",
+          "the register test — presence or absence in the NDIS compliance-actions snapshot",
+          "coverage items — real indexed results with their own URLs",
+          "tribunalAndCourt — unfiltered index hits on austlii.edu.au for the entity name"],
+        judged: ["which coverage is relevant (ai.relevant)", "the coverage digest (summarize)",
+          "whether coverage reports an allegation or a merger (holds — three-valued: true, false, or unknown)"],
+        note: "The screens are arithmetic; the reading is a model's. No score is computed and no entity is ranked by risk — the ordering is by how many screens a filing trips and how large the money is.",
+      },
+      limits: [
+        "A screen hit is an anomaly in a SELF-REPORT. Reporting-period changes, group restructures, capital or one-off grants, in-kind support, contracted (non-employee) workforces and plain data-entry error each produce these shapes innocently.",
+        "Absence from the compliance register means the Commission has published no action against that ABN in this snapshot.
+        "A compliance NOTICE is weak evidence about a provider: 93% of the notices in this register cite the same instrument (section 73J audit obligation) and ~90% share six effective dates — they arrive as mass batches. Read the action TYPE and its narrative, never the mere presence of a hit.", It is not a finding that anything is wrong, and it is not evidence the regulator missed anything — it may have looked and been satisfied.",
+        "Not filing an FY24 statement is usually administrative: statements are due about six months after year end and extensions are routine. This screen is the weakest and its rows should be read with the coverage.",
+        "Charities only, ABN-matched: an unregistered provider, or a group booking revenue on another ABN, is invisible here. Consolidated group reports are excluded from the arithmetic entirely.",
+        "The AIS reports ONE government-revenue line for everything a charity does. declaredPrograms shows the mix; where it includes aged care, housing or other work, the flagged figure is NOT NDIS money and may have an ordinary explanation (brokered home care pays most of its funding out to third parties by design).",
+        "The coverage reading depends on a news index and a model. Silence means nothing was found under that phrase; a hit about a same-named organisation is possible, which is why every digest is labelled judged and the items are listed for opening.",
+        "A name whose leading words are all generic ('Independent Living Villages') gates weakly even at three words; such rows admit sector articles, which is visible in their digests and in the low third-party counts.",
+        "An organisation's own website is not coverage of it: self-published items are counted separately and never summarised. A digest exists only where a third party wrote about the entity by name.",
+        "A tribunal or court hit is a document the NAME appears in — it may concern a different party, a different matter, or a same-named entity, and the lens does not read it. Open it.",
+        "No risk score exists in this output by design. Two entities tripping the same screen are not thereby comparable.",
+      ],
+      method: "Every ABN declaring a disability program in FY23 or FY24 is fetched for both years' Annual Information Statements; " +
+              "seven arithmetic screens run over the figures; survivors are tested against the NDIS compliance register; and only those " +
+              "with no register entry are read against indexed coverage, model-filtered and reduced.",
+      source: "ACNC Annual Information Statements 2023 and 2024 incl. programs files (data.gov.au); NDIS Commission compliance actions register; Brave search index for coverage",
+    }) });
+presentation:
+  href: /apps/scrutiny-room.html

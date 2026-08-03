@@ -20,11 +20,30 @@ check that replaces it with published registers.
 All are `tabular` producers: lazily fetched on first traversal, deployment-cached, `keyMatch:
 digits` (the same ABN is published spaced, unspaced, numeric and float across this estate).
 
+## Wired 2026-08-02 — the reconstructed ledger (docs/adr/0001)
+
+| Source | Producer | Key | What it gives |
+|---|---|---|---|
+| data.gov.au CKAN catalogue | `datasetCatalogue` | quoted title phrase | live enumeration of dated-extract series (and "does this source exist" as a query, not a recollection) |
+| NDIS compliance extracts, ALL dates | `ndisActionsSnapshotRows` | `datasetId\|resourceId\|filename` | any extract WHOLE — the time series behind `au-register-diff` (appearances, and the deletions nobody tracks) |
+| ACNC AIS 2024 | `aisReturnByAbn` | ABN (100% fill) | 53,763 self-filed returns: government revenue, goods-and-services revenue, FTE, employee expenses, grants made, related-party flag — the per-provider ledger no register publishes |
+| ACNC register, disability slice | `charitiesServingDisabilities` | beneficiary flag (`Y`) | the 16,035-charity candidate roll |
+| ACNC AIS 2024 programs | `programsByClassification` | program classification | the charity's OWN answer to "am I in the disability business" — 1,374 ABNs under the five disability classes; sharper than the beneficiary flag a hospital also carries |
+| ABN Bulk Extract | `abrByAbn` (producers/abr.yml) | ABN | status + from-date (entity AGE), entity type, trading names for ~19M entities — **needs the 2026-08-02 xml/zip tabular reader; fails loudly on older binaries and is isolated in its own file so only it drops** |
+
+Fix shipped with these: `ndisActionsByAbn.detail` projected the ~0%-filled "Other relevant info"
+column; the narrative lives in "Relevant information" (99% filled). Every consuming lens had been
+showing `detail: null`.
+
+Known engine defect worked around in `au-provider-ledger` (embabel/me#673): an enumerated IN list
+silently drops a member containing an apostrophe ("Disabled persons' rights" cost 64 providers
+until count-reconciliation caught it). Pinned equality per class until fixed.
+
 ## Assessed and NOT wired — and what unblocks each
 
 | Source | Blocker | Unblocks with |
 |---|---|---|
-| **WGEA named non-compliant** | 2024-25 is a **PDF**; 2023-24 is inline HTML. The bulk dataset is a 74MB **ZIP** of CSVs | a zip-aware tabular format, or a PDF-extract step. **Highest-value miss**: non-compliance is a statutory *eligibility breach* under the WGE Procurement Principles |
+| **WGEA named non-compliant** | 2024-25 is a **PDF**; 2023-24 is inline HTML. The bulk dataset is a 74MB **ZIP** of CSVs | zip handling now exists for `format: xml` (2026-08-02); extending it to zipped CSVs is small. **Highest-value miss**: non-compliance is a statutory *eligibility breach* under the WGE Procurement Principles |
 | **ABF sanctioned sponsors** (1,811 rows, clean ABNs) | JSON only via **POST with body `{}`**; endpoint path discoverable only from inline page config | a `remote` producer with a POST op — the realm's OpenAPI surface can express this |
 | **Payment Times Register** | filename is date-stamped and must be scraped from an inline JS variable | a two-step producer (scrape → fetch), or a `{today}`-style pattern if the naming stabilises |
 | **ASIC banned & disqualified (orgs)** | ACN only, no ABN | an ACN→ABN bridge (ASIC company dataset carries both) |

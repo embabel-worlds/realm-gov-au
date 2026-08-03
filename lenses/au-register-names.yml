@@ -1,0 +1,277 @@
+id: au-register-names
+name: Who the register's own prose names
+description: >-
+  The compliance register links nothing — but its NARRATIVES do. A banning order against an
+  individual routinely names the provider they worked through; a revocation narrative names
+  related parties. This lens reads the latest extract's full prose with an LLM extraction,
+  keeps only names that verifiably appear in the text (a name the model returns but the corpus
+  does not contain is DROPPED), then self-joins the corpus: an organisation appearing in the
+  narratives of two or more DIFFERENT subjects is a cluster the Commission's own words reveal
+  but no register field links. Around that core: what the Commission enforces per action type
+  (themes, in the model's words, labelled as such), the published length of every ban
+  (arithmetic over the register's own phrasing), and each named organisation checked against
+  the ACNC disability roll. Every mention is quoted verbatim — a mention can be as employer,
+  as victim-context, or as bystander, and only the quote says which.
+params:
+  - name: q
+    type: STRING
+    label: Register series (catalogue title phrase)
+    required: false
+    default: "NDIS Commission Compliance Actions"
+spec:
+  kind: cypherscript
+  script: |
+    const q = String(lensArgs.q || "NDIS Commission Compliance Actions").trim();
+    const warnings = [];
+    const ask = async (label, cypher) => {
+      try {
+        const r = await gateway.kg.query({ cypher, params: JSON.stringify({}) });
+        warnings.push(...((r && r.warnings) || []));
+        return ((r && r.rows) ? r.rows : (r || []));
+      } catch (e) {
+        warnings.push(label + " unavailable: " + String((e && e.message) || e));
+        return [];
+      }
+    };
+    const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
+
+    // ── 1. The latest extract, whole ──────────────────────────────────────────────────────────
+    const cat = await ask("data.gov.au catalogue", `
+      MATCH (s:CatalogueSearch {query:'${q.replace(/'/g, "\\'")}'})-[:HAS_DATASET]->(d:CatalogueDataset)
+      RETURN d.title AS title, d.datasetId AS datasetId, d.resourceId AS resourceId, d.resourceUrl AS resourceUrl`);
+    const snapshots = cat
+      .filter(d => String(d.title || "").toLowerCase().includes(q.toLowerCase()))
+      .map(d => {
+        const m = String(d.title || "").match(/(\d{2})\.(\d{2})\.(\d{4})\s*$/);
+        const file = String(d.resourceUrl || "").split("/download/")[1] || "";
+        return m && file ? { date: `${m[3]}-${m[2]}-${m[1]}`, key: `${d.datasetId}|${d.resourceId}|${file}` } : null;
+      }).filter(Boolean).sort((a, b) => a.date < b.date ? 1 : -1);
+    if (!snapshots.length) {
+      await gateway.lens.present({ content: JSON.stringify({ kind: "au-register-names", status: "FAILED", warnings,
+        headline: { note: `No dated extract matched '${q}' in the catalogue.` } }) });
+      return;
+    }
+    const latest = snapshots[0];
+    const rows = await ask(`extract ${latest.date}`, `
+      MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]->(a:SnapshotAction)
+      RETURN a.register AS register, a.name AS name, a.abn AS abn, a.state AS state,
+             a.dateFrom AS dateFrom, a.dateTo AS dateTo, a.detail AS detail`);
+
+    // ── 2. What the Commission enforces, per action type — the model's reading, labelled ─────
+    const themesRows = await ask("themes per action type", `
+      MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]->(a:SnapshotAction)
+      RETURN a.register AS actionType, themes(a.detail, 'the kinds of conduct, breach or obligation the text describes', 6) AS enforcementThemes`);
+
+    // ── 3. Names the prose mentions — LLM extraction with a NO-FABRICATION gate ──────────────
+    // extract() reads the whole banning/revocation corpus and returns the organisations it
+    // names. Every returned name is then verified against the raw text: a name the corpus does
+    // not literally contain is dropped, so nothing the model invented can survive into output.
+    const extractedCells = await ask("names in the prose", `
+      MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]->(a:SnapshotAction)
+      WHERE a.register CONTAINS 'Banning' OR a.register CONTAINS 'Revocation'
+      RETURN extract(a.detail, 'names of provider organisations, companies, trusts or business entities mentioned in the text — not government bodies, not Acts or Rules, not the NDIS Commission itself') AS names`);
+    // The extraction annotates ("X (implying individual…)", "Y (ABN: …)") — strip trailing
+    // parentheticals BEFORE the containment gate or verbatim names are dropped for the model's
+    // own commentary. Individuals are kept: a person named in ANOTHER subject's narrative is a
+    // link too, and the quote shows the capacity.
+    const rawNames = [].concat(...extractedCells.map(c => Array.isArray(c.names) ? c.names : []))
+      .map(s => String(s || "").replace(/\s*\([^)]*\)\s*$/, "").trim())
+      .filter(s => s.length >= 5);
+    const STOP = /ndis|commission|national disability|insurance scheme|quality and safeguards|australia(n)? government|department|agency|act 2013|rules 2018/i;
+    const corpus = rows.map(r => ({ ...r, lc: String(r.detail || "").toLowerCase() }));
+    const nameSubjects = {};
+    const quoteFor = (text, needle) => {
+      const i = String(text || "").toLowerCase().indexOf(needle);
+      if (i < 0) return null;
+      const start = Math.max(0, String(text).lastIndexOf(".", i) + 1);
+      let end = String(text).indexOf(".", i + needle.length);
+      if (end < 0) end = Math.min(String(text).length, i + needle.length + 160);
+      return String(text).slice(start, end + 1).trim().slice(0, 320);
+    };
+    Array.from(new Set(rawNames.map(n => n.replace(/\s+/g, " ")))).forEach(name => {
+      if (STOP.test(name)) return;
+      const needle = name.toLowerCase();
+      const hits = corpus.filter(r => r.lc.includes(needle));
+      if (!hits.length) return;             // the no-fabrication gate: not literally in the corpus ⇒ out
+      // A mention in the subject's OWN row is context; the signal is the name appearing in
+      // OTHER subjects' narratives. Both are kept, distinguished.
+      const subjects = {};
+      hits.forEach(r => {
+        const self = String(r.name || "").toLowerCase().includes(needle) ||
+                     needle.includes(String(r.name || "").toLowerCase());
+        (subjects[r.name] = subjects[r.name] || { register: r.register, state: r.state || null,
+          self, quote: quoteFor(r.detail, needle) });
+      });
+      nameSubjects[name] = subjects;
+    });
+    const mentions = Object.keys(nameSubjects).map(name => {
+      const subs = nameSubjects[name];
+      const others = Object.keys(subs).filter(s => !subs[s].self);
+      return {
+        organisation: name,
+        distinctSubjects: Object.keys(subs).length,
+        subjectsOtherThanSelf: others.length,
+        mentionedBy: Object.keys(subs).map(s => ({
+          subject: s, register: subs[s].register, state: subs[s].state,
+          inOwnRow: subs[s].self, quote: subs[s].quote,
+        })),
+      };
+    }).filter(m => m.distinctSubjects >= 1)
+      .sort((a, b) => (b.subjectsOtherThanSelf - a.subjectsOtherThanSelf) || (b.distinctSubjects - a.distinctSubjects));
+    const crossSubject = mentions.filter(m => m.subjectsOtherThanSelf >= 1 &&
+      m.mentionedBy.filter(x => !x.inOwnRow).length + m.mentionedBy.filter(x => x.inOwnRow).length >= 2);
+
+    // ── 4. Each named organisation against the ACNC disability roll (conservative name match) ─
+    const roll = await ask("ACNC disability roll", `
+      MATCH (r:DisabilityServiceRoll {marker:'Y'})-[:HAS_CHARITY]->(c:DisabilityCharity)
+      RETURN c.abn AS abn, c.charityName AS charityName`);
+    const rollNorm = roll.map(c => ({ abn: digits(c.abn), n: String(c.charityName || "").toLowerCase().replace(/\s+/g, " ") }));
+    mentions.forEach(m => {
+      const needle = m.organisation.toLowerCase().replace(/\s+/g, " ");
+      const hit = rollNorm.find(c => c.n === needle) || rollNorm.find(c => c.n.includes(needle) || needle.includes(c.n));
+      m.onDisabilityRoll = hit ? { abn: hit.abn, matchedName: hit.n, note: "conservative NAME match — verify identity before relying on it" } : null;
+    });
+
+    // ── 4b. Conduct language — the register's own words, counted and quoted ──────────────────
+    // Only ~3% of banning orders hedge with "on the basis that…", but the conduct, where stated,
+    // uses recurring vocabulary. Counted per pattern with a verbatim example sentence — the
+    // measured answer to "does the register ever say WHY", and where it says fraud, it is quoted.
+    const CONDUCT = [
+      ["billing or claims fraud", /falsif|fraud|claims? for (payment|services)|services not delivered|not provided|overcharg/i],
+      ["criminal charge or conviction", /charged with|convicted|criminal|jail|imprison|police/i],
+      ["violence, abuse or neglect", /assault|abuse|neglect|violence|mistreat/i],
+      ["sexual misconduct", /sexual/i],
+      ["dishonesty to the regulator", /false or misleading|misled|misrepresent/i],
+    ];
+    const sentenceWith = (text, re) => {
+      const m = String(text || "").match(new RegExp("[^.]*(" + re.source + ")[^.]*\\.", "i"));
+      return m ? m[0].trim().slice(0, 300) : null;
+    };
+    const conductLanguage = CONDUCT.map(([label, re]) => {
+      const hits = corpus.filter(r => String(r.register).match(/Banning|Revocation|Suspension/) && re.test(r.detail || ""));
+      return { statedConduct: label, rows: hits.length,
+        examples: hits.slice(0, 6).map(r => ({ subject: r.name, register: r.register,
+          quote: sentenceWith(r.detail, re) })) };
+    }).filter(c => c.rows > 0);
+
+    // ── 4c. Officer edges the prose leaks — person↔organisation, quoted ──────────────────────
+    // No open source publishes NDIS officers in bulk (the ADR's ruled-out network), but the
+    // enforcement narratives leak the edges for the enforcement set: "sole director of X",
+    // "key personnel, Ms Y", "on behalf of NDIS provider Z". Extracted by the phrases the
+    // Commission itself uses, quoted verbatim — a fact about the text, never an inference.
+    const OFFICER_PATTERNS = [
+      /(?:sole )?directors? of ([A-Z][\w&'()\- ]{3,60}?(?:Pty Ltd|Ltd|Limited|Inc|Trust))/g,
+      /key personnel,? (?:Mr|Ms|Mrs|Dr)?\.? ?([A-Z][\w'\-]+ [A-Z][\w'\- ]{2,40})/g,
+      /on behalf of (?:NDIS provider )?([A-Z][\w&'()\- ]{3,60}?(?:Pty Ltd|Ltd|Limited|Inc|Trust))/g,
+      /(?:his|her|their) business,? ([A-Z][\w&'()\- ]{3,60}?(?:Pty Ltd|Ltd|Limited|Inc|Trust))/g,
+    ];
+    const officerEdges = [];
+    corpus.forEach(r => {
+      const t = String(r.detail || "");
+      OFFICER_PATTERNS.forEach(re => {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(t)) !== null && officerEdges.length < 200) {
+          const other = m[1].trim().replace(/\s+/g, " ");
+          if (other.toLowerCase() === String(r.name || "").toLowerCase()) continue;
+          officerEdges.push({ subject: r.name, register: r.register, linkedName: other,
+            quote: sentenceWith(t, new RegExp(other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))) });
+        }
+      });
+    });
+
+    // ── 4d. THE SHAPE OF ENFORCEMENT — waves and instrument concentration ────────────────────
+    // Clustering the notice corpus surfaced a group the register never labels: hundreds of
+    // notices sharing one issue date. Verified arithmetically here, because a model's cluster
+    // label is not evidence: effective-from days are counted, and the instrument each notice
+    // cites is counted. The result reframes what a "compliance action" means as a signal — most
+    // are batch audit-obligation notices, not individual conduct findings.
+    const dayCount = {};
+    const instrument = { "section 73J audit obligation": 0, "other or unstated": 0 };
+    corpus.filter(r => String(r.register).includes("Compliance notice")).forEach(r => {
+      const d = day(r.dateFrom);
+      if (d) dayCount[d] = (dayCount[d] || 0) + 1;
+      if (/section 73J/i.test(r.detail || "")) instrument["section 73J audit obligation"]++;
+      else instrument["other or unstated"]++;
+    });
+    const notices = corpus.filter(r => String(r.register).includes("Compliance notice")).length;
+    const waves = Object.keys(dayCount).map(d => ({ effectiveFrom: d, notices: dayCount[d],
+        shareOfAllNotices: notices ? Math.round(dayCount[d] * 100 / notices) : 0 }))
+      .filter(w => w.notices >= 20)
+      .sort((a, b) => b.notices - a.notices);
+    const inWaves = waves.reduce((n, w) => n + w.notices, 0);
+    const enforcementShape = {
+      complianceNotices: notices,
+      daysWith20OrMoreNotices: waves.length,
+      noticesIssuedInThoseWaves: inWaves,
+      shareOfNoticesInWaves: notices ? Math.round(inWaves * 100 / notices) : 0,
+      citingSection73JAuditObligation: instrument["section 73J audit obligation"],
+      shareCitingAuditObligation: notices ? Math.round(instrument["section 73J audit obligation"] * 100 / notices) : 0,
+      waves: waves.slice(0, 10),
+      note: "Compliance notices arrive in BATCHES on single effective dates and overwhelmingly cite one " +
+            "instrument. A provider's presence in this register is therefore weak evidence about that " +
+            "provider: it may mean only that it was inside a mass audit-obligation batch.",
+    };
+
+    // ── 5. Ban lengths — arithmetic over the register's own phrasing ─────────────────────────
+    const lengths = { permanent: 0, byYears: {}, byMonths: {}, unstated: 0 };
+    const WORD_NUMS = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12 };
+    corpus.filter(r => String(r.register).includes("Banning")).forEach(r => {
+      const t = r.lc;
+      if (/permanent/i.test(t)) { lengths.permanent++; return; }
+      const m = t.match(/period of\s+(?:(\d+)|([a-z]+))\s*(?:\((\d+)\))?\s*(year|month)/i);
+      if (!m) { lengths.unstated++; return; }
+      const nRaw = m[1] || m[3] || WORD_NUMS[m[2]] || null;
+      const n = Number(nRaw);
+      if (!isFinite(n) || !n) { lengths.unstated++; return; }
+      const bucket = m[4].toLowerCase() === "year" ? lengths.byYears : lengths.byMonths;
+      bucket[n] = (bucket[n] || 0) + 1;
+    });
+
+    const failed = warnings.some(w => { const t = (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-register-names",
+      extractDate: latest.date,
+      status: failed ? "FAILED" : "COMPLETE",
+      warnings,
+      headline: {
+        registerRows: rows.length,
+        organisationsNamedInProse: mentions.length,
+        crossSubjectOrganisations: crossSubject.length,
+        note: `The Commission's own narratives in the ${latest.date} extract name ${mentions.length} verifiable organisation(s); ` +
+          `${crossSubject.length} appear across MORE THAN ONE subject's record — links no register field carries. ` +
+          `Every mention is quoted; a mention can be as employer, as the entity whose participants were affected, or in passing, and only the quote says which.`,
+      },
+      queries: [
+        { title: "The prose, read", note: "extract() over banning/revocation narratives; every returned name re-verified by literal containment in the corpus — an unverifiable name is dropped." },
+        { title: "The self-join", note: "Computed in the lens: which rows' narratives contain each verified name, subject-by-subject, quoted." },
+      ],
+      enforcementThemes: themesRows.map(t => ({ actionType: t.actionType, themes: t.enforcementThemes })),
+      enforcementShape,
+      conductLanguage,
+      officerEdges: officerEdges.slice(0, 60),
+      banLengths: lengths,
+      organisations: mentions.slice(0, 40),
+      crossSubject: crossSubject.slice(0, 20),
+      interpretation: {
+        factual: ["every quote — the Commission's narrative verbatim", "the mention map — literal string containment over the corpus", "ban lengths — the register's own 'period of …' phrasing, counted", "enforcementShape — effective-from days and cited instruments, counted", "conductLanguage — fixed vocabulary counted over the corpus, each with a verbatim sentence", "officerEdges — the Commission's own attribution phrases ('sole director of', 'key personnel,'), quoted"],
+        judged: ["enforcementThemes — the model's summary of what the narratives describe, per action type", "the extraction itself chose which names to propose; only names the corpus literally contains survive"],
+        note: "A name in a narrative is a fact about the TEXT. It is not an allegation against the named organisation — the quote beside each mention shows the capacity in which it appears.",
+      },
+      limits: [
+        "Name matching is literal string containment: an organisation renamed between rows, or spelled differently, reads as two names; a short generic name can over-match and should be read with its quotes.",
+        "The extraction proposes names; the containment gate guarantees the name exists in the corpus, not that the list is COMPLETE — a name the model missed is absent. Treat counts as floors.",
+        "The roll match is by name only and marked conservative; an ABN-grade identity claim needs the ABR or the charity register, not this field.",
+        "One extract only (the latest). A narrative revised between extracts reads as the latest wording.",
+        "Themes are the model's words, not the register's. The verbatim narratives stay one click away in every quoted mention.",
+        "conductLanguage counts pattern matches; a narrative describing conduct in other words is missed, so every count is a floor. A match is what the Commission WROTE, not a court finding.",
+        "officerEdges reflect the Commission's attribution at the time of the action, extracted from its own phrasing; they are not a register of current officers, and a person-organisation link is not an allegation against either.",
+      ],
+      method: "The latest extract is fetched whole; an LLM extraction proposes organisation names from the banning/revocation prose; " +
+              "names not literally present in the corpus are dropped; the corpus is self-joined on the survivors, quoted per subject; " +
+              "themes summarize each action type; ban lengths are counted from the register's own phrasing.",
+      source: "NDIS Commission compliance actions — latest dated extract on data.gov.au; ACNC Register of Australian Charities (roll match)",
+    }) });
+presentation:
+  href: /apps/scrutiny-room.html

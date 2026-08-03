@@ -36,13 +36,18 @@
     dateFrom: "Date effective from, as published."
     dateTo: "Date no longer in force; empty = still in force at the snapshot."
     state: "State, as published."
-    detail: "The Commission's own 'other relevant info', verbatim."
+    detail: "The Commission's own 'Relevant information' narrative, verbatim."
   virtualJoins:
     - anchorLabel: IntegrityQuery
       relationship: HAS_ADVERSE
       keyField: abn
       recordKeyField: abn
       producer: ndisActionsByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
       description: "NDIS Commission compliance actions for a pinned ABN (snapshot dataset; the lens shows the snapshot date)."
 
 - name: SlaveryStatement
@@ -67,6 +72,11 @@
       keyField: abn
       recordKeyField: abn
       producer: slaveryStatementsByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
       description: "Modern Slavery Register lodgements for a pinned ABN."
 
 - name: TaxRecord
@@ -91,7 +101,90 @@
       keyField: abn
       recordKeyField: abn
       producer: taxRecordByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
       description: "The ATO tax transparency row for a pinned ABN (2023-24 report; absence usually means income under the $100M threshold)."
+
+# ── The register as a TIME SERIES: catalogue search + whole snapshots (docs/adr/0001) ──────────
+
+- name: CatalogueSearch
+  visibility: internal
+  description: >-
+    A data.gov.au catalogue query pinned as an anchor — a quoted dataset-title phrase. Exists
+    because dated-extract series (one dataset per date) can only be enumerated by asking the
+    catalogue, and because "does this source exist" deserves a live answer, not a recollection.
+  properties:
+    query:
+      metadata: { identity: "true" }
+
+- name: CatalogueDataset
+  visibility: internal
+  description: >-
+    One dataset matching a pinned catalogue query, with its first resource (the downloadable
+    file) inline. For a dated-extract series the title carries the extract date. The composite
+    'datasetId|resourceId|<filename from resourceUrl>' is the key an NdisSnapshot anchor takes.
+  properties:
+    datasetId:
+      metadata: { identity: "true" }
+    query: "The pinned catalogue query, stamped from the anchor."
+    title: "Dataset title as catalogued — a dated extract stamps its date here."
+    publisher: "The publishing organisation as catalogued."
+    licenseId: "The dataset's own licence id — read, never assumed."
+    metadataModified: "ISO timestamp of the last catalogue-metadata change."
+    resourceId: "First resource's UUID."
+    resourceUrl: "First resource's download URL."
+    resourceFormat: "First resource's format as catalogued."
+    resourceBytes: "First resource's size in bytes, when the catalogue knows it."
+  virtualJoins:
+    - anchorLabel: CatalogueSearch
+      relationship: HAS_DATASET
+      keyField: query
+      recordKeyField: query
+      producer: datasetCatalogue
+      description: "Datasets matching a pinned catalogue phrase: `MATCH (s:CatalogueSearch {query:'…'})-[:HAS_DATASET]->(d:CatalogueDataset)`."
+
+- name: NdisSnapshot
+  visibility: internal
+  description: >-
+    One dated extract of the NDIS Commission compliance register, pinned whole. The key is
+    'datasetId|resourceId|filename' as a CatalogueDataset row supplies it. Each extract is
+    CURRENT STATE at its date — the series, not any one extract, is where appearance and
+    disappearance live.
+  properties:
+    snapshotKey:
+      metadata: { identity: "true" }
+
+- name: SnapshotAction
+  visibility: internal
+  description: >-
+    One row of one dated compliance-register extract, verbatim. The same real-world action
+    appears as a row in EVERY extract that carries it, so identity across extracts is a
+    consumer-side construction (action type + ABN-or-name + day-normalized effective date) and
+    the caveats live with the consumer. Date formats differ ACROSS extracts (dd/mm/yyyy hh:mm
+    early 2026, ISO later) — compare days, never raw strings.
+  properties:
+    rowKey:
+      metadata: { identity: "true" }
+    snapshotKey: "The pinned extract, stamped from the anchor."
+    register: "The action type as the Commission publishes it."
+    name: "The provider name as published in THIS extract (name forms drift between extracts)."
+    abn: "ABN as published — blank on ~18% of rows; consumers must digits-normalize."
+    city: "City as published."
+    state: "State as published."
+    postcode: "Postcode as published."
+    dateFrom: "Date effective from, verbatim in the extract's own format."
+    dateTo: "Date no longer in force, verbatim; empty = in force at the extract date."
+    detail: "The Commission's own 'Relevant information' narrative, verbatim."
+  virtualJoins:
+    - anchorLabel: NdisSnapshot
+      relationship: HAS_ACTION
+      keyField: snapshotKey
+      recordKeyField: snapshotKey
+      producer: ndisActionsSnapshotRows
+      description: "Every row of a pinned extract: `MATCH (s:NdisSnapshot {snapshotKey:'…'})-[:HAS_ACTION]->(a:SnapshotAction)`."
 
 # ── The charity layer: the only open Australian source that puts an ADDRESS against an ABN ─────
 
@@ -126,7 +219,231 @@
       keyField: abn
       recordKeyField: abn
       producer: charityByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
       description: "The charity register entry for a pinned ABN: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_CHARITY_RECORD]->(c:CharityRecord)`."
+
+- name: DisabilityServiceRoll
+  visibility: internal
+  description: >-
+    The ACNC register's People_with_Disabilities beneficiary flag pinned as an anchor (the only
+    published value is 'Y') — one anchor enumerates every charity the ACNC classified as serving
+    people with disabilities. The candidate roll for the provider ledger. The flag is a
+    registration-time classification: absence means unclassified, never 'not a disability
+    provider', and unregistered (non-charity) providers are invisible here entirely.
+  properties:
+    marker:
+      metadata: { identity: "true" }
+
+- name: DisabilityCharity
+  visibility: internal
+  description: >-
+    One charity on the ACNC's disability-serving roll, with the register's own name, size band
+    (a REVENUE band, not headcount) and location. The abn is the join back to money, the AIS
+    return and the compliance register.
+  properties:
+    rollKey:
+      metadata: { identity: "true" }
+    marker: "The pinned flag, stamped from the anchor."
+    abn: "The charity's ABN."
+    charityName: "Registered legal name."
+    otherNames: "Other/trading names as registered."
+    town: "Town or city."
+    state: "State."
+    postcode: "Postcode."
+    registrationDate: "Date registered with the ACNC."
+    established: "Date the organisation was established."
+    charitySize: "ACNC size band (small/medium/large) — a revenue band."
+  virtualJoins:
+    - anchorLabel: DisabilityServiceRoll
+      relationship: HAS_CHARITY
+      keyField: marker
+      recordKeyField: marker
+      producer: charitiesServingDisabilities
+      description: "The whole disability-serving slice of the charity register: `MATCH (r:DisabilityServiceRoll {marker:'Y'})-[:HAS_CHARITY]->(c:DisabilityCharity)`."
+
+- name: AisReturn
+  visibility: internal
+  description: >-
+    The charity's FY2024 Annual Information Statement row — its OWN filing to the ACNC: revenue
+    from government, goods-and-services revenue, staff headcounts and total FTE, employee
+    expenses, grants it made to others, and the self-declared related-party flag. The
+    reconstructed ledger of docs/adr/0001. Everything here is SELF-reported and lagged; small
+    charities file reduced detail; a consolidated report ('y') covers a GROUP and makes
+    per-entity arithmetic meaningless; and NDIS fee-for-service may sit under goods-and-services
+    rather than government revenue — which line a provider uses is itself informative.
+  properties:
+    aisKey:
+      metadata: { identity: "true" }
+    abn: "The matched ABN, stamped from the anchor."
+    charityName: "Name as filed."
+    charitySize: "ACNC size band for the year."
+    reportingPeriodFrom: "Financial report period start, as filed."
+    reportingPeriodTo: "Financial report period end, as filed — compare money to THIS period, not to a calendar year."
+    statementType: "Type of financial statement filed."
+    purposesPursued: >-
+      FREE TEXT: how the charity says it pursued its purposes that year, in its own words. The only
+      narrative field in the AIS, and the only place a provider describes what it actually did —
+      clusterable, and the counterpart to the money columns beside it.
+    consolidated: "'y' when the report consolidates more than one entity — group figures, not this entity's."
+    staffFullTime: "Full-time staff headcount, as filed."
+    staffPartTime: "Part-time staff headcount, as filed."
+    staffCasual: "Casual staff headcount, as filed."
+    staffVolunteers: "Volunteers, as filed."
+    fteTotal: "Total full-time-equivalent staff, as filed — the denominator of revenue per FTE."
+    employeeExpenses: "Employee expenses $, as filed — the cross-check that separates 'few staff' from 'mis-keyed FTE'."
+    revenueGovernment: "Revenue from government $, as filed — self-reported, all levels of government."
+    revenueGoodsServices: "Revenue from goods and services $, as filed — where NDIS fee-for-service often books."
+    donationsBequests: "Donations and bequests $, as filed."
+    revenueTotal: "Total revenue $, as filed."
+    grossIncomeTotal: "Total gross income $, as filed."
+    grantsMadeAustralia: "Grants and donations the charity made for use in Australia $ — high pass-through explains revenue without staff."
+    grantsMadeOverseas: "Grants and donations made for use outside Australia $."
+    otherExpenses: "All other expenses $ — everything that is not employee expenses, interest or grants made. For a provider that BROKERS services rather than employing staff, this is where the money leaves; its recipients are named nowhere public."
+    expensesTotal: "Total expenses $, as filed."
+    netSurplus: "Net surplus/deficit $, as filed."
+    relatedPartyTransactions: "'y'/'n' — the charity's own declaration of reportable related-party transactions."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_AIS
+      keyField: abn
+      recordKeyField: abn
+      producer: aisReturnByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
+      description: "The FY24 AIS row for a pinned ABN: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_AIS]->(a:AisReturn)`."
+
+- name: DeclaredProgram
+  visibility: internal
+  description: >-
+    One program a charity declared in its FY24 AIS, fetched BY ABN — the whole mix for one
+    entity. The mix is what tells a reader whether a flagged figure is even NDIS money: the AIS
+    reports a single government-revenue line covering aged care, disability, homelessness and
+    everything else the charity does.
+  properties:
+    programKey:
+      metadata: { identity: "true" }
+    abn: "The reporting charity's ABN, stamped from the anchor."
+    charityName: "The reporting charity's name."
+    programName: "The program name as filed."
+    classification: "The ACNC classification the charity chose for it."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_DECLARED_PROGRAM
+      keyField: abn
+      recordKeyField: abn
+      producer: programsByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
+      description: "Every FY24 program a pinned ABN declared: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_DECLARED_PROGRAM]->(p:DeclaredProgram)`."
+
+- name: PriorProgramClass
+  visibility: internal
+  description: >-
+    The same ACNC program classification, pinned against the FY2023 programs file. Exists so a
+    disappearance is answerable: an entity that declared a disability program in FY23 and none in
+    FY24 either stopped filing, stopped doing disability work, or reclassified — the register does
+    not say which, and non-filing is frequently administrative (extensions are routine).
+  properties:
+    classification:
+      metadata: { identity: "true" }
+
+- name: PriorCharityProgram
+  visibility: internal
+  description: >-
+    One program a charity reported in its FY23 AIS, under a pinned classification.
+  properties:
+    programKey:
+      metadata: { identity: "true" }
+    classification: "The pinned classification, stamped from the anchor."
+    abn: "The reporting charity's ABN."
+    charityName: "The reporting charity's name as filed for FY23."
+    programName: "The program name as the charity filed it."
+  virtualJoins:
+    - anchorLabel: PriorProgramClass
+      relationship: HAS_PROGRAM
+      keyField: classification
+      recordKeyField: classification
+      producer: priorProgramsByClassification
+      description: "Every FY23 program under a pinned classification: `MATCH (p:PriorProgramClass {classification:'Disability services'})-[:HAS_PROGRAM]->(g:PriorCharityProgram)`."
+
+- name: AisPriorReturn
+  visibility: internal
+  description: >-
+    The same charity's FY2023 Annual Information Statement row — the prior point that makes a
+    TRAJECTORY visible (a billing surge, a staff collapse, a first-ever filing). Same
+    self-reported, lagged caveats as AisReturn; comparing two years compares two SELF-REPORTS,
+    and a changed reporting period or a group-structure change moves figures without anything
+    happening in the world.
+  properties:
+    aisPriorKey:
+      metadata: { identity: "true" }
+    abn: "The matched ABN, stamped from the anchor."
+    charityName: "Name as filed for FY23."
+    charitySize: "ACNC size band for FY23."
+    reportingPeriodTo: "FY23 financial report period end, as filed — compare like with like."
+    consolidated: "'y' when the FY23 report consolidates more than one entity."
+    fteTotal: "Total FTE staff, as filed for FY23."
+    employeeExpenses: "Employee expenses $, FY23."
+    revenueGovernment: "Revenue from government $, FY23."
+    revenueGoodsServices: "Revenue from goods and services $, FY23."
+    revenueTotal: "Total revenue $, FY23."
+    otherExpenses: "All other expenses $, FY23 — the prior point that makes a workforce-model change visible."
+    expensesTotal: "Total expenses $, FY23."
+    relatedPartyTransactions: "'y'/'n' related-party declaration, FY23."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_AIS_PRIOR
+      keyField: abn
+      recordKeyField: abn
+      producer: aisPriorReturnByAbn
+      # maxAnchors is a COST statement, not a safety ritual: this is a `tabular` producer, so a
+      # batch of keys is served by ONE locally cached file scan — 968 ABNs cost the same scan as
+      # 20. The 200 default is an API-storm guard for per-anchor REMOTE producers, and leaving it
+      # here is what forced cohort-wide screens into JavaScript batching loops instead of views.
+      maxAnchors: 3000
+      description: "The FY23 AIS row for a pinned ABN: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_AIS_PRIOR]->(a:AisPriorReturn)`."
+
+- name: ProgramClass
+  visibility: internal
+  description: >-
+    An ACNC program classification pinned as an anchor — the register's own taxonomy of what a
+    charity's programs DO ('Disability services', 'Housing for people with disabilities', …).
+    The classification is the charity's own selection at filing time, which is exactly its
+    value: it is the self-declared answer to "is this entity in the disability business",
+    sharper than the beneficiary flag a hospital or university also carries.
+  properties:
+    classification:
+      metadata: { identity: "true" }
+
+- name: CharityProgram
+  visibility: internal
+  description: >-
+    One program a charity reported in its FY24 AIS, under a pinned classification. The program
+    name is the charity's own wording.
+  properties:
+    programKey:
+      metadata: { identity: "true" }
+    classification: "The pinned classification, stamped from the anchor."
+    abn: "The reporting charity's ABN."
+    charityName: "The reporting charity's name."
+    programName: "The program name as the charity filed it."
+  virtualJoins:
+    - anchorLabel: ProgramClass
+      relationship: HAS_PROGRAM
+      keyField: classification
+      recordKeyField: classification
+      producer: programsByClassification
+      description: "Every FY24 program filed under a pinned classification: `MATCH (p:ProgramClass {classification:'Disability services'})-[:HAS_PROGRAM]->(g:CharityProgram)`."
 
 - name: PostcodeArea
   visibility: internal

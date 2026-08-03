@@ -26,9 +26,78 @@
     dateFrom: "Date effective from"
     dateTo: "Date no longer in force"
     state: "State"
-    detail: "Other relevant info"
+    # MEASURED 2026-08-02: the narrative lives in "Relevant information" (99% filled); the
+    # similarly-named "Other relevant info" column is ~0% filled in EVERY snapshot Feb-Jul 2026.
+    # This previously projected the dead column, so every consuming lens showed detail: null.
+    detail: "Relevant information"
   fileCacheSeconds: 86400
   cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# ── The register as a TIME SERIES (docs/adr/0001) ──────────────────────────────────────────────
+# The Commission publishes the compliance register as dated CATALOGUE EXTRACTS — one data.gov.au
+# dataset per date, eight for Feb-Jul 2026 — and each shows CURRENT STATE only. Diffing extracts
+# is the only way to see when an action APPEARED and, the signal nobody tracks, when one
+# DISAPPEARED. Two producers carry that: the catalogue search enumerates the extracts (so a new
+# one is found the day it is published, not when this file is edited), and the snapshot-rows
+# producer returns any one extract WHOLE.
+
+# data.gov.au catalogue search — the generic "does this source exist / what extracts are there"
+# probe, elevated to a producer because the ADR's method rule (query the catalogue before
+# concluding a source does not exist) kept being right. Key = a quoted dataset-title phrase.
+- name: datasetCatalogue
+  kind: remote
+  operation: searchDatasets
+  records: "$.result.results[*]"
+  # The key is sent QUOTED: CKAN's Solr treats unquoted words as OR and answers a title-phrase
+  # search with dozens of unrelated datasets (measured: 49 rows for the NDIS phrase unquoted,
+  # 8 quoted). echoKeyAs stamps the caller's ORIGINAL phrase back, so the quoting never re-keys
+  # the join.
+  keyTemplate: '"{key}"'
+  echoKeyAs: query
+  args: { q: "{keys}", rows: 60 }
+  project:
+    title: title
+    datasetId: id
+    publisher: "organization.title"
+    licenseId: license_id
+    metadataModified: metadata_modified
+    resourceId: "resources.0.id"
+    resourceUrl: "resources.0.url"
+    resourceFormat: "resources.0.format"
+    resourceBytes: "resources.0.size"
+  # The catalogue changes when a publisher acts, which is business days at most.
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# One compliance-register extract, WHOLE. The key is the extract's identity in the catalogue —
+# 'datasetId|resourceId|filename' as returned by datasetCatalogue — so this producer can fetch
+# ANY extract in the series without a YAML edit per date. No keyColumn: the anchor pins a
+# snapshot, and every row of that snapshot comes back stamped with it (maxRowsPerKey bounds the
+# whole-file return; the register was 3,333 rows at 06.07.2026 and growing ~200/month, so 12000
+# is years of headroom, and hitting it surfaces as an honest TRUNCATED warning).
+# Projection is pinned to the columns STABLE across all measured snapshots — 'Registration
+# Groups ' grew/lost a trailing space between extracts and 'Provider Number' is 1-2% filled, so
+# neither is projected. Date formats CHANGE across extracts (dd/mm/yyyy hh:mm in Feb, ISO by
+# Jul) — consumers must day-normalize both, and the diff lens does.
+- name: ndisActionsSnapshotRows
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/{key1}/resource/{key2}/download/{key3}"
+  keyAs: snapshotKey
+  rowIdAs: rowKey
+  maxRowsPerKey: 12000
+  project:
+    register: "Type"
+    name: "Name"
+    abn: "ABN"
+    city: "City"
+    state: "State"
+    postcode: "Postcode"
+    dateFrom: "Date effective from"
+    dateTo: "Date no longer in force"
+    detail: "Relevant information"
+  # Extracts are immutable once published (a NEW date is a NEW dataset), so cache long; the
+  # negative case (a bad key) is a misread catalogue row, worth re-checking sooner.
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 21600 }
 
 # Modern Slavery Statements Register — the bulk export, re-stamped daily with today's date in the
 # filename ({today} resolves it). PRESENCE here is a lodgement (usually good); the lens's signal
@@ -107,6 +176,170 @@
     servesPeopleWithDisabilities: "People_with_Disabilities"
   fileCacheSeconds: 604800
   cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# The SAME file keyed by the ACNC's own People_with_Disabilities beneficiary flag ('Y' or
+# blank), so one anchor enumerates the whole disability-serving slice of the register — 16,035
+# of 66,012 charities measured 2026-08-02. This is the candidate roll for the provider-ledger
+# join (docs/adr/0001): the flag is the ACNC's registration-time classification, and 'not
+# flagged' means not classified so, never 'not a disability provider'. Shares the deployment
+# file cache with charityByAbn — same URL, one download.
+- name: charitiesServingDisabilities
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/b050b242-4487-4306-abf5-07ca073e5594/resource/8fb32972-24e9-4c95-885e-7140be51be8a/download/datadotgov_main.csv"
+  keyColumn: "People_with_Disabilities"
+  keyMatch: ci
+  keyAs: marker
+  rowIdAs: rollKey
+  maxRowsPerKey: 30000
+  project:
+    abn: "ABN"
+    charityName: "Charity_Legal_Name"
+    otherNames: "Other_Organisation_Names"
+    town: "Town_City"
+    state: "State"
+    postcode: "Postcode"
+    registrationDate: "Registration_Date"
+    established: "Date_Organisation_Established"
+    charitySize: "Charity_Size"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+
+# ── ACNC Annual Information Statement 2024 — the reconstructed ledger (docs/adr/0001) ──────────
+# Per ABN for FY24: self-reported revenue from government, goods-and-services revenue, staff
+# (headcounts AND total FTE), employee expenses, grants the charity itself made, and the
+# self-declared related-party-transactions flag. This is the closest thing to a per-provider
+# NDIS ledger Australian open data offers: self-reported government revenue MINUS the published
+# Commonwealth registers leaves a residual that, for a disability provider, is largely NDIS and
+# state money. Every consumer carries: SELF-reported, lagged (FY24), charities only, small
+# charities file reduced detail, and NDIS fee-for-service may be booked under goods-and-services
+# rather than government — which line a provider uses is itself informative.
+# 53,763 rows, 100% clean 11-digit ABN, all money/staff columns 100% filled (measured
+# 2026-08-02). The catalogue holds one dataset per year back to 2013 (datadotgov_ais13..24) —
+# prior years are a documented extension, not yet consumed.
+- name: aisReturnByAbn
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/276ec1bc-4971-461c-88bc-be9f3c99a0f8/resource/710630ea-1202-4bbb-95f7-3973a972ddf8/download/datadotgov_ais24.csv"
+  keyColumn: "abn"
+  keyMatch: digits
+  keyAs: abn
+  rowIdAs: aisKey
+  project:
+    charityName: "charity name"
+    charitySize: "charity size"
+    reportingPeriodFrom: "fin report from"
+    reportingPeriodTo: "fin report to"
+    statementType: "type of financial statement"
+    purposesPursued: "how purposes were pursued"
+    consolidated: "report consolidated with more than one entity"
+    staffFullTime: "staff - full time"
+    staffPartTime: "staff - part time"
+    staffCasual: "staff - casual"
+    staffVolunteers: "staff - volunteers"
+    fteTotal: "total full time equivalent staff"
+    employeeExpenses: "employee expenses"
+    revenueGovernment: "revenue from government"
+    revenueGoodsServices: "revenue from goods and services"
+    donationsBequests: "donations and bequests"
+    revenueTotal: "total revenue"
+    grossIncomeTotal: "total gross income"
+    grantsMadeAustralia: "grants and donations made for use in Australia"
+    grantsMadeOverseas: "grants and donations made for use outside Australia"
+    otherExpenses: "all other expenses"
+    expensesTotal: "total expenses"
+    netSurplus: "net surplus/deficit"
+    relatedPartyTransactions: "charity has reportable related party transactions"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+
+# The FY2023 PROGRAMS file, keyed the same way — so "who declared a disability program LAST year
+# and does not this year" is answerable inside one taxonomy, rather than by a filter derived from
+# the very file that would exclude the answer. 98,320 program rows; 1,350 ABNs under the
+# disability classes, 129 of them absent from FY24 (measured 2026-08-03).
+- name: priorProgramsByClassification
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/ff6905d6-9d5d-4ef1-8478-72b833864fb7/resource/1fc1ecea-b9ec-45e4-a4f8-090ba2912e14/download/datadotgov_ais23_programs.csv"
+  keyColumn: "Classification"
+  keyMatch: ci
+  keyAs: classification
+  rowIdAs: programKey
+  maxRowsPerKey: 12000
+  project:
+    abn: "ABN"
+    charityName: "Charity Name"
+    programName: "Program name"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+
+# The FY24 programs file keyed by ABN — one charity's WHOLE declared program mix. Without it a
+# screened row misleads: an entity flagged through its disability program may earn most of its
+# government revenue from aged care or homelessness services, and the AIS reports one revenue
+# figure for all of it. Measured case: a $29.1M "government revenue" entity with 2 FTE whose
+# programs are Home Care Packages, meals and aged day care ALONGSIDE disability care — brokered
+# home care explains the shape, and only the program mix shows it.
+- name: programsByAbn
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/276ec1bc-4971-461c-88bc-be9f3c99a0f8/resource/09f5fc83-8648-413e-ba5b-793a9d6b305f/download/datadotgov_ais24_programs.csv"
+  keyColumn: "ABN"
+  keyMatch: digits
+  keyAs: abn
+  rowIdAs: programKey
+  maxRowsPerKey: 60
+  project:
+    charityName: "Charity Name"
+    programName: "Program name"
+    classification: "Classification"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+
+# The PRIOR year's AIS (FY2023), same schema, same key — the second point that makes a TRAJECTORY
+# visible. A single year's filing cannot show a billing surge; two can. 53,445 rows, verified
+# column-identical to FY24 (2026-08-03). Earlier years back to 2013 exist in the catalogue under
+# datadotgov_ais13..22 and are a documented extension.
+- name: aisPriorReturnByAbn
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/ff6905d6-9d5d-4ef1-8478-72b833864fb7/resource/2b0fb746-57c5-4523-bb4c-74b7b78279d9/download/datadotgov_ais23.csv"
+  keyColumn: "abn"
+  keyMatch: digits
+  keyAs: abn
+  rowIdAs: aisPriorKey
+  project:
+    charityName: "charity name"
+    charitySize: "charity size"
+    reportingPeriodTo: "fin report to"
+    consolidated: "report consolidated with more than one entity"
+    fteTotal: "total full time equivalent staff"
+    employeeExpenses: "employee expenses"
+    revenueGovernment: "revenue from government"
+    revenueGoodsServices: "revenue from goods and services"
+    revenueTotal: "total revenue"
+    otherExpenses: "all other expenses"
+    expensesTotal: "total expenses"
+    relatedPartyTransactions: "charity has reportable related party transactions"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
+
+# The AIS 2024 PROGRAMS companion file keyed by the ACNC's own program CLASSIFICATION — the
+# register's self-declared answer to "what does this charity actually do". 104,482 program rows
+# across 53k charities; the disability-relevant classes measured 2026-08-02: Disability services
+# (1,469), Disability sports (275), Family disability resources (155), Housing for people with
+# disabilities (143), Disabled persons' rights (102). This is what separates "serves people with
+# disabilities among others" (a hospital, a university — the beneficiary flag) from "runs a
+# disability-services program" (the NDIS-proximate slice). maxRowsPerKey covers the largest
+# published class (Christianity, 8,814 rows).
+- name: programsByClassification
+  kind: tabular
+  url: "https://data.gov.au/data/dataset/276ec1bc-4971-461c-88bc-be9f3c99a0f8/resource/09f5fc83-8648-413e-ba5b-793a9d6b305f/download/datadotgov_ais24_programs.csv"
+  keyColumn: "Classification"
+  keyMatch: ci
+  keyAs: classification
+  rowIdAs: programKey
+  maxRowsPerKey: 12000
+  project:
+    abn: "ABN"
+    charityName: "Charity Name"
+    programName: "Program name"
+  fileCacheSeconds: 604800
+  cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
 
 # The SAME file keyed by POSTCODE, so a lens can ask "who else is registered around here" and
 # cluster on the address itself. Keyed on postcode rather than the address line because an

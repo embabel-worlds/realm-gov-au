@@ -1,0 +1,236 @@
+# NDIS integrity as VIEWS — saved Cypher, no JavaScript.
+#
+# Everything here was first written as a `cypherscript` lens, which was the wrong default: the
+# arithmetic screens are a WHERE clause over two filings, and a lens hides them from the Cypher
+# console, from composition, from the text-to-cypher generator, and from the view cache. A view is
+# the right home for anything a query can express; a lens earns its keep only where a query cannot
+# (multi-extract fuzzy diffing, per-entity search-phrase construction, string gates, retries).
+#
+# The join that makes these possible is the VARIABLE-SEEDED anchor: the candidate ABNs come from
+# the ACNC program taxonomy as PROPERTIES, and `(q:IntegrityQuery {abn: abn})` seeds the AIS fetch
+# from that variable — verified live 2026-08-03. Without it this would need a JS batching loop.
+#
+# NODE views (outputLabel set) compose as labels: `MATCH (a:NdisDisabilityFilers) …`.
+# TABULAR views are runnable reports: POST /api/v1/views/{name}/invoke.
+#
+# EVERY SCREEN HERE IS AN ANOMALY IN A SELF-REPORT, never an allegation. Reporting-period changes,
+# group restructures, capital grants, contracted workforces and keying errors produce these shapes
+# innocently, and a consolidated ('y') filing covers a GROUP so its arithmetic is excluded.
+
+# ── The candidate set, as a composable node view ────────────────────────────────────────────────
+- name: NdisDisabilityFilers
+  description: >-
+    FY2024 Annual Information Statements of charities that declared a disability program — the
+    candidate set every screen starts from. Composable: traverse from it to the charity register,
+    the compliance register or the ABN register.
+  outputLabel: AisReturn
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification (Disability services, Disability sports, Housing for people with disabilities, Disabled persons' rights, Family disability resources)."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(a:AisReturn)
+    RETURN a
+
+# ── The screens, as runnable reports ────────────────────────────────────────────────────────────
+- name: NdisWorkforceFlip
+  description: >-
+    Providers whose employee expenses collapsed as a share of service revenue between FY23 and
+    FY24 while revenue held or grew — the work is now done by someone other than employees.
+    Lawful, and the documented precondition of both sham contracting and billing intermediation.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification to screen."
+    minService:
+      type: int
+      default: 1000000
+      description: "Floor on FY24 service revenue (government + goods and services)."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(now:AisReturn)
+    MATCH (q)-[:HAS_AIS_PRIOR]->(prior:AisPriorReturn)
+    WITH abn, now, prior,
+         coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
+         coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
+         coalesce(toFloat(now.employeeExpenses), 0.0) AS empNow,
+         coalesce(toFloat(prior.employeeExpenses), 0.0) AS empPrior
+    WHERE toLower(coalesce(now.consolidated, 'n')) <> 'y'
+      AND svcNow >= $minService AND svcPrior > 0
+      AND empPrior / svcPrior >= 0.5
+      AND empNow / svcNow < 0.3
+    RETURN now.charityName AS provider, abn,
+           svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
+           empPrior AS employeeExpensesFy23, empNow AS employeeExpensesFy24,
+           round(empPrior / svcPrior * 100) AS labourShareFy23Pct,
+           round(empNow / svcNow * 100) AS labourShareFy24Pct,
+           prior.fteTotal AS fteFy23, now.fteTotal AS fteFy24,
+           coalesce(toFloat(now.otherExpenses), 0.0) AS otherExpensesFy24,
+           now.relatedPartyTransactions AS relatedPartyDeclared,
+           now.reportingPeriodTo AS reportingPeriodTo
+    ORDER BY serviceRevenueFy24 DESC
+
+- name: NdisMoneyLeavesUnspecified
+  description: >-
+    Providers where most money leaves as unspecified "all other expenses" rather than wages or
+    named grants — the brokerage / plan-management shape. Lawful and common, and the one place
+    where public money's ultimate recipient is named in no public register.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification to screen."
+    minService:
+      type: int
+      default: 2000000
+      description: "Floor on FY24 service revenue."
+    minOtherShare:
+      type: int
+      default: 80
+      description: "Minimum percentage of total expenses booked as 'all other expenses'."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(a:AisReturn)
+    WITH abn, a,
+         coalesce(toFloat(a.revenueGovernment), 0.0) + coalesce(toFloat(a.revenueGoodsServices), 0.0) AS svc,
+         coalesce(toFloat(a.otherExpenses), 0.0) AS other,
+         coalesce(toFloat(a.expensesTotal), 0.0) AS expenses,
+         coalesce(toFloat(a.employeeExpenses), 0.0) AS emp
+    WHERE toLower(coalesce(a.consolidated, 'n')) <> 'y'
+      AND svc >= $minService AND expenses > 0
+      AND other / expenses * 100 >= $minOtherShare
+      AND emp / svc < 0.35
+    RETURN a.charityName AS provider, abn,
+           svc AS serviceRevenueFy24, other AS otherExpensesFy24, expenses AS totalExpensesFy24,
+           round(other / expenses * 100) AS otherExpensesSharePct,
+           emp AS employeeExpensesFy24, a.fteTotal AS fteFy24,
+           a.relatedPartyTransactions AS relatedPartyDeclared
+    ORDER BY serviceRevenueFy24 DESC
+
+- name: NdisRevenueSurgeWithoutStaff
+  description: >-
+    Providers whose service revenue multiplied year on year while full-time-equivalent staff did
+    not — the shape a phantom-services claim would have to survive. A capital grant, a merger or
+    a first full year of operation produces it innocently.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification to screen."
+    minService:
+      type: int
+      default: 1000000
+      description: "Floor on FY24 service revenue."
+    minMultiple:
+      type: int
+      default: 250
+      description: "Minimum year-on-year revenue multiple, in hundredths (250 = 2.5x)."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(now:AisReturn)
+    MATCH (q)-[:HAS_AIS_PRIOR]->(prior:AisPriorReturn)
+    WITH abn, now, prior,
+         coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
+         coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
+         coalesce(toFloat(now.fteTotal), 0.0) AS fteNow,
+         coalesce(toFloat(prior.fteTotal), 0.0) AS ftePrior
+    WHERE toLower(coalesce(now.consolidated, 'n')) <> 'y'
+      AND svcNow >= $minService AND svcPrior > 50000
+      AND svcNow / svcPrior * 100 >= $minMultiple
+      AND fteNow <= ftePrior * 1.25
+    RETURN now.charityName AS provider, abn,
+           svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
+           round(svcNow / svcPrior * 100) / 100.0 AS revenueMultiple,
+           ftePrior AS fteFy23, fteNow AS fteFy24,
+           now.reportingPeriodTo AS reportingPeriodTo,
+           now.relatedPartyTransactions AS relatedPartyDeclared
+    ORDER BY serviceRevenueFy24 DESC
+
+- name: NdisSelfContradictingFiling
+  description: >-
+    Filings that disagree with themselves — government revenue above total revenue, or employee
+    expenses reported with zero full-time-equivalent staff. Most often a keying error, which is
+    itself worth knowing about a self-reported dataset used to hold providers to account.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification to screen."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(a:AisReturn)
+    WITH abn, a,
+         coalesce(toFloat(a.revenueGovernment), 0.0) AS gov,
+         coalesce(toFloat(a.revenueTotal), 0.0) AS total,
+         coalesce(toFloat(a.employeeExpenses), 0.0) AS emp,
+         coalesce(toFloat(a.fteTotal), 0.0) AS fte
+    WHERE toLower(coalesce(a.consolidated, 'n')) <> 'y'
+      AND ((gov > total * 1.02 AND gov > 100000) OR (fte = 0.0 AND emp > 500000))
+    RETURN a.charityName AS provider, abn,
+           gov AS revenueGovernmentFy24, total AS revenueTotalFy24,
+           emp AS employeeExpensesFy24, fte AS fteFy24,
+           CASE WHEN gov > total * 1.02 AND gov > 100000
+                THEN 'government revenue exceeds total revenue'
+                ELSE 'employee expenses reported with zero FTE staff' END AS contradiction
+    ORDER BY revenueGovernmentFy24 DESC
+
+# ── The register's own shape, as reports ────────────────────────────────────────────────────────
+# snapshotKey is a parameter with the current extract as its default: the composite is
+# 'datasetId|resourceId|filename' from the data.gov.au catalogue, and au-register-diff is where
+# the series is enumerated live.
+- name: NdisEnforcementWaves
+  description: >-
+    Compliance notices grouped by the day they took effect. The register is not a stream of
+    individual findings: notices arrive in mass batches on single dates, so a provider's presence
+    in it may mean only that it sat inside one.
+  params:
+    snapshotKey:
+      type: string
+      default: "4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv"
+      description: "Which dated extract to read: 'datasetId|resourceId|filename' from the data.gov.au catalogue."
+    minNotices:
+      type: int
+      default: 20
+      description: "Only report days with at least this many notices."
+  cypher: |
+    MATCH (n:NdisSnapshot {snapshotKey: $snapshotKey})-[:HAS_ACTION]->(a:SnapshotAction)
+    WHERE a.register CONTAINS 'Compliance notice'
+    WITH substring(a.dateFrom, 0, 10) AS effectiveDay, count(*) AS notices,
+         sum(CASE WHEN a.detail CONTAINS 'section 73J' THEN 1 ELSE 0 END) AS citingAuditObligation
+    WHERE notices >= $minNotices
+    RETURN effectiveDay, notices, citingAuditObligation
+    ORDER BY notices DESC
+
+- name: NdisRegisterOpacity
+  description: >-
+    How specifically the register explains itself, per action type: how many rows state a basis
+    ("on the basis that…", "reasonably believes", "convicted of") versus only describing what is
+    prohibited or required. Banning orders publish scope, not conduct — this counts it.
+  params:
+    snapshotKey:
+      type: string
+      default: "4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv"
+      description: "Which dated extract to read."
+  cypher: |
+    MATCH (n:NdisSnapshot {snapshotKey: $snapshotKey})-[:HAS_ACTION]->(a:SnapshotAction)
+    WITH a.register AS actionType, count(*) AS rows,
+         sum(CASE WHEN a.detail CONTAINS 'on the basis that'
+                    OR a.detail CONTAINS 'reasonably believes'
+                    OR a.detail CONTAINS 'convicted of'
+                    OR a.detail CONTAINS 'identified conduct'
+                  THEN 1 ELSE 0 END) AS statingABasis,
+         sum(CASE WHEN toLower(a.detail) CONTAINS 'criminal' THEN 1 ELSE 0 END) AS citingCriminalHistory,
+         sum(CASE WHEN toLower(a.detail) CONTAINS 'falsif' OR toLower(a.detail) CONTAINS 'fraud'
+                  THEN 1 ELSE 0 END) AS citingFraudOrFalsification
+    RETURN actionType, rows, statingABasis,
+           round(toFloat(statingABasis) / rows * 100) AS statingABasisPct,
+           citingCriminalHistory, citingFraudOrFalsification
+    ORDER BY rows DESC

@@ -7,6 +7,30 @@
 # it can only return what its index holds. Where this realm does want model judgment (themes,
 # clusters, relevance) that judgment is labelled — but it is never allowed to invent a source.
 
+# The SAME Brave API's WEB index, for phrases whose trail is not news: tribunal and court
+# decisions (site:austlii.edu.au), regulator pages, provider sites. Chosen over a generative
+# producer for the same reason as newsForPhrase: a search index cannot fabricate a result.
+- name: webForPhrase
+  kind: remote
+  operation: webSearch
+  records: "$.web.results[*]"
+  args:
+    q: "{keys}"
+    count: 8
+    country: au
+  keyTemplate: "{key}"
+  echoKeyAs: searchPhrase
+  project:
+    url: url
+    title: title
+    snippet: description
+    age: age
+  cache: { kind: ttl, seconds: 21600, negativeTtlSeconds: 21600 }
+  cost:
+    bucket: "brave"
+    rate: "1/sec"
+    yield: medium
+
 - name: newsForPhrase
   kind: remote
   operation: newsSearch

@@ -1,8 +1,8 @@
-# Two sources. Both Commonwealth government, both open, both verified keyless against the live
-# services 2026-08-01. Specs are vendored because neither publisher ships a usable OpenAPI
-# document for the operations this realm needs (AusTender documents its OCDS API in a GitHub
-# README; the lobbyist register publishes a Swagger whose search POSTs return 500 to anonymous
-# callers — only the two GETs vendored here actually answer without a session).
+# Commonwealth sources, all open, all verified keyless against the live services (dates in each
+# spec). Specs are vendored because no publisher here ships a usable OpenAPI document for the
+# operations this realm needs (AusTender documents its OCDS API in a GitHub README; the lobbyist
+# register publishes a Swagger whose search POSTs return 500 to anonymous callers — only the two
+# GETs vendored here actually answer without a session; CKAN documents its action API in prose).
 
 - url: austender-ocds.yaml
   name: austender
@@ -11,6 +11,11 @@
 
 - url: ag-lobbyists.yaml
   name: agLobbyists
+  type: openapi
+  auth: none
+
+- url: data-gov-au-ckan.yaml
+  name: dataGovAu
   type: openapi
   auth: none
 

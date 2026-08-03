@@ -1,0 +1,194 @@
+id: au-estimates-integrity
+name: What the regulator has told Parliament
+description: >-
+  Senate Estimates is where officials answer for the scheme on the record, and ParlInfo publishes
+  the transcripts. This lens searches the Estimates record for the integrity vocabulary — banning
+  orders, unregistered providers, fraud, compliance action — keeps only pages whose own excerpt
+  contains that language, and reads what was said: a summary of the exchange, whether an official
+  described providers RETURNING after enforcement, and whether the page names any provider. The
+  excerpts are verbatim with ParlInfo's speaker attribution intact, because the value here is the
+  quotation, not the paraphrase. A page is a page of the record: officials speak to policy and to
+  patterns, and Estimates witnesses are frequently constrained from discussing an individual
+  provider at all — so an absence of names is the venue's rule, never evidence that none exist.
+params:
+  - name: phrases
+    type: STRING
+    label: Comma-separated search phrases (ParlInfo matches SHORT phrases; long ones return nothing)
+    required: false
+    default: "NDIS Commission, banning order, unregistered provider, NDIS fraud"
+  - name: via
+    type: STRING
+    label: "Record class: estimates | committees | chamber | any"
+    required: false
+    default: "estimates"
+  - name: assess
+    type: STRING
+    label: Read the excerpts (yes/no)
+    required: false
+    default: "yes"
+spec:
+  kind: cypherscript
+  script: |
+    // ParlInfo's Content: search matches SHORT phrases. A long quoted phrase
+    // ("NDIS Quality and Safeguards Commission banning order") returns zero and the feed's
+    // zero-result 301 makes that an honest empty — indistinguishable from "never discussed"
+    // unless the phrase length is understood. Measured: that phrase → 0 pages; "NDIS Commission"
+    // → 8 Estimates pages.
+    const phrases = String(lensArgs.phrases || "NDIS Commission, banning order, unregistered provider, NDIS fraud")
+      .split(",").map(s => s.trim()).filter(s => s.length >= 3 && s.length <= 40).slice(0, 8);
+    const via = ["estimates", "committees", "chamber", "any"].includes(String(lensArgs.via || "").trim())
+      ? String(lensArgs.via).trim() : "estimates";
+    const assess = !/^(n|no|false|0)$/i.test(String(lensArgs.assess || "yes"));
+    const warnings = [];
+    const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+    const ask = async (label, cypher, retries) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const r = await gateway.kg.query({ cypher, params: JSON.stringify({}) });
+          warnings.push(...((r && r.warnings) || []));
+          return { rows: ((r && r.rows) ? r.rows : (r || [])), ok: true };
+        } catch (e) {
+          if (attempt < (retries || 0)) continue;
+          warnings.push(label + " unavailable: " + String((e && e.message) || e));
+          return { rows: [], ok: false };
+        }
+      }
+    };
+    if (!phrases.length) {
+      await gateway.lens.present({ content: JSON.stringify({ kind: "au-estimates-integrity", status: "FAILED",
+        headline: { note: "No usable search phrase. ParlInfo needs SHORT phrases (3-40 characters)." } }) });
+      return;
+    }
+
+    // ── 1. The record, per phrase ─────────────────────────────────────────────────────────────
+    const inList = phrases.map(p => JSON.stringify(p)).join(", ");
+    const pages = (await ask("ParlInfo", `
+      MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:'${via}'}]->(m:ParliamentMention)
+      WHERE q.phrase IN [${inList}]
+      RETURN q.phrase AS phrase, m.url AS url, m.title AS title, m.publishedAt AS publishedAt,
+             coalesce(m.content, m.summary, '') AS excerpt`, 1)).rows;
+
+    // One page can answer several phrases; keep the page once, remember every phrase that found it.
+    const byUrl = {};
+    pages.forEach(p => {
+      const e = (byUrl[p.url] = byUrl[p.url] || { url: p.url, title: p.title,
+        publishedAt: p.publishedAt, excerpt: "", phrases: [] });
+      if (!e.phrases.includes(p.phrase)) e.phrases.push(p.phrase);
+      if (String(p.excerpt || "").length > e.excerpt.length) e.excerpt = String(p.excerpt || "");
+    });
+    // A page with no readable excerpt cannot be read — reported as UNREADABLE, never as silence.
+    const INTEGRITY = /banning|unregistered|fraud|compliance|revocation|enforcement|integrity|scam|misuse/i;
+    const all = Object.values(byUrl);
+    const readable = all.filter(p => p.excerpt.length >= 200);
+    const onTopic = readable.filter(p => INTEGRITY.test(p.excerpt));
+
+    // ── 2. Read the on-topic excerpts — the only judged step ─────────────────────────────────
+    // The question worth a model: did an official describe providers RETURNING after enforcement?
+    // That pattern is what the phoenix and first-filing-at-scale screens exist to look for, and
+    // Estimates is where the regulator would have said so.
+    let read = [];
+    if (assess && onTopic.length) {
+      const urls = onTopic.slice(0, 12).map(p => JSON.stringify(p.url)).join(", ");
+      read = (await ask("reading the record", `
+        MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:'${via}'}]->(m:ParliamentMention)
+        WHERE q.phrase IN [${inList}] AND m.url IN [${urls}]
+        RETURN m.url AS url,
+               summarize(coalesce(m.content, m.summary, ''), 'what was said about NDIS provider integrity, enforcement or fraud in this exchange, in two sentences') AS said,
+               holds(coalesce(m.content, m.summary, ''), 'an official states that providers who were removed, banned or deregistered return to the scheme as a different entity, by acquiring another provider, or as an unregistered provider') AS officialDescribesReturningProviders,
+               holds(coalesce(m.content, m.summary, ''), 'the exchange discusses fraud or misuse of NDIS funds') AS discussesFraud,
+               extract(coalesce(m.content, m.summary, ''), 'names of NDIS provider organisations or companies discussed — not government bodies, not the NDIS Commission, not the NDIA, not committee or senator names') AS providersNamed`, 1)).rows;
+    }
+    const byUrlRead = {};
+    read.forEach(r => { byUrlRead[r.url] = r; });
+
+    // A name the transcript does not literally contain is DROPPED — the same no-fabrication gate
+    // the register-prose lens uses. Nothing a model invented reaches output.
+    const flat = (x) => String(x || "").toLowerCase();
+    // The extraction returns REGULATORS however the instruction is worded (NDIS Commission, the
+    // agency, Ahpra, "Care Quality and Safety Commission"). The containment gate cannot catch
+    // that — those names really are in the transcript — so the wrong CATEGORY is excluded
+    // deterministically rather than by another prompt attempt.
+    const NOT_A_PROVIDER = /ndis|ndia|commission|agency|department|ahpra|ombudsman|tribunal|police|committee|senate|parliament|government|minister|scheme|austrac|acic|accc|asic/i;
+    const enriched = onTopic.map(p => {
+      const r = byUrlRead[p.url];
+      const said = r && typeof r.said === "string" && !/^UNAVAILABLE/i.test(r.said) ? r.said : null;
+      const proposed = r && Array.isArray(r.providersNamed) ? r.providersNamed : [];
+      const verified = proposed
+        .map(n => String(n || "").replace(/\s*\([^)]*\)\s*$/, "").trim())
+        .filter(n => n.length >= 5 && !NOT_A_PROVIDER.test(n) && flat(p.excerpt).includes(flat(n)));
+      return {
+        title: p.title, url: p.url, date: p.publishedAt,
+        foundByPhrases: p.phrases,
+        excerpt: p.excerpt.slice(0, 1200),
+        said,
+        officialDescribesReturningProviders: r ? (r.officialDescribesReturningProviders ?? null) : null,
+        discussesFraud: r ? (r.discussesFraud ?? null) : null,
+        providersNamedInTranscript: verified.slice(0, 8),
+        providerNamesProposedButNotFoundInText: proposed.length - verified.length,
+      };
+    }).sort((a, b) => (String(b.date || "")).localeCompare(String(a.date || "")));
+    const returningProviders = enriched.filter(e => e.officialDescribesReturningProviders === true);
+
+    const failed = warnings.some(w => { const t = asText(w);
+      return t.includes("PRODUCER_ERROR") || t.includes("FETCH_FAILURE") || t.includes("AUTH_EXPIRED"); });
+    // ParlInfo caps each phrase at maxItems, and the feed says so. A capped search is a PARTIAL
+    // answer about the record — reporting COMPLETE over it would overstate the coverage.
+    const truncated = warnings.some(w => { const t = asText(w);
+      return t.includes("PARTIAL_RESULT") || t.includes("CAPPED") || t.includes("MAXITEMS"); });
+    await gateway.lens.present({ content: JSON.stringify({
+      kind: "au-estimates-integrity",
+      via, phrases,
+      status: failed ? "FAILED" : ((truncated || !all.length) ? "PARTIAL" : "COMPLETE"),
+      warnings,
+      headline: {
+        pagesMatched: all.length,
+        pagesWithReadableExcerpt: readable.length,
+        pagesUsingIntegrityLanguage: onTopic.length,
+        pagesRead: read.length,
+        officialsDescribingReturningProviders: returningProviders.length,
+        note: `${all.length} page(s) of the ${via} record matched these phrases; ${onTopic.length} use integrity language in their own excerpt. ` +
+          (returningProviders.length
+            ? `${returningProviders.length} contain an official describing providers RETURNING after enforcement — the pattern the phoenix and first-filing screens look for, stated on the record.`
+            : `None contain an official describing providers returning after enforcement.`) +
+          ` Estimates witnesses are routinely constrained from discussing an individual provider, so few names is the venue's rule, not evidence.`,
+      },
+      // A watch on this surface alerts when the record gains a page: Estimates sits in rounds
+      // (Feb/May/Oct), so polling weekly is generous and the vintage is the newest page's date.
+      watch: {
+        latestPageDate: enriched.length ? enriched[0].date : null,
+        pageKeys: enriched.map(e => e.url).sort(),
+        note: "Diff pageKeys for newly indexed transcripts; Estimates rounds are quarterly, so a stable set is the normal state.",
+      },
+      queries: [
+        { title: "The record", cypher: `MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:'${via}'}]->(m:ParliamentMention) WHERE q.phrase IN [${inList}] RETURN m` },
+        { title: "The reading", note: "summarize/holds/extract over each page's phrase-anchored excerpt; extracted names are dropped unless the transcript literally contains them." },
+      ],
+      officialsDescribingReturningProviders: returningProviders.slice(0, 6),
+      pages: enriched.slice(0, 20),
+      unreadablePages: all.filter(p => p.excerpt.length < 200).slice(0, 10)
+        .map(p => ({ title: p.title, url: p.url, note: "No readable excerpt — UNKNOWN, not silence." })),
+      interpretation: {
+        factual: ["every excerpt — the transcript verbatim, with ParlInfo's speaker attribution",
+          "which phrase found which page", "provider names, only where the transcript literally contains them"],
+        judged: ["said — a model's two-sentence summary of the exchange",
+          "officialDescribesReturningProviders and discussesFraud — three-valued verdicts (true / false / unknown)",
+          "which names to propose (the transcript then had to contain them)"],
+        note: "The quotation is the evidence. The summary exists to help a reader choose which quotation to open.",
+      },
+      limits: [
+        "ParlInfo matches SHORT phrases; a long phrase returns nothing and the feed's zero-result redirect makes that an honest empty. A silence here means 'not found for THESE phrases in THIS record class' — never 'never discussed in Parliament'.",
+        "Questions on Notice are not a searchable dataset in this realm (docs/PARLIAMENT.md), so a matter raised only in a QoN is invisible.",
+        "Estimates witnesses are frequently directed not to discuss an individual provider, and the chair may require a name be withdrawn. Few named providers is the venue's convention.",
+        "An official describing a PATTERN (providers returning as new entities) is evidence about the pattern, not about any provider this realm's other lenses flag.",
+        "Excerpts are bounded windows around the searched phrase, not whole transcripts: an exchange may continue beyond what is shown, and the URL is the record.",
+        "Each phrase is capped by the feed (maxItems), so a page count is a floor and the status is PARTIAL whenever the cap was hit — more of the record exists than was read.",
+        "Names the model proposes are filtered twice: the transcript must literally contain them, AND regulators/agencies/committees are excluded by name — a provider named only outside the excerpt window is missed.",
+        "Dates are the record's own; a transcript is published days after the hearing and ParlInfo's index lags further.",
+      ],
+      method: "Each short phrase is searched against the chosen ParlInfo record class; pages are de-duplicated, " +
+              "kept only where their own excerpt uses integrity language, and the survivors are summarized and " +
+              "tested for two specific claims. Extracted provider names must appear literally in the transcript.",
+      source: "ParlInfo (Australian Parliament) — Senate Estimates, committee evidence and chamber Hansard, keyless search",
+    }) });
+presentation:
+  href: /apps/hansard-room.html

@@ -1,0 +1,83 @@
+openapi: 3.0.3
+info:
+  title: data.gov.au CKAN catalogue API
+  version: "0.1.0"
+  description: >-
+    Vendored spec for the data.gov.au catalogue (CKAN action API under /data/api/3/action —
+    NOT data.gov.au/api, which serves the SPA and answers HTML). One GET, keyless, verified
+    live 2026-08-02.
+
+    Why this realm queries the CATALOGUE and not just the files: several registers this realm
+    consumes are published as DATED EXTRACTS, each a separate dataset holding one resource
+    (the NDIS Commission compliance register exists as eight such datasets for Feb-Jul 2026
+    alone). The catalogue search is the only way to enumerate them — and the only honest way
+    to know a newer extract has superseded the one a producer URL names. The method rule from
+    docs/adr/0001: three "impossible" calls were each overturned by one catalogue query, so
+    the catalogue is a first-class source here, not tooling.
+
+    Licence: data.gov.au catalogue metadata is CC BY 3.0 AU; each dataset carries its own
+    licence, which consumers must read from the dataset, never assume.
+servers:
+  - url: https://data.gov.au/data/api/3/action
+    description: data.gov.au CKAN action API (production)
+paths:
+  /package_search:
+    get:
+      operationId: searchDatasets
+      summary: >-
+        Full-text search over the catalogue. Returns matching datasets NEWEST-METADATA-FIRST
+        by relevance, each with its resources (the downloadable files) inline — id, URL,
+        format and size per resource. A dated-extract series (one dataset per extract) comes
+        back as one row per extract, so the dataset TITLES carry the series' timeline.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: >-
+            CKAN Solr query. A quoted phrase ("NDIS Commission Compliance Actions") matches
+            the dataset-title series exactly; unquoted words are OR'd and return noise.
+          schema: { type: string }
+        - name: rows
+          in: query
+          required: false
+          description: Maximum datasets returned (CKAN's own default is 10 — too few for a growing extract series).
+          schema: { type: integer, default: 60 }
+      responses:
+        '200':
+          description: Matching datasets with inline resources.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  result:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        description: TOTAL matches in the catalogue — more than `rows` means the answer is a page, not the series.
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, description: "Dataset UUID — first path segment of a resource download URL." }
+                            title: { type: string, description: "Dataset title; a dated-extract series stamps its date here (e.g. '… - 06.07.2026')." }
+                            metadata_modified: { type: string, description: "ISO timestamp of the last catalogue-metadata change." }
+                            license_id: { type: string }
+                            organization:
+                              type: object
+                              properties:
+                                title: { type: string, description: "The publishing organisation as catalogued." }
+                            resources:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id: { type: string, description: "Resource UUID — second path segment of the download URL." }
+                                  name: { type: string }
+                                  url: { type: string, description: "The file's full download URL." }
+                                  format: { type: string }
+                                  size: { type: integer, description: "Bytes, when the catalogue knows it." }
+                                  last_modified: { type: string }

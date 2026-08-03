@@ -45,3 +45,26 @@
         `MATCH (q:CoverageQuery {phrase:'Acme Ltd Department of X'})-[:HAS_COVERAGE]->(c:ContractCoverage)`.
         Requires BRAVE_API_KEY in the world; without it the namespace does not exist and the
         traversal yields nothing, which the lens reports as UNAVAILABLE rather than as "no coverage".
+
+- name: WebHit
+  visibility: internal
+  description: >-
+    One WEB search result for a pinned phrase — the non-news trail: tribunal and court decisions
+    (AustLII), regulator pages, provider sites. Same discipline as ContractCoverage: the index
+    cannot fabricate a result, and a match on a name establishes nothing beyond the match — the
+    reader opens the URL. Requires BRAVE_API_KEY; without it the lens reports UNAVAILABLE, never
+    "no record".
+  properties:
+    url:
+      metadata: { identity: "true" }
+    title: "The page title as the index reports it."
+    snippet: "The index's snippet, verbatim text."
+    age: "Freshness label when the index knows it."
+    searchPhrase: "The phrase this result answered — stamped from the anchor."
+  virtualJoins:
+    - anchorLabel: CoverageQuery
+      relationship: HAS_WEB_RESULT
+      keyField: phrase
+      recordKeyField: searchPhrase
+      producer: webForPhrase
+      description: "Web results for a pinned phrase: `MATCH (q:CoverageQuery {phrase:'…'})-[:HAS_WEB_RESULT]->(w:WebHit)`."

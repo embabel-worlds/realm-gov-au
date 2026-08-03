@@ -1,0 +1,232 @@
+# Reading the record — as VIEWS, not JavaScript.
+#
+# Three things a lens used to be needed for, and no longer is. Each rests on a pattern verified
+# live 2026-08-03:
+#
+#   · SET DIFFERENCE across two extracts, without a subquery (the scope rewriter rejects those):
+#     collect the older extract's identities, then `WHERE NOT … IN` the collected list. Verified
+#     against the JS diff: 134 arrivals between the 04.06 and 06.07 extracts, same as the lens.
+#   · STRING-BUILT variable-seeded anchors: a search phrase composed in Cypher
+#     (`'site:austlii.edu.au "' + provider + '"'`) seeds the fetch. Verified: 8 AustLII documents
+#     for a provider whose name was never typed into this file.
+#   · Per-row REDUCTIONS as ordinary projections: `classify(...)` / `summarize(...)` / `holds(...)`
+#     beside a grouping key gives one judged cell per row.
+#
+# The discipline is unchanged: the register's own words are the evidence, a model's label is
+# labelled as such, and every screen is a place to look rather than a finding.
+#
+# GOTCHA, measured: adding a column to a producer's `project:` does NOT reach records already in
+# the per-anchor RECORD cache — a reduction over the new field returns the UNAVAILABLE sentinel
+# while the raw file has the data, which reads exactly like "the source is empty". The fix is the
+# documented directive: `-[:HAS_AIS {ai: {fresh: true}}]->` bypasses the TTL read and writes
+# through. Views that read a recently-added field carry it until the TTL rolls over.
+
+# ── Item 3: the ARRIVALS. Removals were read; the 1,108 appearances were not ────────────────────
+- name: NdisNewEnforcement
+  description: >-
+    Actions present in one dated extract and absent from an earlier one — enforcement that
+    APPEARED, which no single extract shows. An appearance is dated to the interval between two
+    extracts, not to a day: the register's own effective date frequently precedes publication by
+    months, and a row appearing now may concern conduct years old.
+  params:
+    newerSnapshot:
+      type: string
+      default: "4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv"
+      description: "The later extract: 'datasetId|resourceId|filename' from the data.gov.au catalogue."
+    olderSnapshot:
+      type: string
+      default: "5087fd94-96e4-44a6-af20-e6c8177a4bca|7478346e-1fd9-4e9c-9487-b8e64ec608dd|ndis-commission-compliance-actions-04.06.2026.csv"
+      description: "The earlier extract to diff against."
+  cypher: |
+    MATCH (o:NdisSnapshot {snapshotKey: $olderSnapshot})-[:HAS_ACTION]->(b:SnapshotAction)
+    WITH collect(b.register + '|' + toLower(b.name) + '|' + substring(coalesce(b.dateFrom, ''), 0, 10)) AS priorIds
+    MATCH (n:NdisSnapshot {snapshotKey: $newerSnapshot})-[:HAS_ACTION]->(a:SnapshotAction)
+    WHERE NOT (a.register + '|' + toLower(a.name) + '|' + substring(coalesce(a.dateFrom, ''), 0, 10)) IN priorIds
+    RETURN a.register AS actionType, a.name AS subject, a.abn AS abn, a.state AS state,
+           substring(coalesce(a.dateFrom, ''), 0, 10) AS effectiveFrom,
+           substring(coalesce(a.dateTo, ''), 0, 10) AS publishedUntil,
+           CASE WHEN a.detail CONTAINS 'on the basis that'
+                  OR a.detail CONTAINS 'reasonably believes'
+                  OR a.detail CONTAINS 'convicted of'
+                  OR a.detail CONTAINS 'identified conduct' THEN true ELSE false END AS statesABasis,
+           CASE WHEN a.detail CONTAINS 'section 73J' THEN 'audit obligation (s73J)'
+                WHEN a.detail CONTAINS 'Worker Screening' THEN 'worker screening'
+                WHEN a.detail CONTAINS 'Code of Conduct' THEN 'code of conduct'
+                WHEN a.detail CONTAINS 'Incident Management' THEN 'incident management'
+                WHEN a.detail CONTAINS 'Behaviour Support' OR a.detail CONTAINS 'Restrictive' THEN 'behaviour support / restrictive practices'
+                ELSE 'not cited' END AS instrumentCited,
+           substring(coalesce(a.detail, ''), 0, 400) AS commissionNarrative
+    ORDER BY actionType, effectiveFrom DESC
+
+- name: NdisNewEnforcementRead
+  description: >-
+    The same arrivals, restricted to banning orders and revocations, with the Commission's
+    narrative READ: a one-label reading of what the text attributes the action to, and whether it
+    states any reason at all. The label is a MODEL's reading of the register's words; the verbatim
+    narrative is on every row beside it. Banning-order narratives mostly state the scope of the
+    prohibition and not the conduct, so 'not stated' is the expected answer, and it is the finding.
+  params:
+    newerSnapshot:
+      type: string
+      default: "4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv"
+      description: "The later extract."
+    olderSnapshot:
+      type: string
+      default: "5087fd94-96e4-44a6-af20-e6c8177a4bca|7478346e-1fd9-4e9c-9487-b8e64ec608dd|ndis-commission-compliance-actions-04.06.2026.csv"
+      description: "The earlier extract to diff against."
+  cypher: |
+    MATCH (o:NdisSnapshot {snapshotKey: $olderSnapshot})-[:HAS_ACTION]->(b:SnapshotAction)
+    WITH collect(b.register + '|' + toLower(b.name) + '|' + substring(coalesce(b.dateFrom, ''), 0, 10)) AS priorIds
+    MATCH (n:NdisSnapshot {snapshotKey: $newerSnapshot})-[:HAS_ACTION]->(a:SnapshotAction)
+    WHERE NOT (a.register + '|' + toLower(a.name) + '|' + substring(coalesce(a.dateFrom, ''), 0, 10)) IN priorIds
+      AND (a.register CONTAINS 'Banning' OR a.register CONTAINS 'Revocation')
+    RETURN a.name AS subject, a.register AS actionType,
+           substring(coalesce(a.dateFrom, ''), 0, 10) AS effectiveFrom, a.state AS state,
+           classify(a.detail, 'billing-or-funds,participant-conduct,worker-screening,audit-or-registration,criminal-history,not-stated') AS textAttributesActionTo,
+           holds(a.detail, 'the text states a reason or conduct behind the action, rather than only describing what is prohibited') AS statesAReason,
+           substring(coalesce(a.detail, ''), 0, 500) AS commissionNarrative
+    ORDER BY effectiveFrom DESC
+
+# ── Item 5: the AIS free text — what providers say they DID, in their own words ─────────────────
+- name: NdisProviderPurposes
+  description: >-
+    Semantic groups over the only narrative field in the Annual Information Statement — how each
+    charity says it pursued its purposes. Sizes are counted, not estimated, so "how many of these
+    providers describe accommodation" is arithmetic over the rows the traversal returned. Self-
+    reported prose: it describes what a provider CLAIMS to do, which is exactly its value beside
+    the money columns.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification whose filers to read."
+    groups:
+      type: int
+      default: 8
+      description: "How many semantic groups to form."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]->(a:AisReturn)
+    RETURN cluster(a.purposesPursued, $groups) AS purposeGroups
+
+- name: NdisProviderPurposesForTheFlagged
+  description: >-
+    The same free text, restricted to the providers whose money leaves as unspecified "other
+    expenses" — reading what the pass-through cohort says it does. A brokerage or plan-management
+    description explains the shape innocently; a direct-service description alongside near-zero
+    labour cost does not, and is worth a human's attention.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification to screen."
+    minService:
+      type: int
+      default: 2000000
+      description: "Floor on FY24 service revenue."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]->(a:AisReturn)
+    WITH abn, a,
+         coalesce(toFloat(a.revenueGovernment), 0.0) + coalesce(toFloat(a.revenueGoodsServices), 0.0) AS svc,
+         coalesce(toFloat(a.otherExpenses), 0.0) AS other,
+         coalesce(toFloat(a.expensesTotal), 0.0) AS expenses,
+         coalesce(toFloat(a.employeeExpenses), 0.0) AS emp
+    WHERE toLower(coalesce(a.consolidated, 'n')) <> 'y'
+      AND svc >= $minService AND expenses > 0
+      AND other / expenses >= 0.8 AND emp / svc < 0.35
+    RETURN a.charityName AS provider, abn, svc AS serviceRevenueFy24,
+           round(other / expenses * 100) AS otherExpensesSharePct,
+           classify(a.purposesPursued, 'brokers-or-manages-others-services,delivers-services-directly,provides-housing-or-accommodation,grants-or-funds-others,not-stated') AS describesItselfAs,
+           holds(a.purposesPursued, 'the description says this organisation delivers supports or services to participants ITSELF, with its own staff') AS claimsDirectDelivery,
+           substring(coalesce(a.purposesPursued, ''), 0, 500) AS inItsOwnWords
+    ORDER BY serviceRevenueFy24 DESC
+
+- name: NdisProgramMix
+  description: >-
+    Semantic groups over the program NAMES a cohort declared — the register's own taxonomy is only
+    five disability classes wide, but providers name their programs freely, and the names say more
+    about what is delivered than the class does.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification whose program names to group."
+    groups:
+      type: int
+      default: 8
+      description: "How many semantic groups to form."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    RETURN cluster(g.programName, $groups) AS programGroups
+
+# ── Item 7: the legal trail, READ ───────────────────────────────────────────────────────────────
+- name: NdisProviderLegalTrail
+  description: >-
+    Tribunal and court documents naming a provider, read. The search is an EXACT QUOTED PHRASE
+    scoped to austlii.edu.au, so a hit is a document containing that provider's name — but a name
+    can appear as a party, a witness, an employer, a cited authority, or belong to a same-named
+    entity, and the document itself is the evidence. The reading says whether the text looks like
+    an employment or underpayment matter (the independent test for a workforce-model flip) and
+    whether the provider appears to be a party.
+  params:
+    provider:
+      type: string
+      default: "Yooralla"
+      description: "Provider name to search, exactly as it should appear in documents."
+  cypher: |
+    WITH $provider AS provider
+    WITH provider, 'site:austlii.edu.au "' + provider + '"' AS phrase
+    MATCH (q:CoverageQuery {phrase: phrase})-[:HAS_WEB_RESULT]->(w:WebHit)
+    RETURN provider, count(w) AS documents,
+           summarize(w.snippet, 'what kinds of matter these documents concern, in two sentences') AS trail,
+           holds(w.snippet, 'at least one of these documents concerns an employment, underpayment, unfair dismissal or industrial matter') AS employmentMatterPresent,
+           holds(w.snippet, 'at least one of these documents names this organisation as a party to the proceeding, rather than merely mentioning it') AS appearsAsAParty,
+           collect(w.title)[0..8] AS titles, collect(w.url)[0..8] AS urls
+
+# The cohort pairing runs as TWO views (screen → per-name trail) for COST, not capability: the flip
+# screen yields a handful of names, so 4 index lookups beat 968, and that is the escalation pattern
+# docs/WATCHES.md prescribes. Both seeding shapes were verified to fetch correctly (UNWIND-seeded and
+# two-virtual-hop-seeded, apiCalls 1 each on never-searched phrases) — an earlier reading of
+# `apiCalls: 0` as "never fetched" was wrong: it was a shared-CACHE hit serving a cached negative,
+# which the accompanying `[cache] … 0 memo, 1 shared` line states plainly. Read that line before
+# concluding a fetch did not happen.
+- name: NdisFlaggedProviderLegalTrail
+  description: >-
+    Every provider whose workforce model flipped, paired with the tribunal and court record. A flip
+    is lawful and ordinary; a flip ALONGSIDE an employment or underpayment matter is corroborated by
+    an independent source. OPTIONAL MATCH is deliberate: a provider with no documents must still
+    appear, with zero, because "searched and found nothing" and "never searched" are different facts
+    and an inner join cannot tell them apart.
+  params:
+    classification:
+      type: string
+      default: "Disability services"
+      description: "ACNC program classification to screen."
+    minService:
+      type: int
+      default: 1000000
+      description: "Floor on FY24 service revenue."
+  cypher: |
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
+    WITH DISTINCT g.abn AS abn, g.charityName AS provider
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(now:AisReturn)
+    MATCH (q)-[:HAS_AIS_PRIOR]->(prior:AisPriorReturn)
+    WITH provider,
+         coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
+         coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
+         coalesce(toFloat(now.employeeExpenses), 0.0) AS empNow,
+         coalesce(toFloat(prior.employeeExpenses), 0.0) AS empPrior,
+         toLower(coalesce(now.consolidated, 'n')) AS consolidated
+    WHERE consolidated <> 'y' AND svcNow >= $minService AND svcPrior > 0
+      AND empPrior / svcPrior >= 0.5 AND empNow / svcNow < 0.3
+    WITH provider,
+         round(empPrior / svcPrior * 100) AS labourShareFy23Pct,
+         round(empNow / svcNow * 100) AS labourShareFy24Pct,
+         'site:austlii.edu.au "' + provider + '"' AS phrase
+    OPTIONAL MATCH (cq:CoverageQuery {phrase: phrase})-[:HAS_WEB_RESULT]->(w:WebHit)
+    RETURN provider, labourShareFy23Pct, labourShareFy24Pct, count(w) AS documents,
+           collect(w.title)[0..5] AS titles, collect(w.url)[0..5] AS urls
+    ORDER BY documents DESC, provider

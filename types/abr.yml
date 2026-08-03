@@ -1,0 +1,82 @@
+# The ABR join surface — isolated with its producer (producers/abr.yml); see the note there.
+
+- name: AbrEntity
+  visibility: internal
+  description: >-
+    The entity's row in the Australian Business Register's public bulk extract, matched by ABN —
+    EVERY registered entity, not only charities. Carries what nothing else in the estate does for
+    non-charities: ABN status WITH its from-date (entity AGE — an entity registered weeks before
+    winning money is a checkable fact, not a vibe), entity type, and every registered
+    trading/business name for alias resolution. The extract is refreshed weekly by the ABR; a
+    CANCELLED status is about the ABN, not a judgment about the entity.
+  properties:
+    abn:
+      metadata: { identity: "true" }
+    abnStatus: "ABN status as published — ACT (active) or CAN (cancelled)."
+    abnStatusFrom: "Date the current ABN status took effect (yyyymmdd) — the entity-age anchor."
+    entityTypeCode: "ABR entity type code (PRV, PUB, IND, TRT, …)."
+    entityType: "Entity type in the register's own words."
+    legalName: "Main (non-individual) name, when the entity is an organisation."
+    familyName: "Family name, when the entity is an individual/sole trader."
+    givenNames: "Given name(s), when the entity is an individual — repeats joined with ' | '."
+    mainState: "State of the main business address (organisations)."
+    mainPostcode: "Postcode of the main business address (organisations)."
+    legalState: "State of the business address (individuals)."
+    legalPostcode: "Postcode of the business address (individuals)."
+    gstStatus: "GST registration status as published."
+    gstFrom: "Date the GST status took effect."
+    otherNames: "Every registered trading/business/other name, joined with ' | ' — the alias surface."
+    lastUpdated: "Date the ABR last updated this record (yyyymmdd)."
+  virtualJoins:
+    - anchorLabel: IntegrityQuery
+      relationship: HAS_ABR
+      keyField: abn
+      recordKeyField: abn
+      producer: abrByAbn
+      description: >-
+        The ABR record for a pinned ABN: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_ABR]->(e:AbrEntity)`.
+        BATCH ABNs (≤150 per query) — the backing extract is ~19M records across two ~500MB files,
+        so this join is for screening sets with a warm cache, never a per-row hot path.
+
+- name: FamilyNameQuery
+  visibility: internal
+  description: >-
+    A family name pinned against the Australian Business Register — the anchor behind
+    "did this person register a business, and when". A surname is not an identity: the consuming
+    surface must corroborate with given names and still present every row as a person to check.
+  properties:
+    familyName:
+      metadata: { identity: "true" }
+
+- name: AbrPerson
+  visibility: internal
+  description: >-
+    One individual/sole-trader ABN record matching a pinned family name, with the date its
+    current ABN status took effect — the only open, bulk-published registration date for
+    Australian entities of any kind. Same-name people are common and are all returned; the
+    record establishes that SOMEONE of this name holds this ABN, never that it is a particular
+    person.
+  properties:
+    abrRowKey:
+      metadata: { identity: "true" }
+    familyName: "The pinned family name, stamped from the anchor."
+    abn: "The ABN."
+    abnStatus: "ACT (active) or CAN (cancelled), as published."
+    abnStatusFrom: "Date the current status took effect (yyyymmdd) — for an active ABN, effectively its registration date."
+    entityType: "Entity type in the register's own words (Individual/Sole Trader, …)."
+    givenNames: "Given name(s) as registered — repeats joined with ' | '. The corroboration field."
+    state: "State of the business address."
+    postcode: "Postcode of the business address."
+    otherNames: "Registered trading/business names, joined with ' | '."
+    gstStatus: "GST registration status."
+  virtualJoins:
+    - anchorLabel: FamilyNameQuery
+      relationship: HAS_ABR_PERSON
+      keyField: familyName
+      recordKeyField: familyName
+      producer: abrByFamilyName
+      description: >-
+        Individual ABN records for a pinned family name:
+        `MATCH (f:FamilyNameQuery {familyName:'…'})-[:HAS_ABR_PERSON]->(p:AbrPerson)`.
+        EXPENSIVE — a full scan of ~19M records across two ~500MB files per uncached key batch;
+        batch the names and expect minutes, never a per-row hot path.
