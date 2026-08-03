@@ -1,8 +1,15 @@
 # NDIS integrity: what the public record actually supports
 
-State as at 2026-08-03. Every claim here is reproducible by running the named lens; every number
-came from a live run whose rows were read, not from a headline count. Where a screen produced
+State as at 2026-08-03. Every claim here is reproducible by running the named lens or view; every
+number came from a live run whose rows were read, not from a headline count. Where a screen produced
 nothing, that is recorded too — a null result from a verified join is a finding.
+
+**RE-VERIFIED after fixing embabel/me#676** (a comparison inside a `CASE` projection was pushed to
+the producer as a fetch filter, silently truncating fetches). Every figure below was re-run against
+the corrected engine and is unchanged. That is not luck: these findings rest on `tabular` producers
+— the ACNC and NDIS CSVs — which match by key column and support NO predicate pushdown, so the
+defect could not reach them. It reached the AusTender *remote* window producer, whose reports were
+still JavaScript lenses banding in JS at the time, and which are now views (`views/procurement-shape.yml`).
 
 ## 1. Fraud the regulator has already found, and the network its prose hides
 
@@ -107,8 +114,10 @@ Clustering all 2,118 compliance notices (`cluster()`, then verified arithmetical
 cluster label is not evidence):
 
 - **93% (1,977) cite section 73J — the audit obligation.** Not conduct toward participants.
-- **~90% share six effective dates**: 775 effective 2026-01-30, 433 on 2025-08-13, 307 on
-  2025-08-28, 151 on 2025-03-28, 149 on 2025-11-14, 100 on 2026-03-30.
+- **Seven days carry 1,936 of the 2,118 notices (91%)**: 775 effective 2026-01-30, 433 on
+  2025-08-13, 307 on 2025-08-28, 151 on 2025-03-28, 149 on 2025-11-14, 100 on 2026-03-30, 21 on
+  2026-03-26. The six largest alone account for 1,915 (90%). (An earlier draft said "six dates,
+  ~90%"; the seventh day exists and is named here.)
 
 **Consequence for every other surface**: a provider's presence in the compliance register is weak
 evidence about that provider — it may mean only that it sat inside a mass audit-obligation batch.
