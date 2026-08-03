@@ -50,6 +50,14 @@ function serve(dir) {
   });
 }
 
+/** The readable form of an amount, matching the control's own grammar. */
+function compact(v) {
+  if (v >= 1e9) return String(v / 1e9) + 'b';
+  if (v >= 1e6) return String(v / 1e6) + 'm';
+  if (v >= 1e3) return String(v / 1e3) + 'k';
+  return String(v);
+}
+
 (async () => {
   const { srv, port } = await serve(path.resolve(__dirname, '../apps'));
   const BASE = `http://localhost:${port}/signal-room.html?demo`;
@@ -83,11 +91,41 @@ function serve(dir) {
   console.log('\n== the threshold is configurable, and defaults to $20m ==');
   const input = page.locator('#thin-threshold');
   check('a threshold control exists', await input.count() === 1);
-  check('it defaults to 20,000,000', (await input.inputValue()) === '20000000', await input.inputValue());
-  check('it is a number field with a sane step',
-    (await input.getAttribute('type')) === 'number' && (await input.getAttribute('step')) === '1000000');
+  // `20000000` is not a number a reader can check at a glance. The Atlas solved this already, so the
+  // same control is used here: readable text in, a hidden numeric out.
+  check('it defaults to a READABLE 20m, not 20000000', (await input.inputValue()) === '20m', await input.inputValue());
+  check('and carries the parsed value for the query', (await page.locator('#thin-threshold-value').inputValue()) === '20000000');
+  check('it offers a $ prefix rather than making the reader type one',
+    (await page.locator('.thin-controls .money-prefix').innerText()) === '$');
+  check('it suggests round amounts', (await page.locator('#thin-threshold-options option').count()) >= 5);
   check('it is labelled for a screen reader',
-    (await page.locator('label[for="thin-threshold"]').count()) === 1);
+    (await page.locator('label[for="thin-threshold"]').count()) === 1 &&
+    (await input.getAttribute('aria-describedby')) === 'thin-threshold-help');
+
+  console.log('\n== the amount control reads what a human types ==');
+  for (const [typed, want] of [['5m', '5000000'], ['1.1b', '1100000000'], ['750k', '750000'],
+                               ['20,000,000', '20000000'], ['$3m', '3000000']]) {
+    await input.fill(typed);
+    await input.evaluate(el => el.blur());
+    await page.waitForTimeout(80);
+    check(`"${typed}" parses to ${want}`, (await page.locator('#thin-threshold-value').inputValue()) === want,
+      await page.locator('#thin-threshold-value').inputValue());
+  }
+  await input.fill('not a number');
+  await page.waitForTimeout(80);
+  check('nonsense is flagged rather than silently treated as zero',
+    (await input.getAttribute('aria-invalid')) === 'true');
+  check('and the last good value is retained for the query',
+    (await page.locator('#thin-threshold-value').inputValue()) === '3000000');
+  await input.fill('12m');
+  await input.press('ArrowUp');
+  await page.waitForTimeout(80);
+  check('arrow-up steps by $5m in readable form', (await input.inputValue()) === '17m', await input.inputValue());
+  await input.press('ArrowDown');
+  await page.waitForTimeout(80);
+  check('and arrow-down steps back', (await input.inputValue()) === '12m', await input.inputValue());
+  await input.fill('20m');
+  await input.evaluate(el => el.blur());
 
   console.log('\n== honesty travels with it ==');
   const caveat = await page.locator('#thin-caveat').innerText();
@@ -102,7 +140,8 @@ function serve(dir) {
   // nothing. Every comparison below is therefore anchored on a threshold that DOES return rows —
   // an earlier version of this test compared 0 with 0 three times and reported four passes.
   async function runAt(value) {
-    await input.fill(String(value));
+    // Typed the way a reader types it — this also proves the parse feeds the actual query.
+    await input.fill(compact(value));
     await page.locator('#thin-run').click();
     await page.waitForTimeout(1500);
     return {
