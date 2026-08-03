@@ -393,7 +393,10 @@
   }
 
   var today = new Date();
-  var targetMonth = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  // ONE month back, not two. The clamp below is why the offset is applied to a month rather than by
+  // subtracting days: 31 March minus a month is 31 February, so the day is clamped to the target
+  // month's length (28 in 2026) instead of rolling forward into March.
+  var targetMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   var lastDayOfTargetMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
   var start = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(today.getDate(), lastDayOfTargetMonth));
   $("to").value = isoLocal(today);
