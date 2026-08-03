@@ -27,6 +27,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     // The same ABN is published spaced, unspaced, numeric and float across this source estate, so
     // every comparison happens on digits. A float tail ('12345678901.0') is a real shape here.
     const digits = (v) => String(v == null ? "" : v).replace(/\.0+$/, "").replace(/[^0-9]/g, "");
@@ -79,7 +92,7 @@ spec:
     // narrows in the lens — which bounds the answer to the window, and the output says so.
     const contractsQ = await ask("AusTender window", `
       MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
-      RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+      RETURN r.cnId AS cnId, r.awardId AS awardId, r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
              r.agencyName AS agencyName, r.title AS title, r.description AS description,
              toFloat(r.amount) AS amount, r.procurementMethod AS procurementMethod,
              r.limitedTenderReason AS limitedTenderReason, r.startDate AS startDate,
@@ -153,7 +166,7 @@ spec:
         description: c.description, procurementMethod: c.procurementMethod,
         limitedTenderReason: c.limitedTenderReason || null,
         startDate: c.startDate, endDate: c.endDate,
-        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(c.cnId),
+        austenderUrl: noticeUrl(c.awardId, c.cnId),
       })),
       grants: grants.sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)).slice(0, 25).map(g => ({
         gaId: g.gaId, value: g.value, agency: g.agency, program: g.program, activity: g.activity,

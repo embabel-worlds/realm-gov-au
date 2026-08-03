@@ -26,6 +26,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
     const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
     const topN = Math.min(Math.max(Number(lensArgs.topN || 10) || 10, 1), 20);
@@ -35,7 +48,7 @@ spec:
     const win = await gateway.kg.query({
       cypher: `
         MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
-        RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.agencyName AS agencyName,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, r.supplierName AS supplierName, r.agencyName AS agencyName,
                toFloat(r.amount) AS amount, r.description AS description
         ORDER BY amount DESC
       `,
@@ -77,7 +90,7 @@ spec:
       mentions: (byCn[r.cnId] || []).map(m => ({
         title: m.title, url: m.url, date: String(m.publishedAt || "").slice(0, 10) || null,
       })),
-      austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(r.cnId),
+      austenderUrl: noticeUrl(r.awardId, r.cnId),
     }));
     const raised = checked.filter(c => c.raised);
     const sum = (xs) => Math.round(xs.reduce((n, x) => n + (x.amount || 0), 0));

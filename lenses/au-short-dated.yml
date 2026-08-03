@@ -24,6 +24,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
     const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
     const withinDays = Number(lensArgs.withinDays || 180) || 180;
@@ -33,7 +46,7 @@ spec:
       cypher: `
         MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
         WHERE r.endDate IS NOT NULL
-        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, toFloat(r.amount) AS amount, r.description AS description,
                r.supplierName AS supplierName, r.agencyName AS agencyName,
                r.procurementMethod AS procurementMethod,
                r.startDate AS startDate, r.endDate AS endDate
@@ -84,7 +97,7 @@ spec:
         amount: x.amount, supplierName: x.supplierName, agencyName: x.agencyName,
         description: String(x.description || "").slice(0, 150),
         procurementMethod: x.procurementMethod,
-        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId) })),
+        austenderUrl: noticeUrl(x.awardId, x.cnId) })),
       byAgency: Object.values(byAgency).map(e => ({ ...e, value: Math.round(e.value) })).sort((a, b) => b.value - a.value).slice(0, 10),
       method: "End dates are the register's own `period.endDate`; the horizon is arithmetic against today.",
       limits: [

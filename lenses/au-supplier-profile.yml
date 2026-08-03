@@ -30,6 +30,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
     const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
     const supplier = String(lensArgs.supplier || "").trim();
@@ -40,7 +53,7 @@ spec:
       cypher: `
         MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
         WHERE toLower(r.supplierName) CONTAINS toLower($supplier)
-        RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, toFloat(r.amount) AS amount, r.description AS description,
                r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
                r.agencyName AS agencyName, r.procurementMethod AS procurementMethod,
                r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
@@ -163,7 +176,7 @@ spec:
       contracts: rows.slice(0, 15).map(x => ({ cnId: x.cnId, amount: x.amount, agencyName: x.agencyName,
         description: String(x.description || "").slice(0, 160), procurementMethod: x.procurementMethod,
         groundText: x.groundText || null, startDate: x.startDate, endDate: x.endDate,
-        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId) })),
+        austenderUrl: noticeUrl(x.awardId, x.cnId) })),
       lobbying,
       parliament,
       allContractsUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(supplier),

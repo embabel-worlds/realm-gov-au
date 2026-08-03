@@ -130,6 +130,15 @@
   .readout-note { color:var(--sr-muted); font-size:.73rem; line-height:1.4; margin-top:3px; }
 
   .desk { margin-top:66px; }
+  .thin { margin:34px 0 10px; padding:20px 20px 22px; border:1px solid var(--sr-line); border-radius:16px; background:var(--sr-card); }
+  .thin .caveat { margin:0 0 14px; padding:11px 15px; border-radius:11px; border-left:3px solid var(--sr-gold, #e9bb58);
+    background:rgba(233,187,88,.13); font-size:.8rem; line-height:1.6; }
+  .thin .caveat span { display:block; }
+  .thin .caveat span + span { margin-top:5px; }
+  .thin-controls { display:flex; flex-wrap:wrap; gap:14px; align-items:end; margin-bottom:14px; }
+  .thin-controls .field { display:flex; flex-direction:column; gap:5px; }
+  .thin-controls input { background:transparent; color:inherit; border:1px solid var(--sr-line); border-radius:9px; padding:9px 11px; font:inherit; min-width:190px; }
+  .thin-pane:empty { display:none; }
   .desk-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 16px; }
   .desk-tab { border:1px solid var(--sr-line); background:transparent; color:var(--sr-muted); border-radius:999px; padding:8px 13px; font-size:.78rem; font-weight:820; cursor:pointer; }
   .desk-tab[aria-selected=true] { background:var(--sr-night); border-color:var(--sr-night); color:white; }
@@ -259,6 +268,36 @@
       </div>
     </section>
 
+    <!-- PROMOTED out of the evidence tabs. A reader cannot go looking for the thing they do not know
+         to look for, and "which big commitments tell the taxpayer nothing" is the question this room
+         exists to raise — so it gets its own section, its own threshold, and a default of $20m. -->
+    <section class="thin" id="thin-section" aria-labelledby="thin-heading">
+      <div class="intro">
+        <div>
+          <div class="section-kicker">Line of sight</div>
+          <h2 id="thin-heading">Large commitments that say almost nothing</h2>
+        </div>
+        <p>Commitments at or over the threshold whose published description is absent, a few characters
+           long, or merely repeats the title or the category name — adding no information by
+           construction. Descriptions are shown verbatim, so you read the vacuum rather than a
+           paraphrase of it.</p>
+      </div>
+      <p class="caveat" id="thin-caveat">
+        <span>This measures <b>what was published</b>, not what was procured. Thin disclosure is a fact
+          about the notice, never a finding about the contract behind it.</span>
+        <span><b>Lawful confidentiality exists</b> — national security among other grounds — so a thin
+          description is a reason to go and read the record, not evidence of wrongdoing.</span>
+      </p>
+      <div class="thin-controls">
+        <div class="field">
+          <label for="thin-threshold">Only commitments at or above (AUD)</label>
+          <input id="thin-threshold" type="number" min="0" step="1000000" value="20000000">
+        </div>
+        <button class="secondary" id="thin-run" data-load="disclosure">Show thin disclosure</button>
+      </div>
+      <div id="pane-disclosure" class="thin-pane"></div>
+    </section>
+
     <section class="desk" aria-labelledby="desk-heading">
       <div class="section-kicker">Evidence desk</div><h2 id="desk-heading">Go deeper only when useful</h2>
       <div class="desk-tabs" role="tablist" aria-label="Evidence views">
@@ -266,13 +305,11 @@
         <button class="desk-tab" role="tab" aria-selected="false" data-tab="grounds">Procurement paths</button>
         <button class="desk-tab" role="tab" aria-selected="false" data-tab="categories">Size & categories</button>
         <button class="desk-tab" role="tab" aria-selected="false" data-tab="portfolios">Portfolios</button>
-        <button class="desk-tab" role="tab" aria-selected="false" data-tab="disclosure">Disclosure</button>
       </div>
       <div id="pane-amendments" class="desk-pane"></div>
       <div id="pane-grounds" class="desk-pane" hidden></div>
       <div id="pane-categories" class="desk-pane" hidden></div>
       <div id="pane-portfolios" class="desk-pane" hidden></div>
-      <div id="pane-disclosure" class="desk-pane" hidden></div>
     </section>
 
     <section class="rooms" aria-labelledby="rooms-heading">
@@ -446,7 +483,10 @@
   }
   function resetDeepViews() {
     loaded = {};
-    ['amendments','grounds','categories','portfolios','disclosure'].forEach(function (name) { renderLazy(name); });
+    // 'disclosure' is deliberately absent: it lives in the promoted section above the desk, which
+    // carries its own heading, threshold and button. Giving it a lazy placeholder too would write a
+    // second button into the pane.
+    ['amendments','grounds','categories','portfolios'].forEach(function (name) { renderLazy(name); });
   }
   function currentWindowLabel() {
     var w = activeWindow || controlArgs();
@@ -536,6 +576,10 @@
       setStatus('error','Could not complete the scan.','failed');
     } finally { $('scan').disabled = false; }
   }
+
+  // Changing the threshold invalidates the loaded result — without this the panel would keep
+  // showing the previous threshold's rows under the new number, which is the worst of both.
+  function invalidateThin() { loaded.disclosure=false; }
 
   var lazyCopy = {
     amendments:['Which commitments changed?','This uses the change-window anchor, then fetches each notice\'s complete version chain.','Load amendment signals','au-amended-up','Usually the slowest view: it may fetch up to 20 separate contract histories. Wide windows can take several minutes.'],
@@ -667,7 +711,12 @@
       if (name==='amendments') Object.assign(lensArgs,{state:'',rankBy:'growthPct'});
       if (name==='categories') Object.assign(lensArgs,{sectors:''});
       if (name==='portfolios') Object.assign(lensArgs,{portfolio:''});
-      if (name==='disclosure') Object.assign(lensArgs,{minAmount:'10000000'});
+      // The reader's threshold, not a constant. Blank or nonsense falls back to the $20m default
+      // rather than to 0, which would fetch the entire window and read as a hang.
+      if (name==='disclosure') {
+        var raw=Number(($('thin-threshold')||{}).value);
+        Object.assign(lensArgs,{minAmount:String(raw>0?Math.round(raw):20000000)});
+      }
       var d=await invoke(c[3],lensArgs,op); if(!d) throw new Error('The lens returned no readable result.');
       if(op.superseded)return;
       finishOperation(op);
@@ -723,6 +772,17 @@
       else await loadProfile('supplier',value);
     } finally {button.disabled=false;}
   }
+
+  // The threshold is a control, so it behaves like one: editing it drops the stale result, and
+  // Enter runs the screen rather than doing nothing.
+  (function () {
+    var input = document.getElementById('thin-threshold');
+    if (!input) return;
+    input.addEventListener('input', invalidateThin);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); invalidateThin(); loadDeep('disclosure'); }
+    });
+  })();
 
   document.addEventListener('click',function(e){
     var tab=e.target.closest('.desk-tab');

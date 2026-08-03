@@ -165,6 +165,32 @@ components:
                   properties:
                     id: { type: string, description: "ABN, digits only." }
                     scheme: { type: string, enum: [AU-ABN] }
+              contactPoint:
+                type: object
+                description: >-
+                  Carried on the SUPPLIER party while its values are AGENCY-side — a source quirk,
+                  measured over 300 releases across three publication days.
+                properties:
+                  division:
+                    type: string
+                    description: >-
+                      The contact officer's unit, 209/300. For Defence this is the command that
+                      bought the thing (CASG, NSSG, JCG, ARMY); for other agencies it is the
+                      officer's own procurement branch, so it is NOT "who bought it" in general.
+                      TRUNCATED AT 30 CHARS at source ('PROCUREMENT AND CONTRACT MANAG').
+                  name:
+                    type: string
+                    description: >-
+                      NOT PROJECTED — personal data. Carries real individual names (34 of 300
+                      releases are person-shaped, including an identifiable officer at a small
+                      agency), so it is documented here and deliberately never read.
+                  email:
+                    type: string
+                    description: NOT PROJECTED — personal contact detail, unnecessary for any question about public money.
+                  telephone:
+                    type: string
+                    description: NOT PROJECTED — personal contact detail.
+                  branch: { type: string, description: "Usually a duplicate of division's long form." }
               address:
                 type: object
                 properties:
@@ -178,7 +204,12 @@ components:
             type: object
             properties:
               id: { type: string }
-              date: { type: string }
+              date:
+                type: string
+                description: >-
+                  When the award was PUBLISHED, to the second — distinct from contracts.dateSigned.
+                  Consecutive notices at 23:57:59 / 23:58:00 / 23:58:01 are ONE machine upload, and
+                  this is the only field that reveals a batch.
               status: { type: string }
               suppliers:
                 type: array
@@ -242,3 +273,11 @@ components:
               description: >-
                 The stated CPR ground for a limited tender, verbatim (e.g. "10.3.e. Additional
                 deliveries by original supplier…"). A recorded reason, never a finding.
+            limitedTenderExempt: { type: string, description: "Flag beside the reason codes; '1' where set." }
+            id:
+              type: string
+              description: >-
+                NOT the ATM ID. This is the ocid restated (prod-<32 hex>), an internal identifier —
+                verified across 100 live releases. The ATM ID and SON ID a reader sees on the
+                AusTender web record are NOT in this feed at all (zero SON-shaped values, zero
+                "standing offer" mentions in 100 releases), so no projection can recover them.

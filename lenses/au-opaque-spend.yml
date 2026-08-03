@@ -23,7 +23,7 @@ params:
     type: STRING
     label: Only contracts at or above (AUD)
     required: false
-    default: "10000000"
+    default: "20000000"
 spec:
   kind: cypherscript
   script: |
@@ -35,16 +35,30 @@ spec:
     };
     const from = isoAt(lensArgs.from);
     const to = isoAt(lensArgs.to);
-    const minAmount = Number(lensArgs.minAmount || 0) || 10000000;
+    const minAmount = Number(lensArgs.minAmount || 0) || 20000000;
     const window = `${from}/${to}`;
     const asText = (w) => (typeof w === "string" ? w : JSON.stringify(w) || "").toUpperCase();
+
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id — /Cn/Show/<hyphenated> returns "Contract Notice View - CN4250495",
+    // where the keyword-search URL only ever landed the reader on a results page they had to
+    // re-click. Verified live against both shapes. Falls back to the search when awardId is absent
+    // (older cached rows), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
 
     // ---- FACTUAL LAYER: every contract at or over the threshold, verbatim ------------------
     const factual = await gateway.kg.query({
       cypher: `
         MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
         WHERE toFloat(r.amount) >= $minAmount
-        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, r.title AS title, r.description AS description,
                toFloat(r.amount) AS amount, r.supplierName AS supplierName,
                r.agencyName AS agencyName, r.procurementMethod AS procurementMethod,
                r.limitedTenderReason AS limitedTenderReason,
@@ -159,7 +173,7 @@ spec:
         title: r.title, description: r.description, descriptionChars: r.descriptionChars,
         procurementMethod: r.procurementMethod, limitedTenderReason: r.limitedTenderReason || null,
         signals: r.signals, disclosureScore: r.disclosureScore, judgedThin: r.judgedThin,
-        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(r.cnId),
+        austenderUrl: noticeUrl(r.awardId, r.cnId),
       })),
       truncatedList: out.length > 40,
       interpretation: {

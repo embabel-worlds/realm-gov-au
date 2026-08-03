@@ -31,6 +31,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     // Params are DATEs (the generated form gives a date picker); the feed wants ISO instants.
     const isoAt = (d, endOfDay) => {
       const v = String(d || '').trim();
@@ -75,7 +88,7 @@ spec:
       const r = await gateway.kg.query({
         cypher: `
           MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
-          RETURN v.releaseDate AS releaseDate, toFloat(v.amount) AS amount,
+          RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount,
                  v.amendmentIds AS amendmentIds,
                  v.supplierName AS supplierName, v.agencyName AS agencyName,
                  v.supplierRegion AS supplierRegion, v.supplierPostcode AS supplierPostcode,
@@ -138,7 +151,7 @@ spec:
         supplierRegion: head.supplierRegion || null, supplierPostcode: head.supplierPostcode || null,
         description: String(head.description || "").slice(0, 180),
         endDate: head.endDate || null,
-        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId),
+        austenderUrl: noticeUrl(head.awardId, cnId),
       });
     }
     league.sort((a, b) => (b[rankBy] || 0) - (a[rankBy] || 0));

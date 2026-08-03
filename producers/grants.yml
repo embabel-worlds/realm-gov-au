@@ -5,13 +5,24 @@
 #
 # Verified live 2026-08-01: 7,064 grants / $4.98B for a 30-day window, 1.3MB.
 # The export wants its dates as 01-Jul-2026 — the {keyN|date:} tokens render them.
-# GOTCHA: the file's criteria banner is ~19 two-cell rows, which defeats modal-width header
-# detection — headerRow is EXPLICIT (row 20, 1-based), pinned to the verified layout.
+#
+# GOTCHA: the criteria banner is ~19 two-cell rows, which defeats modal-width header detection. This
+# was a PINNED headerRow: 20 until it was caught returning nothing for any window over a year. The
+# banner is not a fixed height — over GrantConnect's own 50,000-row cap the export inserts "Your
+# search returned more than 50000 rows" plus a blank line, moving the header down two rows. The pin
+# then landed on the notice row, its single cell became the only column, every projection below
+# resolved to nothing, and the producer returned thousands of rows in which every field was null.
+# Narrow windows stayed perfect, which is why it survived. The header is now found by CONTENT.
+#
+# The same cap is why truncationNotice is declared: over 50,000 matches the file arrives complete and
+# well-formed and is a SUBSET, and only its own banner says so. Without this a 69,170-grant year is
+# read as a confident 50,000-grant total. maxRows below is OUR ceiling; this is the source's.
 - name: grantsPublishedByDate
   kind: tabular
   url: "https://www.grants.gov.au/Reports/GaPublishedDownload?AgencyStatus=0&DateType=Publish%20Date&DateStart={key1|date:dd-MMM-yyyy}&DateEnd={key2|date:dd-MMM-yyyy}"
   format: xlsx
-  headerRow: 20
+  headerContains: "GA ID"
+  truncationNotice: "returned more than"
   userAgent: browser
   # No keyColumn: the whole requested range IS the answer, stamped back to its composite key.
   keyAs: windowKey

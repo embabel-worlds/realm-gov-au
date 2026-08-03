@@ -35,6 +35,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     const query = String(lensArgs.query || "").trim();
     // Params are DATEs (the generated form gives a date picker); the feed wants ISO instants.
     const isoAt = (d, endOfDay) => {
@@ -60,7 +73,7 @@ spec:
         MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]->(r:ContractRelease)
         WHERE ai.relevant(r, '${criterion}')
           AND ($state = '' OR toUpper(coalesce(r.supplierRegion,'')) = $state)
-        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, r.title AS title, r.description AS description,
                toFloat(r.amount) AS amount, r.supplierName AS supplierName,
                r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
                r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
@@ -76,7 +89,7 @@ spec:
            OR toLower(r.supplierName) CONTAINS toLower($query)
            OR toLower(r.agencyName) CONTAINS toLower($query))
           AND ($state = '' OR toUpper(coalesce(r.supplierRegion,'')) = $state)
-        RETURN r.cnId AS cnId, r.title AS title, r.description AS description,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, r.title AS title, r.description AS description,
                toFloat(r.amount) AS amount, r.supplierName AS supplierName,
                r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
                r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
@@ -124,7 +137,7 @@ spec:
         procurementMethod: x.procurementMethod,
         limitedTenderReason: x.limitedTenderReason || null,
         releaseDate: x.releaseDate,
-        austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(x.cnId),
+        austenderUrl: noticeUrl(x.awardId, x.cnId),
       })),
       method: "Window fetch from the register, then " + (mode === "semantic"
         ? "model-scored narrowing (disclosed as such)." : "deterministic text containment."),

@@ -58,6 +58,44 @@
     exemption: "tender.exemption"
     exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
+    # Same additions as versionsById above, same measured caveats — contactDivision is the CONTACT
+    # OFFICER'S unit (a command for Defence, a procurement branch elsewhere), awardDate is the
+    # PUBLICATION instant that reveals batch uploads, and contactPoint name/email/telephone are
+    # deliberately excluded as personal data.
+    contactDivision: "parties.0.contactPoint.division"
+    awardDate: "awards.0.date"
+    awardId: "awards.0.id"
+    contractStatus: "contracts.0.status"
+    limitedTenderExempt: "tender.limitedTenderExempt"
+    # Fields the feed always carried and this realm discarded. Measured over 300 live releases
+    # across three publication days (not one — the first day sampled was 100% Defence, which
+    # flattered every number below):
+    #
+    #   contactDivision   209/300. The CONTACT OFFICER'S unit as published, and named for what it
+    #                     is rather than a "buying unit": for Defence it is the command that bought
+    #                     the thing (CASG, NSSG, JCG, ARMY), for other agencies it is the officer's
+    #                     own branch ('PROCUREMENT AND CONTRACT MANAG' — truncated at 30 chars AT
+    #                     SOURCE). So it is finer-grained attribution than agencyName for Defence
+    #                     and near-useless elsewhere; a view must not treat it as "who bought it".
+    #                     Sits on the SUPPLIER party in the feed while its values are agency-side —
+    #                     a source quirk, not a mis-projection here.
+    #   awardDate         300/300, to the second. Distinct from dateSigned: it is when the award was
+    #                     PUBLISHED, and consecutive notices arriving 23:57:59 / 23:58:00 / 23:58:01
+    #                     are one machine upload — the batch shape, readable only from this field.
+    #   contractStatus    300/300 ('active' throughout the sample; a terminated or expired contract
+    #                     is invisible to this realm today).
+    #   awardId           the award this contract sits under, so contract↔award is joinable.
+    #   limitedTenderExempt  a flag the register sets beside the reason codes we already read.
+    #
+    # DELIBERATELY NOT PROJECTED: contactPoint.name / .email / .telephone. `.name` carries REAL
+    # INDIVIDUAL NAMES (34 of those 300 releases are person-shaped, one an identifiable officer at a
+    # small agency), and email/telephone are personal contact details. None of them is needed to
+    # answer a question about public money, so none of them enters the graph.
+    contactDivision: "parties.0.contactPoint.division"
+    awardDate: "awards.0.date"
+    awardId: "awards.0.id"
+    contractStatus: "contracts.0.status"
+    limitedTenderExempt: "tender.limitedTenderExempt"
   # Notices amend on business days; an hour's TTL keeps a repeated passport instant. An unknown
   # CN id returns an EMPTY release list — that emptiness is an answer (the id does not exist in
   # the register) and is cached as one.
@@ -117,6 +155,15 @@
     exemption: "tender.exemption"
     exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
+    # Same additions as versionsById above, same measured caveats — contactDivision is the CONTACT
+    # OFFICER'S unit (a command for Defence, a procurement branch elsewhere), awardDate is the
+    # PUBLICATION instant that reveals batch uploads, and contactPoint name/email/telephone are
+    # deliberately excluded as personal data.
+    contactDivision: "parties.0.contactPoint.division"
+    awardDate: "awards.0.date"
+    awardId: "awards.0.id"
+    contractStatus: "contracts.0.status"
+    limitedTenderExempt: "tender.limitedTenderExempt"
   # A closed window's contents never change; an open one gains releases through the business day.
   cache: { kind: ttl, seconds: 3600 }
   cost:
@@ -168,6 +215,15 @@
     exemption: "tender.exemption"
     exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
+    # Same additions as versionsById above, same measured caveats — contactDivision is the CONTACT
+    # OFFICER'S unit (a command for Defence, a procurement branch elsewhere), awardDate is the
+    # PUBLICATION instant that reveals batch uploads, and contactPoint name/email/telephone are
+    # deliberately excluded as personal data.
+    contactDivision: "parties.0.contactPoint.division"
+    awardDate: "awards.0.date"
+    awardId: "awards.0.id"
+    contractStatus: "contracts.0.status"
+    limitedTenderExempt: "tender.limitedTenderExempt"
   cache: { kind: ttl, seconds: 3600 }
   cost:
     bucket: "austender"

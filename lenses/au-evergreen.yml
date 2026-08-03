@@ -24,6 +24,19 @@ params:
 spec:
   kind: cypherscript
   script: |
+    // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+    // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+    // search only ever landed the reader on a results page they had to re-click. Verified live
+    // against both shapes. Falls back to the search when awardId is absent (a cached row from
+    // before the projection existed), because a working search beats a broken record link.
+    const noticeUrl = (awardId, cnId) => {
+      const h = String(awardId || "").split("-")[1] || "";
+      if (h.length === 32) {
+        const u = `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        return `https://www.tenders.gov.au/Cn/Show/${u}`;
+      }
+      return "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(cnId || "");
+    };
     const isoAt = (d) => { const v = String(d || '').trim(); return !v ? v : (/T/.test(v) ? v : v + 'T00:00:00Z'); };
     const from = isoAt(lensArgs.from), to = isoAt(lensArgs.to);
     const minAmount = Number(lensArgs.minAmount || 0) || 500000;
@@ -36,7 +49,7 @@ spec:
       cypher: `
         MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)
         WHERE toFloat(r.amount) >= $minAmount
-        RETURN r.cnId AS cnId, r.tags AS tags, r.releaseDate AS releaseDate,
+        RETURN r.cnId AS cnId, r.awardId AS awardId, r.tags AS tags, r.releaseDate AS releaseDate,
                r.supplierName AS supplierName, r.agencyName AS agencyName,
                toFloat(r.amount) AS amount, r.startDate AS startDate, r.endDate AS endDate,
                r.dateSigned AS dateSigned
@@ -73,7 +86,7 @@ spec:
           latestEndSeen: ends[ends.length - 1] || null,
           endMovedOutward: ends.length > 1 && ends[0] !== ends[ends.length - 1],
           contractAgeDays: ageDays,
-          austenderUrl: "https://www.tenders.gov.au/Search/KeywordSearch?keyword=" + encodeURIComponent(g.cnId),
+          austenderUrl: noticeUrl(g.awardId, g.cnId),
         };
       })
       .sort((a, b) => (Number(b.endMovedOutward) - Number(a.endMovedOutward)) ||
