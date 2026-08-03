@@ -1,0 +1,186 @@
+# Procurement shape as VIEWS — the reports that were JavaScript because a Cypher CASE could not be
+# trusted to band a window.
+#
+# These conversions were BLOCKED until embabel/me#676: a comparison inside a CASE projection was
+# pushed to the producer as a fetch filter, so a banded view saw only its first band and reported
+# a correct-looking number over a silently filtered subset. Verified after the fix on a 5,200-release
+# window: 3 bands, 5,200 notices, max $415m, and the band values summing to the window total.
+#
+# What stays in JavaScript, and why — so nobody converts these by mistake:
+#   · GrantConnect dates ('9-July-2026'), which need a parser no reachable Cypher function provides
+#     (APOC is blocked by the scope rewriter, correctly: procedures cannot be scoped per user).
+#   · Supplier-name normalisation beyond separator stripping — no regex replace without APOC.
+#   · Multi-extract fuzzy identity matching with date tolerance.
+#
+# EVERY figure here is a COMMITTED VALUE as published, never expenditure, and every share is of the
+# fetched window, not of all Commonwealth procurement.
+
+- name: ContractsBySize
+  description: >-
+    A window's contracts in FIXED value bands, with each band's share. The bands are fixed so two
+    windows are comparable, and they show directly what a total conceals: Commonwealth contracting
+    is extremely top-heavy, with a handful of notices carrying most of the value.
+  params:
+    window:
+      type: string
+      default: "2026-07-01T00:00:00Z/2026-07-28T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WITH sum(toFloat(r.amount)) AS windowValue, count(*) AS windowNotices
+    MATCH (w2:PublicationWindow {window: $window})-[:PUBLISHED]->(r2:ContractRelease)
+    WITH windowValue, windowNotices,
+         CASE WHEN toFloat(r2.amount) < 10000 THEN '1 under 10k'
+              WHEN toFloat(r2.amount) < 100000 THEN '2 10k-100k'
+              WHEN toFloat(r2.amount) < 1000000 THEN '3 100k-1m'
+              WHEN toFloat(r2.amount) < 10000000 THEN '4 1m-10m'
+              ELSE '5 over 10m' END AS band,
+         count(*) AS notices, sum(toFloat(r2.amount)) AS value
+    RETURN band, notices, round(value) AS value,
+           round(value / windowValue * 1000) / 10.0 AS shareOfWindowValuePct,
+           round(toFloat(notices) / windowNotices * 1000) / 10.0 AS shareOfWindowNoticesPct
+    ORDER BY band
+
+- name: ContractsByMethod
+  description: >-
+    Procurement method by BOTH measures — share of notice count and share of value. Reporting one
+    without the other misleads: a method can dominate the number of notices while carrying little
+    value, or the reverse, and the register supports neither claim alone.
+  params:
+    window:
+      type: string
+      default: "2026-07-01T00:00:00Z/2026-07-28T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WITH sum(toFloat(r.amount)) AS windowValue, count(*) AS windowNotices
+    MATCH (w2:PublicationWindow {window: $window})-[:PUBLISHED]->(r2:ContractRelease)
+    WITH windowValue, windowNotices, coalesce(r2.procurementMethod, '(unstated)') AS method,
+         count(*) AS notices, sum(toFloat(r2.amount)) AS value
+    RETURN method, notices, round(value) AS value,
+           round(toFloat(notices) / windowNotices * 1000) / 10.0 AS shareOfNoticesPct,
+           round(value / windowValue * 1000) / 10.0 AS shareOfValuePct
+    ORDER BY value DESC
+
+- name: LimitedTenderGrounds
+  description: >-
+    The stated grounds for limited tenders, ranked by value and count, in the register's own
+    wording. A ground is the AGENCY'S STATED REASON — never an assessment of that reason, and never
+    evidence that a limited tender was improper.
+  params:
+    window:
+      type: string
+      default: "2026-07-01T00:00:00Z/2026-07-28T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WHERE r.limitedTenderReasonCode IS NOT NULL OR r.limitedTenderReason IS NOT NULL
+    WITH coalesce(r.limitedTenderReasonCode, '(no code)') AS groundCode,
+         coalesce(r.limitedTenderReason, '(no text)') AS groundText,
+         count(*) AS notices, sum(toFloat(r.amount)) AS value,
+         count(DISTINCT r.agencyName) AS agencies
+    RETURN groundCode, groundText, notices, round(value) AS value, agencies
+    ORDER BY value DESC
+
+- name: SupplierConcentration
+  description: >-
+    How concentrated a window is: each agency's total, its supplier count, and the share taken by
+    its largest supplier. This is what a headline total conceals — a big number is often the story
+    of one or two notices. Supplier names are grouped case-insensitively with separators stripped;
+    that is a NAME grouping, not entity resolution, and a group may span or split real entities.
+  params:
+    window:
+      type: string
+      default: "2026-07-01T00:00:00Z/2026-07-28T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'."
+    minAgencyValue:
+      type: int
+      default: 1000000
+      description: "Only report agencies committing at least this much in the window."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WITH coalesce(r.agencyName, '(unstated)') AS agency,
+         coalesce(r.supplierAbn,
+                  replace(replace(replace(replace(toUpper(coalesce(r.supplierName, '(unstated)')),
+                         ' ', ''), '.', ''), ',', ''), '-', '')) AS supplierKey,
+         sum(toFloat(r.amount)) AS supplierValue, count(*) AS supplierNotices
+    WITH agency, collect({key: supplierKey, value: supplierValue, notices: supplierNotices}) AS suppliers,
+         sum(supplierValue) AS agencyValue, sum(supplierNotices) AS agencyNotices
+    WHERE agencyValue >= $minAgencyValue
+    WITH agency, agencyValue, agencyNotices, size(suppliers) AS supplierCount,
+         reduce(top = 0.0, s IN suppliers | CASE WHEN s.value > top THEN s.value ELSE top END) AS topSupplierValue
+    RETURN agency, round(agencyValue) AS agencyValue, agencyNotices, supplierCount,
+           round(topSupplierValue) AS topSupplierValue,
+           round(topSupplierValue / agencyValue * 1000) / 10.0 AS topSupplierSharePct
+    ORDER BY agencyValue DESC
+
+- name: NewSuppliersInWindow
+  description: >-
+    Suppliers holding a contract in this window that held none in an earlier one — first
+    APPEARANCES in the published register, which is not the same as new businesses: a supplier
+    absent from the earlier window may have been contracting for decades, or may appear under a
+    differently-spelled name. Uses the collect-and-exclude shape rather than a subquery, since the
+    scope rewriter rejects subqueries.
+  params:
+    window:
+      type: string
+      default: "2026-07-01T00:00:00Z/2026-07-28T00:00:00Z"
+      description: "The recent publication window."
+    priorWindow:
+      type: string
+      default: "2026-04-01T00:00:00Z/2026-06-30T00:00:00Z"
+      description: "The earlier window to compare against."
+    minValue:
+      type: int
+      default: 100000
+      description: "Only report suppliers whose new-window commitments reach this."
+  cypher: |
+    MATCH (pw:PublicationWindow {window: $priorWindow})-[:PUBLISHED]->(p:ContractRelease)
+    WITH collect(DISTINCT coalesce(p.supplierAbn,
+             replace(replace(toUpper(coalesce(p.supplierName, '')), ' ', ''), '.', ''))) AS priorKeys
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WITH priorKeys, r,
+         coalesce(r.supplierAbn,
+                  replace(replace(toUpper(coalesce(r.supplierName, '')), ' ', ''), '.', '')) AS supplierKey
+    WHERE supplierKey <> '' AND NOT supplierKey IN priorKeys
+    WITH supplierKey, collect(DISTINCT r.supplierName)[0] AS supplier, r.supplierAbn AS abn,
+         count(*) AS notices, sum(toFloat(r.amount)) AS value,
+         count(DISTINCT r.agencyName) AS agencies, collect(r.cnId)[0..3] AS exampleNotices
+    WHERE value >= $minValue
+    RETURN supplier, abn, notices, round(value) AS value, agencies, exampleNotices
+    ORDER BY value DESC
+
+- name: SupplierTaxTransparency
+  description: >-
+    A window's largest suppliers joined by ABN to the ATO corporate tax transparency report. TWO
+    published caveats travel with every row: a BLANK taxable income or tax payable means '<= 0' BY
+    LEGISLATION (amounts of zero or less may not be reported), never 'unknown'; and the report is
+    ENTITY-level, not consolidated groups, so the contracting entity is frequently not the
+    reporting entity. Absence from the report usually means income under the $100m threshold.
+  params:
+    window:
+      type: string
+      default: "2026-07-01T00:00:00Z/2026-07-28T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'."
+    minValue:
+      type: int
+      default: 5000000
+      description: "Only screen suppliers committing at least this much in the window."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WHERE r.supplierAbn IS NOT NULL
+    // Group by ABN ALONE. Grouping by (abn, name) split one supplier into five rows — the register
+    // publishes 'DATA#3 LTD', 'DATA #3 LIMITED', 'Data#3 Limited' and 'DATA # 3 GROUP' against the
+    // same ABN — which understated every row and repeated the tax record against each. The name
+    // variants are returned as data, because they are a fact about the register worth seeing.
+    WITH r.supplierAbn AS abn, count(*) AS notices, sum(toFloat(r.amount)) AS windowValue,
+         collect(DISTINCT r.supplierName) AS nameVariants
+    WHERE windowValue >= $minValue
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_TAX_RECORD]->(t:TaxRecord)
+    RETURN nameVariants[0] AS supplier, nameVariants, size(nameVariants) AS namesUsedInRegister,
+           abn, notices, round(windowValue) AS windowValue,
+           t.name AS atoReportedName, t.incomeYear AS incomeYear,
+           t.totalIncome AS totalIncome, t.taxableIncome AS taxableIncome, t.taxPayable AS taxPayable,
+           CASE WHEN trim(coalesce(t.taxPayable, '')) = ''
+                THEN 'blank means <= $0 BY LEGISLATION, never unknown' ELSE null END AS taxPayableNote
+    ORDER BY windowValue DESC
