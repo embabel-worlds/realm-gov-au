@@ -179,6 +179,42 @@ function compact(v) {
   check('links open in a new tab',
     await page.locator('#pane-disclosure a.source-link').first().getAttribute('target') === '_blank');
 
+  console.log('\n== the progress indicator is not squashed into a grid cell ==');
+  // beginOperation() injects <embabel-operation-state> into WHICHEVER container is loading, and
+  // #signals is a 12-column grid — so without an explicit span the element becomes a 1-of-12 grid
+  // ITEM: a narrow box against the left edge, reporting a scan of the whole window. Reproduced by
+  // injecting exactly as the app does, rather than racing a demo scan that finishes in milliseconds.
+  const geom = await page.evaluate(() => {
+    const c = document.getElementById('signals');
+    c.innerHTML = '<embabel-operation-state id="probe"></embabel-operation-state>';
+    const el = document.getElementById('probe');
+    const cs = getComputedStyle(el);
+    return {
+      elWidth: el.getBoundingClientRect().width,
+      containerWidth: c.getBoundingClientRect().width,
+      display: cs.display,
+      left: el.getBoundingClientRect().left - c.getBoundingClientRect().left,
+    };
+  });
+  check('it spans the full width of the grid it is injected into',
+    geom.elWidth > geom.containerWidth * 0.95,
+    `${Math.round(geom.elWidth)}px inside ${Math.round(geom.containerWidth)}px`);
+  check('it starts at the container edge, not indented into a column',
+    Math.abs(geom.left) < 2, `left offset ${Math.round(geom.left)}px`);
+  check('it is a block, not an inline custom element of intrinsic width', geom.display === 'block', geom.display);
+  // The same rule must not distort the non-grid containers the same function also targets.
+  const paneGeom = await page.evaluate(() => {
+    const c = document.getElementById('pane-disclosure');
+    const el = document.createElement('embabel-operation-state');
+    c.appendChild(el);
+    const r = el.getBoundingClientRect(), cr = c.getBoundingClientRect();
+    el.remove();
+    return { elWidth: r.width, containerWidth: cr.width };
+  });
+  check('and still fills a NON-grid container',
+    paneGeom.elWidth > paneGeom.containerWidth * 0.95,
+    `${Math.round(paneGeom.elWidth)}px inside ${Math.round(paneGeom.containerWidth)}px`);
+
   console.log('\n== console cleanliness ==');
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 

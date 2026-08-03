@@ -101,6 +101,11 @@
   .rail > span.alt { background:var(--sr-mint); }
   .micro { margin-top:7px; font-size:.7rem; color:var(--sr-muted); display:flex; justify-content:space-between; gap:10px; }
   .hero-signal .micro { color:#b9cfca; }
+  /* The progress element is injected into whichever container is loading — and #signals is a
+     12-column grid, so without this it becomes a 1-of-12 grid ITEM: a narrow box squashed against
+     the left edge while it reports a scan of the whole window. `grid-column` is ignored in the
+     non-grid containers (the desk panes) this same function also targets, so one rule covers both. */
+  embabel-operation-state { display:block; grid-column:1/-1; width:100%; }
   .placeholder { grid-column:1/-1; border:1px dashed var(--sr-line); border-radius:var(--sr-radius); padding:50px 24px; color:var(--sr-muted); text-align:center; }
 
   .evidence-grid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(270px,.65fr); gap:18px; margin-top:18px; }
