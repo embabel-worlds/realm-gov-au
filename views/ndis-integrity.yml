@@ -51,11 +51,11 @@
       default: 1000000
       description: "Floor on FY24 service revenue (government + goods and services)."
   cypher: |
-    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
-    WITH DISTINCT g.abn AS abn
-    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(now:AisReturn)
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]->(g:CharityProgram)
+    WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]->(now:AisReturn)
     MATCH (q)-[:HAS_AIS_PRIOR]->(prior:AisPriorReturn)
-    WITH abn, now, prior,
+    WITH abn, registrationStatus, now, prior,
          coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
          coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
          coalesce(toFloat(now.employeeExpenses), 0.0) AS empNow,
@@ -64,7 +64,7 @@
       AND svcNow >= $minService AND svcPrior > 0
       AND empPrior / svcPrior >= 0.5
       AND empNow / svcNow < 0.3
-    RETURN now.charityName AS provider, abn,
+    RETURN now.charityName AS provider, abn, registrationStatus,
            svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
            empPrior AS employeeExpensesFy23, empNow AS employeeExpensesFy24,
            round(empPrior / svcPrior * 100) AS labourShareFy23Pct,
@@ -94,10 +94,10 @@
       default: 80
       description: "Minimum percentage of total expenses booked as 'all other expenses'."
   cypher: |
-    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
-    WITH DISTINCT g.abn AS abn
-    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(a:AisReturn)
-    WITH abn, a,
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]->(g:CharityProgram)
+    WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]->(a:AisReturn)
+    WITH abn, registrationStatus, a,
          coalesce(toFloat(a.revenueGovernment), 0.0) + coalesce(toFloat(a.revenueGoodsServices), 0.0) AS svc,
          coalesce(toFloat(a.otherExpenses), 0.0) AS other,
          coalesce(toFloat(a.expensesTotal), 0.0) AS expenses,
@@ -106,7 +106,7 @@
       AND svc >= $minService AND expenses > 0
       AND other / expenses * 100 >= $minOtherShare
       AND emp / svc < 0.35
-    RETURN a.charityName AS provider, abn,
+    RETURN a.charityName AS provider, abn, registrationStatus,
            svc AS serviceRevenueFy24, other AS otherExpensesFy24, expenses AS totalExpensesFy24,
            round(other / expenses * 100) AS otherExpensesSharePct,
            emp AS employeeExpensesFy24, a.fteTotal AS fteFy24,
@@ -132,11 +132,11 @@
       default: 250
       description: "Minimum year-on-year revenue multiple, in hundredths (250 = 2.5x)."
   cypher: |
-    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
-    WITH DISTINCT g.abn AS abn
-    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(now:AisReturn)
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]->(g:CharityProgram)
+    WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]->(now:AisReturn)
     MATCH (q)-[:HAS_AIS_PRIOR]->(prior:AisPriorReturn)
-    WITH abn, now, prior,
+    WITH abn, registrationStatus, now, prior,
          coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
          coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
          coalesce(toFloat(now.fteTotal), 0.0) AS fteNow,
@@ -145,7 +145,7 @@
       AND svcNow >= $minService AND svcPrior > 50000
       AND svcNow / svcPrior * 100 >= $minMultiple
       AND fteNow <= ftePrior * 1.25
-    RETURN now.charityName AS provider, abn,
+    RETURN now.charityName AS provider, abn, registrationStatus,
            svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
            round(svcNow / svcPrior * 100) / 100.0 AS revenueMultiple,
            ftePrior AS fteFy23, fteNow AS fteFy24,
@@ -164,17 +164,17 @@
       default: "Disability services"
       description: "ACNC program classification to screen."
   cypher: |
-    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
-    WITH DISTINCT g.abn AS abn
-    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS]->(a:AisReturn)
-    WITH abn, a,
+    MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]->(g:CharityProgram)
+    WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+    MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]->(a:AisReturn)
+    WITH abn, registrationStatus, a,
          coalesce(toFloat(a.revenueGovernment), 0.0) AS gov,
          coalesce(toFloat(a.revenueTotal), 0.0) AS total,
          coalesce(toFloat(a.employeeExpenses), 0.0) AS emp,
          coalesce(toFloat(a.fteTotal), 0.0) AS fte
     WHERE toLower(coalesce(a.consolidated, 'n')) <> 'y'
       AND ((gov > total * 1.02 AND gov > 100000) OR (fte = 0.0 AND emp > 500000))
-    RETURN a.charityName AS provider, abn,
+    RETURN a.charityName AS provider, abn, registrationStatus,
            gov AS revenueGovernmentFy24, total AS revenueTotalFy24,
            emp AS employeeExpensesFy24, fte AS fteFy24,
            CASE WHEN gov > total * 1.02 AND gov > 100000

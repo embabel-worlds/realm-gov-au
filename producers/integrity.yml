@@ -225,6 +225,7 @@
   rowIdAs: aisKey
   project:
     charityName: "charity name"
+    registrationStatus: "registration status"
     charitySize: "charity size"
     reportingPeriodFrom: "fin report from"
     reportingPeriodTo: "fin report to"
@@ -266,6 +267,7 @@
   project:
     abn: "ABN"
     charityName: "Charity Name"
+    registrationStatus: "Registration Status"
     programName: "Program name"
   fileCacheSeconds: 604800
   cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
@@ -337,6 +339,7 @@
   project:
     abn: "ABN"
     charityName: "Charity Name"
+    registrationStatus: "Registration Status"
     programName: "Program name"
   fileCacheSeconds: 604800
   cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }

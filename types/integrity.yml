@@ -280,6 +280,11 @@
       metadata: { identity: "true" }
     abn: "The matched ABN, stamped from the anchor."
     charityName: "Name as filed."
+    registrationStatus: >-
+      ACNC registration status carried by the published AIS dataset, including Registered and
+      the specific revocation category. A voluntary revocation often means the charity ceased,
+      merged or chose to continue outside ACNC registration; it is context for a historical
+      filing anomaly, not evidence of misconduct.
     charitySize: "ACNC size band for the year."
     reportingPeriodFrom: "Financial report period start, as filed."
     reportingPeriodTo: "Financial report period end, as filed — compare money to THIS period, not to a calendar year."
@@ -436,6 +441,9 @@
     classification: "The pinned classification, stamped from the anchor."
     abn: "The reporting charity's ABN."
     charityName: "The reporting charity's name."
+    registrationStatus: >-
+      The ACNC registration status carried on the FY24 program row, including the exact voluntary
+      revocation category. It describes the charity-registration position, not NDIS registration.
     programName: "The program name as the charity filed it."
   virtualJoins:
     - anchorLabel: ProgramClass

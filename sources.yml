@@ -22,6 +22,9 @@ sources:
     shape: per-key
     partition: contract-notice
     queriedBy: [cnId]
+    # cnId IS the fetch key — versionsById takes it as keyArgs, one call per notice. Omitting it
+    # here made the registry warn that this live source needs its whole partition, which it does not.
+    filterableAtSource: [cnId]
     ordering: version-order         # releases arrive original-first; ORDER BY releaseDate anyway
     updates: business-days
     sync:
@@ -84,6 +87,7 @@ sources:
     shape: per-key
     partition: firm
     queriedBy: [firmId]
+    filterableAtSource: [firmId]   # the fetch key — firmSummaryById is one call per firm
     ordering: irrelevant
     updates: on-registration-events
     sync:
@@ -101,6 +105,10 @@ sources:
     shape: per-key
     partition: firm
     queriedBy: [firmId, isFormerRepresentative]
+    # firmId is the fetch key; isFormerRepresentative is NOT filterable at the register, so this
+    # source still warns — correctly. A former-representative question fetches the firm's people
+    # and narrows here.
+    filterableAtSource: [firmId]
     ordering: irrelevant
     updates: on-registration-events
     sync:

@@ -68,7 +68,8 @@
   .date-field label { color:var(--hr-muted); font-size:.64rem; font-weight:850; text-transform:uppercase; letter-spacing:.08em; }
   .dates input { padding:8px 10px; }
   .date-note { max-width:530px; color:var(--hr-muted); font-size:.7rem; line-height:1.4; }
-  embabel-operation-state:not([hidden]) { margin-top:18px; }
+  embabel-operation-state:not([hidden]) { margin-top:14px; }
+  #index-operation:not([hidden]) { grid-column:1/-1; width:100%; margin-top:2px; }
   .notice { margin-top:18px; padding:12px 14px; border-radius:12px; background:color-mix(in srgb,var(--hr-gold) 18%,transparent); color:var(--hr-muted); font-size:.76rem; line-height:1.5; }
   .notice.error { color:var(--hr-red); border:1px solid color-mix(in srgb,var(--hr-red) 35%,var(--hr-line)); background:color-mix(in srgb,var(--hr-red) 7%,var(--hr-card)); }
   .notice[hidden] { display:none; }
@@ -111,6 +112,18 @@
   .indexed-list { display:grid; gap:8px; margin-top:14px; }
   .indexed-item { padding-top:8px; border-top:1px solid rgba(255,255,255,.18); color:#d5e5dd; font-size:.72rem; }
   .ask { background:var(--hr-card); border:1px solid var(--hr-line); border-radius:22px; box-shadow:var(--hr-shadow); padding:22px; }
+  .corpus-strip { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:-2px -2px 20px; border-bottom:1px solid var(--hr-line); padding:0 2px 18px; }
+  .corpus-summary { display:block; margin-top:4px; font-size:.9rem; line-height:1.45; }
+  .corpus-summary[data-state="empty"] { color:#9b402f; }
+  .corpus-summary[data-state="ready"] { color:#256e5d; }
+  .corpus-strip .secondary { flex:0 0 auto; padding:7px 11px; font-size:.7rem; }
+  .corpus-details { margin:-7px 0 20px; color:var(--hr-muted); font-size:.73rem; line-height:1.55; }
+  .corpus-details summary { cursor:pointer; color:#397565; font-weight:850; }
+  .corpus-list { display:grid; gap:7px; margin:10px 0; }
+  .corpus-item { border-left:2px solid var(--hr-line); padding-left:10px; }
+  .corpus-item a { color:#256e5d; font-weight:800; text-decoration:none; }
+  .corpus-why { margin:10px 0 0; }
+  .corpus-why strong { color:var(--hr-ink); }
   .ask-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(250px,.65fr); gap:22px; }
   .ask-row textarea { min-height:110px; resize:vertical; padding:13px 14px; line-height:1.5; }
   .ask-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:10px; }
@@ -165,6 +178,7 @@
     .record { grid-template-columns:1fr; gap:5px; }
     .index-card { grid-template-columns:1fr; }
     .index-card .primary { width:100%; }
+    .corpus-strip { align-items:flex-start; }
     .bridge-head { grid-template-columns:1fr; }
     .bridge-form { align-items:stretch; flex-direction:column; }
     .bridge-form input { min-width:0; }
@@ -172,7 +186,7 @@
     .ask-actions .secondary { width:100%; }
     .foot { flex-direction:column; }
   }
-  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .spinner,.work-fill { animation:none; } .primary:hover { transform:none; } }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .primary:hover { transform:none; } }
 </style>
 </head>
 <body>
@@ -213,7 +227,7 @@
       </div>
     </section>
 
-    <embabel-operation-state id="operation"></embabel-operation-state>
+    <embabel-operation-state id="search-operation"></embabel-operation-state>
     <div class="notice" id="notice" role="status" hidden></div>
 
     <section class="section" id="record-section" aria-labelledby="record-heading">
@@ -226,10 +240,19 @@
 
     <section class="section" aria-labelledby="ask-heading">
       <div class="section-head">
-        <div><div class="kicker">Agentic RAG</div><h2 id="ask-heading">Ask the indexed hearings</h2></div>
-        <p class="section-note">This is a separate, slower operation over your indexed parliamentary working set—not a claim to search all Hansard semantically.</p>
+        <div><div class="kicker">Agentic RAG</div><h2 id="ask-heading">Ask your searchable Hansard</h2></div>
+        <p class="section-note">The scope below is exact. Answers can use those transcripts and no others.</p>
       </div>
       <div class="ask">
+        <div class="corpus-strip" aria-live="polite">
+          <div><div class="panel-label">Your searchable Hansard</div><strong class="corpus-summary" id="corpus-summary">Checking which transcripts are available…</strong></div>
+          <button class="secondary" id="refresh-corpus" type="button">Refresh</button>
+        </div>
+        <details class="corpus-details" id="corpus-details">
+          <summary id="corpus-detail-summary">See exactly what is searchable</summary>
+          <div class="corpus-list" id="corpus-list"></div>
+          <p class="corpus-why"><strong>Why not every Hansard record?</strong> This realm currently has live phrase-search connectors and individual record fetching, but no scheduled Parliament-wide change feed. A complete semantic corpus needs a resumable background sync that can enumerate proceedings, refresh changed records and respect the public source. This app adds selected matches; the search above continues to query live ParlInfo directly.</p>
+        </details>
         <div class="ask-grid">
           <div>
             <div class="panel-label">Your question</div>
@@ -242,12 +265,13 @@
           <aside class="rag-explainer">
             <div class="panel-label">What happens</div>
             <ol>
-              <li>Only documents with a <code>parlinfo://</code> identity are eligible.</li>
+              <li>The exact transcripts listed above are the only eligible evidence.</li>
               <li>A bounded retrieval agent judges direct fit to your question.</li>
               <li>The answer is written only from the displayed evidence excerpts.</li>
             </ol>
           </aside>
         </div>
+        <embabel-operation-state id="ask-operation"></embabel-operation-state>
         <div class="answer" id="answer" hidden></div>
       </div>
     </section>
@@ -262,6 +286,7 @@
           <div><h3>Compare one portfolio</h3><p>The parliamentary side only knows hearings you indexed above. The procurement side reads first-published contract descriptions in the current Estimates date window.</p></div>
           <div class="bridge-form"><input id="portfolio" type="text" value="Defence" aria-label="Portfolio"><button class="primary" id="compare" type="button">Compare the records</button></div>
         </div>
+        <embabel-operation-state id="compare-operation"></embabel-operation-state>
         <div id="compare-result" hidden></div>
       </div>
     </section>
@@ -288,7 +313,7 @@
   var DEMO = new URLSearchParams(location.search).has('demo');
   var runner = (!DEMO && E) ? E.createRunner({ timeoutMs: 600000 }) : null;
   var currentPhrase = '';
-  var lastAction = null;
+  var corpusDocuments = [];
   var esc = E && E.html ? E.html.escape : function (value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -306,29 +331,103 @@
     if (!message) { box.hidden = true; box.textContent = ''; box.className = 'notice'; return; }
     box.hidden = false; box.className = 'notice' + (error ? ' error' : ''); box.textContent = message;
   }
+  var progressCopy = {
+    search:{
+      message:'Searching the parliamentary record classes…',
+      expectation:'Usually 10–30 seconds. After 15 seconds it continues in the background while this page checks for the result.',
+      quiet:'Still searching Chamber, committee and Estimates records. ParlInfo can be slow; the search is still active.'
+    },
+    index:{
+      message:'Fetching and indexing up to six matching transcripts…',
+      expectation:'Full hearings must be fetched, chunked and indexed. One to two minutes can be normal.',
+      quiet:'Still fetching or indexing full transcripts. Long hearings can take over a minute; no result has been lost.'
+    },
+    ask:{
+      message:'Retrieving and judging evidence from indexed transcripts…',
+      expectation:'Agentic retrieval commonly takes 20–60 seconds and can run longer for ambiguous questions.',
+      quiet:'Still reformulating, retrieving and judging excerpts. The bounded agent is active; it will return evidence or an honest empty result.'
+    },
+    compare:{
+      message:'Reading indexed hearings and the contract window separately…',
+      expectation:'The two sources are scanned and summarised independently. A wide contract window can take several minutes.',
+      quiet:'Still scanning the contract window and reducing both sources separately. The comparison remains active in the background.'
+    }
+  };
+  function stateElement(kind) { return $(kind + '-operation'); }
+  function progressTarget(kind) {
+    var element = stateElement(kind), copy = progressCopy[kind];
+    return {
+      setState:function (state, detail) { element.setState(state, detail); },
+      setProgress:function (detail) {
+        var next = Object.assign({}, detail || {});
+        if (next.stalled) { next.stalled = false; next.message = copy.quiet; }
+        element.setProgress(next);
+      }
+    };
+  }
   function invoke(id, args, kind) {
     if (!runner) return Promise.reject(new Error('This operation needs a running world. Remove ?demo=1 to use live Parliament search.'));
-    var messages = {
-      search:'Searching the parliamentary record classes…',
-      index:'Fetching and indexing matching transcripts…',
-      ask:'Running bounded agentic retrieval over indexed transcripts…',
-      compare:'Comparing indexed hearing passages with signed contracts…'
-    };
-    var expectations = {
-      search:'ParlInfo record classes are searched politely in sequence; 10–30 seconds is normal.',
-      index:'Up to six full records are fetched, chunked and indexed; a minute can be normal.',
-      ask:'The agent may reformulate, compare retrieval modes and judge evidence; 20–60 seconds is normal.',
-      compare:'The contract window and indexed hearings are reduced separately; wide windows can take several minutes.'
-    };
-    return runner.lens(id, args, { waitSeconds: 15, state:$('operation'), message:messages[kind], expectation:expectations[kind] }).then(dataOf);
+    var copy = progressCopy[kind];
+    return runner.lens(id, args, {
+      waitSeconds:15, state:progressTarget(kind), message:copy.message, expectation:copy.expectation
+    }).then(dataOf);
   }
-  function operationError(error) { if ($('operation').dataset.state !== 'error') $('operation').setState('error',{error:error}); }
+  function operationError(error, kind) {
+    var element = stateElement(kind);
+    if (element && element.dataset.state !== 'error') element.setState('error',{error:error});
+  }
   function cleanHtml(value) { return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); }
   function sourceUrl(uri) {
     var prefix = 'parlinfo://';
     if (String(uri || '').indexOf(prefix) !== 0) return '';
     var fragment = String(uri).slice(prefix.length);
     return 'https://parlinfo.aph.gov.au/parlInfo/search/display/display.w3p;query=Id%3A%22' + encodeURIComponent(fragment) + '%22';
+  }
+  function corpusDate(value) {
+    if (!value) return '';
+    var date = new Date(value);
+    return isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-AU',{day:'numeric',month:'short',year:'numeric'}).format(date);
+  }
+  function renderCorpus(documents, unavailable) {
+    corpusDocuments = documents || [];
+    var summary = $('corpus-summary'), list = $('corpus-list'), detail = $('corpus-detail-summary');
+    if (unavailable) {
+      summary.dataset.state = 'unknown';
+      summary.textContent = 'The app could not inspect your searchable set. You can retry, or ask and let retrieval report what it finds.';
+      detail.textContent = 'Why scope could not be shown';
+      list.innerHTML = '<div class="corpus-item">' + esc(unavailable) + '</div>';
+      return;
+    }
+    var count = corpusDocuments.length;
+    summary.dataset.state = count ? 'ready' : 'empty';
+    summary.textContent = count
+      ? count + ' parliamentary transcript record' + (count === 1 ? ' is' : 's are') + ' available for meaning-based questions.'
+      : 'No parliamentary transcripts are indexed yet. Search above, then add matching records.';
+    $('ask').disabled = !count;
+    detail.textContent = count ? 'See the exact ' + count + ' searchable transcript' + (count === 1 ? '' : 's') : 'What semantic search will cover';
+    list.innerHTML = count ? corpusDocuments.map(function (doc) {
+      var url = sourceUrl(doc.uri), when = corpusDate(doc.ingestedAt);
+      return '<div class="corpus-item">' + (url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(doc.title || 'Untitled ParlInfo record') + ' ↗</a>' : esc(doc.title || doc.uri)) +
+        (when ? '<div>Added or refreshed ' + esc(when) + '</div>' : '') + '</div>';
+    }).join('') : '<div class="corpus-item">Agentic RAG has no Hansard evidence to search until you add records from a phrase search.</div>';
+  }
+  async function loadCorpus() {
+    if (DEMO) { renderCorpus([]); return; }
+    $('refresh-corpus').disabled = true;
+    $('corpus-summary').dataset.state = 'loading';
+    $('corpus-summary').textContent = 'Checking which transcripts are available…';
+    try {
+      var response = await fetch('/api/v1/documents',{headers:{Accept:'application/json'}});
+      if (!response.ok) throw new Error('Document inventory returned HTTP ' + response.status + '.');
+      var data = await response.json();
+      var documents = (data.documents || []).filter(function (doc) { return String(doc.uri || '').indexOf('parlinfo://') === 0; });
+      documents.sort(function (a,b) { return String(b.ingestedAt || '').localeCompare(String(a.ingestedAt || '')); });
+      renderCorpus(documents);
+    } catch (error) {
+      renderCorpus(corpusDocuments, error && error.message || String(error));
+    } finally {
+      $('refresh-corpus').disabled = false;
+    }
   }
   function demoParliament(phrase) {
     var canonical = /snowy/i.test(phrase);
@@ -364,27 +463,27 @@
         (records ? '<div class="records">' + records + '</div>' : '<div class="group-empty">' + esc(g.note || 'Nothing matched in this record class.') + '</div>') + '</section>';
     }).join('');
     var canIndex = groups.some(function (g) { return (g.results || []).length; });
-    var index = canIndex ? '<section class="index-card" id="index-card"><div><h3>Make these records meaning-searchable</h3><p>Opt in to fetching and indexing up to six recent matches: two per record class. This can take around a minute and writes public transcripts to your personal document knowledge base.</p><div id="indexed-list"></div></div><button class="primary" id="index" type="button">Index matching records</button></section>' : '';
+    var index = canIndex ? '<section class="index-card" id="index-card"><div><h3>Add the newest matches to semantic search</h3><p>Adds up to six transcript records: the newest two matches from each record class. The exact searchable set is always shown under “Ask your searchable Hansard”; adding an existing record refreshes it instead of duplicating it.</p><div id="indexed-list"></div></div><button class="primary" id="index" type="button">Add matching records</button><embabel-operation-state id="index-operation"></embabel-operation-state></section>' : '';
     var limits = (d.limits || []).length ? '<details class="limits"><summary>Limits for this search</summary><ul>' + (d.limits || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></details>' : '';
     $('results').className = ''; $('results').innerHTML = summary + '<div class="groups">' + htmlGroups + '</div>' + index + limits;
   }
   async function search() {
     var phrase = $('phrase').value.trim(); if (!phrase) { setNotice('Enter a topic or phrase to search.', true); $('phrase').focus(); return; }
-    currentPhrase = phrase; lastAction = search; setNotice(''); $('search').disabled = true;
+    currentPhrase = phrase; setNotice(''); $('search').disabled = true;
     try {
       var d = DEMO ? demoParliament(phrase) : await invoke('au-parliament',{phrase:phrase,from:$('from').value,to:$('to').value},'search');
       if (!d) throw new Error('The parliamentary lens returned no readable result.');
       renderResults(d);
       if (d.status === 'PARTIAL') setNotice('Some record classes or generated interpretation may be incomplete. The result labels each searched class; an empty class is not a Parliament-wide conclusion.');
       $('record-section').scrollIntoView({behavior:'smooth',block:'start'});
-    } catch (e) { operationError(e); }
+    } catch (e) { operationError(e,'search'); }
     finally { $('search').disabled = false; }
   }
   async function indexRecords() {
     if (!currentPhrase) return;
     if (DEMO) { setNotice('Indexing changes your document knowledge base and is unavailable in the standalone demo.', true); return; }
     var button = $('index'); if (button) button.disabled = true;
-    lastAction = indexRecords; setNotice('');
+    setNotice('');
     try {
       var d = await invoke('au-hansard-index',{phrase:currentPhrase},'index');
       if (!d) throw new Error('The indexing lens returned no readable result.');
@@ -392,8 +491,9 @@
       if (list) list.innerHTML = '<div class="indexed-list">' + docs.map(function (x) { return '<div class="indexed-item">' + esc(x.record || 'Parliamentary record') + ' · ' + esc(x.title || x.uri) + '</div>'; }).join('') + '</div>';
       if (button) { button.textContent = docs.length ? docs.length + ' record' + (docs.length === 1 ? '' : 's') + ' indexed' : 'Nothing indexed'; button.disabled = true; }
       setNotice(d.note || (docs.length + ' parliamentary records indexed. You can now ask meaning-based questions below.'), !docs.length);
+      await loadCorpus();
       if (docs.length && !$('question').value.trim()) $('question').value = 'What was substantively discussed about ' + currentPhrase + ', and by whom?';
-    } catch (e) { operationError(e); if (button) button.disabled = false; }
+    } catch (e) { operationError(e,'index'); if (button) button.disabled = false; }
   }
   function linkAnswer(text, evidence) {
     var safe = esc(text || '');
@@ -418,14 +518,14 @@
   async function ask() {
     var question = $('question').value.trim(); if (!question) { setNotice('Enter a question for the indexed hearings.', true); $('question').focus(); return; }
     if (DEMO) { setNotice('Agentic RAG needs a running world and indexed transcripts; it is unavailable in the standalone demo.', true); return; }
-    lastAction = ask; setNotice(''); $('ask').disabled = true; $('answer').hidden = true;
+    setNotice(''); $('ask').disabled = true; $('answer').hidden = true;
     try {
       var d = await invoke('au-hansard-rag',{question:question},'ask');
       if (!d) throw new Error('The agentic lens returned no readable result.');
       renderAnswer(d);
       if (d.status === 'PARTIAL') setNotice('The answer is partial. Check the observed retrieval mode and displayed evidence; the lens may have degraded or answer generation may have failed.');
       $('answer').scrollIntoView({behavior:'smooth',block:'nearest'});
-    } catch (e) { operationError(e); }
+    } catch (e) { operationError(e,'ask'); }
     finally { $('ask').disabled = false; }
   }
   function renderComparison(d) {
@@ -449,13 +549,13 @@
   async function comparePortfolio() {
     var portfolio = $('portfolio').value.trim(); if (!portfolio) return;
     if (DEMO) { setNotice('The portfolio comparison needs indexed hearings and a running world.',true); return; }
-    lastAction = comparePortfolio; $('compare').disabled = true; $('compare-result').hidden = true; setNotice('');
+    $('compare').disabled = true; $('compare-result').hidden = true; setNotice('');
     try {
       var d = await invoke('au-said-vs-signed',{portfolio:portfolio,from:$('from').value,to:$('to').value},'compare');
       if (!d) throw new Error('The comparison lens returned no readable result.');
       renderComparison(d);
       if (d.status === 'PARTIAL') setNotice('The comparison is partial. Read the source-specific notes before interpreting it.');
-    } catch (e) { operationError(e); }
+    } catch (e) { operationError(e,'compare'); }
     finally { $('compare').disabled = false; }
   }
   function iso(d) { var p = function (n) { return String(n).padStart(2,'0'); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
@@ -464,13 +564,27 @@
   $('search').addEventListener('click',search);
   $('phrase').addEventListener('keydown',function (e) { if (e.key === 'Enter') search(); });
   $('ask').addEventListener('click',ask);
+  $('refresh-corpus').addEventListener('click',loadCorpus);
   $('compare').addEventListener('click',comparePortfolio);
-  $('operation').addEventListener('embabel-retry',function () { if (lastAction) lastAction(); });
   if (E && E.progress) E.progress.label(function (name) {
-    return /parliament|parlinfo|hansard/i.test(name) ? 'the parliamentary record'
+    return /hansardChamber/i.test(name) ? 'Chamber Hansard'
+      : /committeeMentions/i.test(name) ? 'committee evidence'
+      : /estimatesMentionsInPeriod/i.test(name) ? 'the Estimates date window'
+      : /estimatesMentions/i.test(name) ? 'Senate Estimates'
+      : /parliament|parlinfo|hansard/i.test(name) ? 'the parliamentary record'
       : /releasesPublished/i.test(name) ? 'the AusTender publication window'
       : /document|knowledge/i.test(name) ? 'the indexed transcript set'
       : String(name || 'the public source');
+  });
+  document.addEventListener('embabel-retry',function (event) {
+    var actions = {
+      'search-operation':search,
+      'index-operation':indexRecords,
+      'ask-operation':ask,
+      'compare-operation':comparePortfolio
+    };
+    var retry = actions[event.target && event.target.id];
+    if (retry) retry();
   });
   $('question').addEventListener('keydown',function (e) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') ask(); });
   document.addEventListener('click',function (e) {
@@ -480,6 +594,7 @@
   var query = new URLSearchParams(location.search).get('q');
   if (query) { $('phrase').value = query; search(); }
   if (DEMO) setNotice('Demo mode uses a small real ParlInfo slice for “Snowy Hydro”. Indexing and agentic RAG need a running world.');
+  loadCorpus();
 })();
 </script>
 </body>

@@ -74,6 +74,12 @@ outline using approximate division display points, links back to the public awar
 searches, exposes near-cutoff bunching without claiming a cause, and counts every ambiguous or
 missing geographic row rather than guessing.
 
+`apps/ndis-public-record.html` is the citizen-facing NDIS front door. It leads with four verified
+plain-English findings, explains what each does and does not mean, and progressively opens the live
+register diff, enforcement-batch context, arithmetic filing shapes and relationships literally
+named in the Commission's prose. It uses cards rather than wide tables, never produces a risk
+score, and remains useful as a dated research snapshot when the live app runtime is unavailable.
+
 ## Discipline
 
 This realm reports what the registers record and never characterises it. Amounts are commitments,

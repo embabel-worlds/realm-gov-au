@@ -162,6 +162,30 @@
     MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM]->(g:CharityProgram)
     RETURN cluster(g.programName, $groups) AS programGroups
 
+# ── A named person's press trail — separate from the register evidence ─────────────────────────
+- name: NdisPersonPressTrail
+  description: >-
+    News-index results for one person named in an NDIS compliance action. The search phrase is
+    built per invocation as the person's exact quoted name plus NDIS, making this a separate
+    virtual Cypher traversal for each card rather than part of the register-diff finding. A result
+    is third-party material whose index text matched that phrase: names collide, snippets are not
+    verified facts, and no result may be used to create, suppress or strengthen a register finding.
+    Every row retains the searched phrase, headline, snippet, freshness and URL so the citizen can
+    open the publisher's page and judge it.
+  params:
+    person:
+      type: string
+      default: "Christine Coop"
+      description: "Person's name exactly as published in the compliance register."
+  cypher: |
+    WITH trim($person) AS person
+    WHERE size(person) >= 5
+    WITH person, '"' + replace(person, '"', '') + '" NDIS' AS phrase
+    OPTIONAL MATCH (q:CoverageQuery {phrase: phrase})-[:HAS_COVERAGE]->(c:ContractCoverage)
+    RETURN person, phrase, c.title AS title, c.url AS url,
+           c.snippet AS snippet, c.age AS age
+    ORDER BY age DESC, title
+
 # ── Item 7: the legal trail, READ ───────────────────────────────────────────────────────────────
 - name: NdisProviderLegalTrail
   description: >-

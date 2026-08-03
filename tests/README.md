@@ -5,6 +5,11 @@ question landing on the right panel, the charts, and the honesty invariants (a s
 result, the press tier fenced as not-evidence, the league never calling a commitment a budget,
 no electorate/MP on a passport, no `[object Object]`, zero console errors).
 
+`ndis-public-record-suite.js` — an offline browser regression for the citizen-facing NDIS app:
+the four immediate findings, plain-English meaning/limit pairs, live register-change cards,
+enforcement-batch context, quoted narrative connections, four accounting screens and phone-width
+layout. The runtime is stubbed with representative envelopes so no running world is required.
+
 It needs Playwright, which lives in the `me` repo's `uit/`:
 
 ```bash

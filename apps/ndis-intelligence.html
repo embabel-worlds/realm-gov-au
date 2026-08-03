@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NDIS Intelligence — the register, read</title>
+<meta name="description" content="Five saved queries over the NDIS Commission compliance register and providers' own ACNC filings: what appeared, how enforcement is shaped, how it explains itself, and two money shapes worth a human's attention.">
+<link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
+<script src="/api/v1/apps-runtime/v1/embabel.js"></script>
+<script type="application/embabel-app+json">
+{"version":1,"name":"ndis-intelligence","requires":{"lenses":[],"views":["NdisNewEnforcement","NdisEnforcementWaves","NdisRegisterOpacity","NdisWorkforceFlip","NdisMoneyLeavesUnspecified"],"realms":["gov-au"],"namespaces":[]}}
+</script>
+<style>
+  :root{--ink:#17231f;--muted:#68736e;--paper:#f2f0e9;--card:#fffefa;--line:#d6d7d0;--night:#182d35;--coral:#f28b71;--gold:#e9bb58;--green:#4b8c76;--cyan:#9bdbe1;--shadow:0 14px 38px rgba(23,35,31,.08);--embabel-accent:#2e746c}
+  @media(prefers-color-scheme:dark){:root{--ink:#eef5f1;--muted:#a8b8b0;--paper:#101917;--card:#17231f;--line:#35443e;--night:#10292f;--shadow:0 14px 38px rgba(0,0,0,.3);--embabel-bg:var(--paper);--embabel-surface:var(--card);--embabel-text:var(--ink);--embabel-border:var(--line)}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  embabel-app-shell{display:block;overflow:hidden}
+  button{font:inherit}
+  .wrap{width:min(1140px,calc(100% - 40px));margin:auto}
+  .mast{background:var(--night);color:#f5fbf8}
+  .mast .wrap{padding:22px 0 34px}
+  .brand{font-weight:900;letter-spacing:.14em;text-transform:uppercase;font-size:.72rem}
+  h1{font-size:clamp(2rem,4.6vw,3.3rem);line-height:.95;letter-spacing:-.045em;margin:20px 0 12px}
+  .lede{color:#c4d6d0;line-height:1.6;max-width:760px;margin:0;font-size:.9rem}
+  .tabs{display:flex;gap:7px;margin:26px 0 16px;flex-wrap:wrap}
+  .tab{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font-weight:830;font-size:.75rem;padding:8px 13px;cursor:pointer}
+  .tab[aria-selected=true]{background:var(--night);border-color:var(--night);color:#fff}
+  .pane[hidden]{display:none}
+  .head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:end;margin-bottom:12px}
+  .kicker{color:var(--green);font-size:.68rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
+  h2{font-size:clamp(1.4rem,3vw,2.1rem);letter-spacing:-.04em;margin:5px 0 7px}
+  .head p{max-width:720px;margin:0;color:var(--muted);font-size:.82rem;line-height:1.55}
+  .run{border:0;border-radius:10px;background:var(--coral);color:#211814;font-weight:900;padding:11px 16px;cursor:pointer}
+  .run:disabled{opacity:.5;cursor:wait}
+  /* The caveat is the guard against a row being read as an allegation, so it is styled to be read:
+     near-body contrast, an accent rule, and one claim per line. */
+  .caveat{margin:0 0 14px;padding:11px 15px;border-radius:11px;border-left:3px solid var(--gold);
+    background:color-mix(in srgb,var(--gold) 16%,transparent);color:var(--ink);font-size:.8rem;line-height:1.6}
+  .caveat b{font-weight:900}
+  .caveat span{display:block}
+  .caveat span + span{margin-top:5px}
+  .notice{margin:12px 0;padding:11px 13px;border-radius:11px;background:color-mix(in srgb,var(--cyan) 20%,transparent);color:var(--muted);font-size:.75rem}
+  .notice[hidden]{display:none}
+  .notice.error{color:var(--coral);border:1px solid color-mix(in srgb,var(--coral) 35%,var(--line))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .count{padding:12px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:.74rem;font-weight:850}
+  /* A clipped column reads as corrupt data, not as content off-screen — and the platform runs on
+     macOS, where the scrollbar is hidden until you scroll. So the cue is a FOREGROUND overlay
+     (behind the rows it was invisible), toggled by measurement: it shows only while there really is
+     more table to the right, and clears when you reach the end. */
+  .scrollwrap{position:relative}
+  .scroll{overflow-x:auto}
+  /* Cued in BOTH directions. Once scrolled, the identity column is the one off-screen to the LEFT,
+     so a right-only cue loses exactly the column a reader needs to know whose row this is. */
+  /* The outer third is SOLID card colour: a gradient that is merely soft still leaves a word cut
+     flat at the edge, which is the thing being fixed. */
+  .scrollwrap::after,.scrollwrap::before{content:'';position:absolute;top:0;bottom:0;width:56px;
+    pointer-events:none;opacity:0;transition:opacity .15s;z-index:1}
+  .scrollwrap::after{right:0;background:linear-gradient(to left,var(--card) 0 34%,transparent)}
+  .scrollwrap::before{left:0;background:linear-gradient(to right,var(--card) 0 34%,transparent)}
+  .scrollwrap.more::after{opacity:1}
+  .scrollwrap.less::before{opacity:1}
+  /* A cued table reserves a strip below the last row so the hint never sits inside the row band. */
+  .scrollwrap.more .scroll,.scrollwrap.less .scroll{padding-bottom:22px}
+  .hint{position:absolute;bottom:9px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:2;
+    font-size:.6rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .more-hint{right:10px}
+  .less-hint{left:10px}
+  .scrollwrap.more .more-hint{opacity:1}
+  .scrollwrap.less .less-hint{opacity:1}
+  table{border-collapse:collapse;width:100%;font-size:.78rem}
+  th{text-align:left;color:var(--muted);font-size:.65rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.pair .arrow{color:var(--muted);padding:0 3px}
+  th.num{text-align:right}
+  /* The identity column earns the most width, not the least — it wrapped to two lines while every
+     number sat on one, so the row height lied about how much was in the row. */
+  td.name{min-width:190px;font-weight:750}
+  td.abn{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--muted)}
+  td.prose{min-width:280px;max-width:520px;color:var(--muted);font-size:.73rem;line-height:1.5}
+  th:last-child,td:last-child{padding-right:18px}
+  .flag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:.64rem;font-weight:850;background:color-mix(in srgb,var(--gold) 25%,transparent)}
+  .flag.ok{background:color-mix(in srgb,var(--green) 22%,transparent)}
+  .empty{border:1px dashed var(--line);border-radius:16px;padding:38px;text-align:center;color:var(--muted);font-size:.82rem}
+  .foot{margin-top:44px;padding:16px 0;border-top:1px solid var(--line);color:var(--muted);font-size:.68rem;line-height:1.55}
+  .main{padding-bottom:56px}
+  @media(max-width:700px){.wrap{width:min(100% - 26px,1140px)}.head{grid-template-columns:1fr}.head .run{width:100%}.tabs{overflow:auto}}
+</style>
+</head>
+<body>
+<embabel-app-shell>
+  <header class="mast"><div class="wrap">
+    <div class="brand">NDIS Intelligence</div>
+    <h1>The register, read.</h1>
+    <p class="lede">Five saved queries over the NDIS Commission's own compliance register and providers' own ACNC filings. Every figure is a published number or arithmetic over published numbers. Nothing here is an allegation about any provider — each tab says what its numbers can and cannot support.</p>
+  </div></header>
+  <main class="wrap main">
+    <nav class="tabs" role="tablist" aria-label="NDIS intelligence views">
+      <button class="tab" role="tab" aria-selected="true" data-tab="new">What appeared</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="waves">How enforcement is shaped</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="opacity">How it explains itself</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="flip">Workforce flip</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="passthrough">Money leaving unspecified</button>
+    </nav>
+    <embabel-operation-state id="operation" style="margin:10px 0"></embabel-operation-state>
+    <div class="notice" id="notice" hidden></div>
+
+    <section class="pane" id="pane-new">
+      <div class="head"><div><div class="kicker">The register as a time series</div>
+        <h2>Enforcement that appeared between two extracts</h2>
+        <p>The Commission publishes dated extracts showing current state only, so nothing published shows when an action arrived. This diffs two extracts.</p></div>
+        <button class="run" data-run="new">Run</button></div>
+      <p class="caveat"><span>An appearance is dated to the <b>interval between two extracts</b>, not to a day.</span><span>The register's own effective date often precedes publication by months, so <b>a row appearing now may concern conduct years old</b>.</span></p>
+      <div id="result-new"><div class="empty">Run to diff the two most recent extracts.</div></div>
+    </section>
+
+    <section class="pane" id="pane-waves" hidden>
+      <div class="head"><div><div class="kicker">Batches, not a stream</div>
+        <h2>Compliance notices by the day they took effect</h2>
+        <p>Notices arrive in mass batches on single dates, and overwhelmingly cite one instrument — the section 73J audit obligation.</p></div>
+        <button class="run" data-run="waves">Run</button></div>
+      <p class="caveat"><span>Because notices arrive in batches, a provider's presence in this register is <b>weak evidence about that provider</b> — it may mean only that it sat inside a mass audit-obligation batch.</span><span>Read the action type and its narrative, <b>never the mere presence of a hit</b>.</span></p>
+      <div id="result-waves"><div class="empty">Run to count notices per effective date.</div></div>
+    </section>
+
+    <section class="pane" id="pane-opacity" hidden>
+      <div class="head"><div><div class="kicker">What the register does not say</div>
+        <h2>How specifically each action type explains itself</h2>
+        <p>How many rows of each type state a basis — "on the basis that…", "reasonably believes", "convicted of" — versus only describing what is prohibited or required.</p></div>
+        <button class="run" data-run="opacity">Run</button></div>
+      <p class="caveat"><span>A low percentage is a fact about the <b>register's publishing practice</b>, not about the people named in it.</span><span>Banning-order narratives state the scope of the prohibition rather than the conduct behind it; that is why the figure for banning orders is low.</span></p>
+      <div id="result-opacity"><div class="empty">Run to measure the register's own explanatory detail.</div></div>
+    </section>
+
+    <section class="pane" id="pane-flip" hidden>
+      <div class="head"><div><div class="kicker">Two years of a provider's own filings</div>
+        <h2>Providers whose labour costs collapsed as a share of revenue</h2>
+        <p>Employee expenses falling sharply as a share of service revenue while revenue holds or grows: the work is now done by someone other than employees.</p></div>
+        <button class="run" data-run="flip">Run</button></div>
+      <p class="caveat"><span>This is an <b>anomaly in a self-report, not an allegation</b>. Moving to labour hire or contracting is lawful and common, and a reporting-period change or restructure produces the same shape.</span><span>Checked independently: none of these providers appears in any tribunal or court document under its exact name. The shape is unexplained, which is <b>not evidence of sham contracting</b>.</span></p>
+      <div id="result-flip"><div class="empty">Run to compare FY23 and FY24 filings.</div></div>
+    </section>
+
+    <section class="pane" id="pane-passthrough" hidden>
+      <div class="head"><div><div class="kicker">Where the money goes</div>
+        <h2>Providers whose money leaves as unspecified "other expenses"</h2>
+        <p>Most of the money leaving as neither wages nor named grants — the brokerage and plan-management shape, and the one place a public dollar's final recipient is named in no register.</p></div>
+        <button class="run" data-run="passthrough">Run</button></div>
+      <p class="caveat"><span><b>Lawful and common:</b> brokering or managing others' services pays most funding out by design.</span><span>The AIS reports <b>one government-revenue line</b> covering everything a charity does, so a provider's figure may be aged care or housing rather than NDIS money.</span></p>
+      <div id="result-passthrough"><div class="empty">Run to see the pass-through cohort.</div></div>
+    </section>
+
+    <div class="foot">Sources: NDIS Commission compliance actions and ACNC Annual Information Statements 2023 and 2024, both published on data.gov.au. Figures are self-reported by providers or published by the Commission; this app computes arithmetic over them and adds nothing. Money is a committed or reported amount, never verified expenditure.</div>
+  </main>
+</embabel-app-shell>
+<script>
+(function(){
+  var E = window.embabel || {}, runner = E.runner || null, active = 'new', lastRun = null;
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function money(v){ return isFinite(Number(v)) ? new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD',notation:'compact',maximumFractionDigits:1}).format(Number(v)) : '—'; }
+  function num(v){ return isFinite(Number(v)) ? new Intl.NumberFormat('en-AU').format(Number(v)) : '—'; }
+  function pct(v){ return isFinite(Number(v)) ? Number(v).toFixed(1) + '%' : '—'; }
+  function notice(m, err){ var b = $('notice'); b.hidden = !m; b.className = 'notice' + (err ? ' error' : ''); b.textContent = m || ''; }
+
+  // Column specs per view. `f` formats a cell; `cls` styles it. Kept declarative so a tab is a
+  // spec plus a caveat, not another render function.
+  var text = function(v){ return esc(v == null || v === '' ? '—' : v); };
+  var flag = function(v){ return v === true ? '<span class="flag">yes</span>' : v === false ? '<span class="flag ok">no</span>' : '—'; };
+  // An ABN is quoted in 2-3-3-3 groups. Anything that is not 11 digits is shown verbatim rather
+  // than forced into the shape, because a malformed identifier is itself worth seeing.
+  var abn = function(v){
+    var d = String(v == null ? '' : v).replace(/\D/g, '');
+    if (d.length !== 11) return text(v);
+    return d.slice(0,2) + ' ' + d.slice(2,5) + ' ' + d.slice(5,8) + ' ' + d.slice(8);
+  };
+  // The AIS records this as a single letter. Rendered as a word, since 'y' beside a wrapped header
+  // is ambiguous, and left as '—' when the filer answered nothing at all.
+  var yesNo = function(v){
+    var s = String(v == null ? '' : v).trim().toLowerCase();
+    if (s === 'y' || s === 'yes' || s === 'true') return '<span class="flag">yes</span>';
+    if (s === 'n' || s === 'no' || s === 'false') return '<span class="flag ok">no</span>';
+    return text(v);
+  };
+  var SPECS = {
+    new: { view: 'NdisNewEnforcement', unit: 'action appeared', units: 'actions appeared', cols: [
+      { k:'actionType', h:'Action', f:text }, { k:'subject', h:'Subject', f:text, cls:'name' },
+      { k:'state', h:'State', f:text }, { k:'effectiveFrom', h:'Effective from', f:text },
+      { k:'publishedUntil', h:'Until', f:function(v){ return esc(v || 'open-ended'); } },
+      { k:'statesABasis', h:'States a basis', f:flag },
+      { k:'instrumentCited', h:'Instrument cited', f:text },
+      { k:'commissionNarrative', h:"The Commission's words", f:text, cls:'prose' } ] },
+    waves: { view: 'NdisEnforcementWaves', unit: 'batch date', cols: [
+      { k:'effectiveDay', h:'Effective date', f:text },
+      { k:'notices', h:'Notices', f:num, cls:'num' },
+      { k:'citingAuditObligation', h:'Citing s73J audit obligation', f:num, cls:'num' } ] },
+    opacity: { view: 'NdisRegisterOpacity', unit: 'action type', cols: [
+      { k:'actionType', h:'Action type', f:text },
+      { k:'rows', h:'Rows', f:num, cls:'num' },
+      { k:'statingABasis', h:'Stating a basis', f:num, cls:'num' },
+      { k:'statingABasisPct', h:'Share stating a basis', f:pct, cls:'num' },
+      { k:'citingCriminalHistory', h:'Citing criminal history', f:num, cls:'num' },
+      { k:'citingFraudOrFalsification', h:'Citing fraud/falsification', f:num, cls:'num' } ] },
+    flip: { view: 'NdisWorkforceFlip', unit: 'provider', cols: [
+      { k:'provider', h:'Provider', f:text, cls:'name' }, { k:'abn', h:'ABN', f:abn, cls:'abn' },
+      { k:'serviceRevenueFy23', k2:'serviceRevenueFy24', h:'Service revenue FY23 \u2192 FY24', f:money, cls:'num pair' },
+      { k:'labourShareFy23Pct', k2:'labourShareFy24Pct', h:'Labour share FY23 \u2192 FY24', f:pct, cls:'num pair' },
+      { k:'fteFy23', k2:'fteFy24', h:'FTE FY23 \u2192 FY24', f:text, cls:'num pair' },
+      { k:'relatedPartyDeclared', h:'Related party declared', f:yesNo } ] },
+    passthrough: { view: 'NdisMoneyLeavesUnspecified', unit: 'provider', cols: [
+      { k:'provider', h:'Provider', f:text, cls:'name' }, { k:'abn', h:'ABN', f:abn, cls:'abn' },
+      { k:'serviceRevenueFy24', h:'Service revenue FY24', f:money, cls:'num' },
+      { k:'otherExpensesFy24', h:'Other expenses FY24', f:money, cls:'num' },
+      { k:'otherExpensesSharePct', h:'Share of expenses', f:pct, cls:'num' },
+      { k:'employeeExpensesFy24', h:'Employee expenses', f:money, cls:'num' },
+      { k:'fteFy24', h:'FTE', f:text, cls:'num' },
+      { k:'relatedPartyDeclared', h:'Related party declared', f:yesNo } ] }
+  };
+
+  function rowsOf(d){
+    if (!d) return [];
+    if (Array.isArray(d)) return d;
+    if (Array.isArray(d.rows)) return d.rows;
+    return [];
+  }
+  function render(kind, rows){
+    var spec = SPECS[kind], target = $('result-' + kind);
+    if (!rows.length){
+      target.innerHTML = '<div class="empty">No rows. For a screen that is an answer — the shape is absent from the current data — not a failure.</div>';
+      return;
+    }
+    var head = spec.cols.map(function(c){
+      // Match the TOKEN, not the whole class string: a numeric column may carry other classes too,
+      // and an exact compare silently left the header left-aligned over right-aligned numbers.
+      var numeric = (' ' + (c.cls || '') + ' ').indexOf(' num ') >= 0;
+      return '<th class="' + (numeric ? 'num' : '') + '">' + esc(c.h) + '</th>';
+    }).join('');
+    var body = rows.map(function(r){
+      return '<tr>' + spec.cols.map(function(c){
+        // A `k2` column is one FACT read across two years, so it is one cell: two years in two
+        // columns forced a 9-column table off the edge, and a reader quotes the pair anyway.
+        var cell = c.k2
+          ? c.f(r[c.k]) + '<span class="arrow">&rarr;</span>' + c.f(r[c.k2])
+          : c.f(r[c.k]);
+        return '<td class="' + (c.cls || '') + '">' + cell + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    var unit = rows.length === 1 ? spec.unit : (spec.units || spec.unit + 's');
+    target.innerHTML = '<div class="card"><div class="count">' + num(rows.length) + ' ' + esc(unit) +
+      '</div><div class="scrollwrap"><div class="scroll"><table><thead><tr>' + head + '</tr></thead>' +
+      '<tbody>' + body + '</tbody></table></div>' +
+      '<div class="hint less-hint">&larr; scroll</div><div class="hint more-hint">scroll &rarr;</div></div></div>';
+    var wrap = target.querySelector('.scrollwrap'), scroll = target.querySelector('.scroll');
+    function cue(){
+      wrap.classList.toggle('more', scroll.scrollWidth - scroll.clientWidth - scroll.scrollLeft > 2);
+      wrap.classList.toggle('less', scroll.scrollLeft > 2);
+    }
+    scroll.addEventListener('scroll', cue);
+    window.addEventListener('resize', cue);
+    cue();
+  }
+
+  async function run(kind){
+    lastRun = kind;
+    var spec = SPECS[kind];
+    if (!spec) return;
+    if (!runner){ notice('The Embabel app runtime is unavailable, so no view can be run from here.', true); return; }
+    document.querySelectorAll('.run').forEach(function(b){ b.disabled = true; });
+    notice('');
+    try {
+      var res = await runner.view(spec.view, {}, {
+        waitSeconds: 15, state: $('operation'),
+        message: 'Reading the register…',
+        expectation: 'The register and the filings are fetched once and cached, so a first run is slower than the next.'
+      });
+      var data = res && res.data !== undefined ? res.data : res;
+      render(kind, rowsOf(data));
+      if (res && res.status === 'PARTIAL') notice('This result is PARTIAL — a source was capped or unavailable, so treat every count as a floor.');
+    } catch (e){
+      if ($('operation').dataset.state !== 'error') $('operation').setState('error', { error: e });
+      notice('That view could not be run: ' + (e && e.message ? e.message : e), true);
+    } finally {
+      document.querySelectorAll('.run').forEach(function(b){ b.disabled = false; });
+    }
+  }
+
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-tab]');
+    if (t){
+      active = t.dataset.tab;
+      document.querySelectorAll('.tab').forEach(function(x){ x.setAttribute('aria-selected', String(x === t)); });
+      document.querySelectorAll('.pane').forEach(function(p){ p.hidden = p.id !== 'pane-' + active; });
+      return;
+    }
+    var r = e.target.closest('[data-run]');
+    if (r) run(r.dataset.run);
+  });
+  $('operation').addEventListener('embabel-retry', function(){ if (lastRun) run(lastRun); });
+  if (E && E.progress) E.progress.label(function(n){
+    return /ndisActionsSnapshotRows|SnapshotAction/i.test(n) ? 'the compliance register extract'
+      : /aisPrior/i.test(n) ? "the providers' FY23 filings"
+      : /ais/i.test(n) ? "the providers' FY24 filings"
+      : /programs/i.test(n) ? 'the ACNC program taxonomy'
+      : String(n || 'a published register');
+  });
+})();
+</script>
+</body>
+</html>
