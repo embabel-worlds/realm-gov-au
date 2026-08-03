@@ -498,7 +498,9 @@
       else if(desc.length<60)signals.push('description under 60 characters');
       return Object.assign({},x,{descriptionChars:desc.length,signals:signals,disclosureScore:null,judgedThin:null,
         austenderUrl:'https://www.tenders.gov.au/Search/KeywordSearch?keyword='+encodeURIComponent(x.cnId||'')});
-    }).sort(function(a,b){return b.signals.length-a.signals.length||Number(b.amount||0)-Number(a.amount||0);});
+    // Amount descending FIRST, matching the lens — the demo path and the real path must order rows
+    // identically or the demo teaches a reader the wrong shape.
+    }).sort(function(a,b){return Number(b.amount||0)-Number(a.amount||0)||b.signals.length-a.signals.length;});
     var flagged=screened.filter(function(x){return x.signals.length;}), sum=function(xs){return Math.round(xs.reduce(function(n,x){return n+Number(x.amount||0);},0));};
     return {kind:'au-opaque-spend',status:'PARTIAL',warnings:[],headline:{contractsOverThreshold:screened.length,
       valueOverThreshold:sum(screened),flaggedCount:flagged.length,flaggedValue:sum(flagged),judgedThinCount:0,judgedThinValue:0,
@@ -878,7 +880,9 @@
   function iso(d){var p=function(n){return String(n).padStart(2,'0');};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
   async function start(){
     resetDeepViews();
-    var now=new Date(), before=new Date(now.getTime()-24*60*60*1000);
+    // A WEEK, not a day. A single day of the register is often a handful of notices — too thin to
+    // show a shape — and the reader had to widen it before the room said anything useful.
+    var now=new Date(), before=new Date(now.getTime()-7*24*60*60*1000);
     $('from').value=iso(before); $('to').value=iso(now);
     if(DEMO){
       $('mode-label').textContent='Baked real-register demo';

@@ -127,7 +127,13 @@ spec:
       warnings.push("LLM disclosure reading unavailable — deterministic signals only: " + judgeError);
     }
 
-    // ---- COMPOSE: worst first — deterministic hits, then lowest judged disclosure ----------
+    // ---- COMPOSE: BIGGEST FIRST ------------------------------------------------------------
+    // Amount descending is the primary order. This screen answers "which LARGE commitments say
+    // almost nothing", so the money is the axis a reader scans and the one that decides which rows
+    // survive the 40-row cut. Signal count and judged disclosure remain as tiebreakers for equal
+    // amounts — they rank HOW thin, which is only interesting once you are already looking at the
+    // biggest. Previously they were primary, so a $2m notice with two signals sorted above a $200m
+    // notice with one, and the top of the list was not the top of the money.
     const JUDGE_FLOOR = 0.4; // below this the model judged the prose essentially uninformative
     const out = screened.map(r => {
       const score = judged[r.cnId];
@@ -136,9 +142,9 @@ spec:
         judgedThin: score != null ? score < JUDGE_FLOOR : null,
       });
     }).sort((a, b) =>
+      ((Number(b.amount) || 0) - (Number(a.amount) || 0)) ||
       (b.signals.length - a.signals.length) ||
-      ((a.disclosureScore == null ? 2 : a.disclosureScore) - (b.disclosureScore == null ? 2 : b.disclosureScore)) ||
-      (b.amount - a.amount));
+      ((a.disclosureScore == null ? 2 : a.disclosureScore) - (b.disclosureScore == null ? 2 : b.disclosureScore)));
     const judgedThin = out.filter(r => !r.signals.length && r.judgedThin);
     const sum = (xs) => Math.round(xs.reduce((n, x) => n + (x.amount || 0), 0));
 

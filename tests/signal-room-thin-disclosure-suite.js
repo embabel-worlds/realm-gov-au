@@ -168,6 +168,27 @@ function compact(v) {
   check('lowering it brings them back — the control re-runs, it does not cache',
     back.rows === low.rows, `first=${low.rows} again=${back.rows}`);
 
+  console.log('\n== rows are ordered by money, biggest first ==');
+  // This screen answers "which LARGE commitments say almost nothing", so amount descending is the
+  // order a reader scans and the one that decides which rows survive the 40-row cut. It used to sort
+  // by SIGNAL COUNT first, so a $2m notice with two signals outranked a $200m notice with one.
+  // The amount is the <strong> in the row's HEADER line; the second <strong> per row is the quoted
+  // description. Selecting both interleaved nulls through the list and made the order unreadable.
+  const amounts = await page.locator('#pane-disclosure .ground > div:first-child > strong').evaluateAll(els =>
+    els.map(e => e.textContent.trim())
+       .map(t => {
+         const m = t.replace(/[$,\s]/g, '').match(/^([\d.]+)([KMB])?$/i);
+         if (!m) return NaN;
+         const mult = { K: 1e3, M: 1e6, B: 1e9 }[(m[2] || '').toUpperCase()] || 1;
+         return Number(m[1]) * mult;
+       }));
+  check('every row shows a parseable amount', amounts.length > 1 && amounts.every(n => isFinite(n)),
+    JSON.stringify(amounts.slice(0, 5)));
+  const descending = amounts.every((n, i) => i === 0 || amounts[i - 1] >= n);
+  check('and they descend', descending, JSON.stringify(amounts));
+  check('the first row really is the largest', amounts[0] === Math.max(...amounts),
+    `first=${amounts[0]} max=${Math.max(...amounts)}`);
+
   console.log('\n== the record link goes to the record ==');
   check('every row carries a link', back.links.length === back.rows, `links=${back.links.length} rows=${back.rows}`);
   // /Cn/Show/<uuid> is the notice itself; KeywordSearch only lands the reader on a results page.
@@ -214,6 +235,29 @@ function compact(v) {
   check('and still fills a NON-grid container',
     paneGeom.elWidth > paneGeom.containerWidth * 0.95,
     `${Math.round(paneGeom.elWidth)}px inside ${Math.round(paneGeom.containerWidth)}px`);
+
+  console.log('\n== the default search window is the last WEEK ==');
+  // Loaded WITHOUT ?demo, because demo mode overwrites the window with the baked slice — the default
+  // is only observable on a normal load. The clock is frozen so the assertion is exact rather than
+  // "about seven days", and so it cannot pass by accident on any particular day.
+  const dctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const dpage = await dctx.newPage();
+  await dpage.addInitScript(day => {
+    const Real = Date;
+    const [y, m, d] = day.split('-').map(Number);
+    const fixed = new Real(y, m - 1, d, 12, 0, 0);
+    function Fake(...args) { return args.length ? new Real(...args) : new Real(fixed.getTime()); }
+    Fake.prototype = Real.prototype; Fake.now = () => fixed.getTime();
+    Fake.parse = Real.parse; Fake.UTC = Real.UTC;
+    window.Date = Fake;
+  }, '2026-08-04');
+  await dpage.goto(`http://localhost:${port}/signal-room.html`, { waitUntil: 'domcontentloaded' });
+  await dpage.waitForTimeout(300);
+  const dFrom = await dpage.locator('#from').inputValue();
+  const dTo = await dpage.locator('#to').inputValue();
+  check('it ends today', dTo === '2026-08-04', dTo);
+  check('and starts seven days earlier, not one', dFrom === '2026-07-28', dFrom);
+  await dctx.close();
 
   console.log('\n== console cleanliness ==');
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
