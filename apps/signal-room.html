@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes","au-supplier-profile","au-agency-profile","au-contract-deepdive","au-opaque-spend"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"signal-room","requires":{"lenses":["au-window-signed","au-amended-up","au-grounds","au-money-by","au-portfolio-themes","au-supplier-profile","au-agency-profile","au-contract-deepdive"],"views":["ThinDisclosureLargeCommitments"],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   :root {
@@ -425,7 +425,6 @@
       if (id === 'au-grounds') return d.grounds;
       if (id === 'au-money-by') return d.moneyBy;
       if (id === 'au-portfolio-themes') return d.themes;
-      if (id === 'au-opaque-spend') return demoOpaque(lensArgs, d.windowRows || []);
       if (id === 'au-contract-deepdive') return (d.deepdive || {})[String(lensArgs.cnId || '').toUpperCase()] || {
         kind:id,cnId:lensArgs.cnId,found:false,status:'COMPLETE',warnings:[],
         note:'This baked demo has no deep dive for that notice. Run against the live world to search the parliamentary record.'
@@ -489,26 +488,58 @@
       limits:['This is a name-contains slice of the selected publication window, not the entity\'s complete history.'],
     };
   }
-  function demoOpaque(lensArgs, rows) {
-    var threshold=Number(lensArgs.minAmount||10000000)||10000000;
-    var screened=rows.filter(function(x){return Number(x.amount||0)>=threshold;}).map(function(x){
-      var desc=String(x.description||'').trim(), signals=[];
-      if(!desc)signals.push('no description');
-      else if(desc.toLowerCase()===String(x.title||'').trim().toLowerCase())signals.push('description merely repeats the title');
-      else if(desc.length<60)signals.push('description under 60 characters');
-      return Object.assign({},x,{descriptionChars:desc.length,signals:signals,disclosureScore:null,judgedThin:null,
-        austenderUrl:'https://www.tenders.gov.au/Search/KeywordSearch?keyword='+encodeURIComponent(x.cnId||'')});
-    // Amount descending FIRST, matching the lens — the demo path and the real path must order rows
-    // identically or the demo teaches a reader the wrong shape.
-    }).sort(function(a,b){return Number(b.amount||0)-Number(a.amount||0)||b.signals.length-a.signals.length;});
-    var flagged=screened.filter(function(x){return x.signals.length;}), sum=function(xs){return Math.round(xs.reduce(function(n,x){return n+Number(x.amount||0);},0));};
-    return {kind:'au-opaque-spend',status:'PARTIAL',warnings:[],headline:{contractsOverThreshold:screened.length,
-      valueOverThreshold:sum(screened),flaggedCount:flagged.length,flaggedValue:sum(flagged),judgedThinCount:0,judgedThinValue:0,
-      note:'Deterministic disclosure screen over the baked register slice. The model reading needs a running world.'},contracts:screened.slice(0,40),
-      interpretation:{note:'Factual signals are shown separately from the unavailable model assessment.'},
-      limits:['This measures what was published, not what was procured.','Legitimate confidentiality exists; a flag is a prompt to read the record, never a finding of wrongdoing.'],
-      source:'AusTender OCDS API (baked demo slice)'};
+  // The gate and the score live with the READER's controls; the window and threshold come from the
+  // scan. Kept as constants rather than inputs for now: two dials are enough for one panel, and the
+  // view's own defaults are the same numbers.
+  // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+  // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+  // search only ever landed the reader on a results page they had to re-click. Verified live
+  // against both shapes. Falls back to the search when awardId is absent (a cached row from
+  // before the projection existed), because a working search beats a broken record link.
+  //
+  // This app now builds the link itself: the view returns awardId, where the lens used to render it.
+  function noticeUrl(awardId, cnId) {
+    var h = String(awardId || '').split('-')[1] || '';
+    if (h.length === 32) {
+      var u = h.slice(0,8) + '-' + h.slice(8,12) + '-' + h.slice(12,16) + '-' + h.slice(16,20) + '-' + h.slice(20);
+      return 'https://www.tenders.gov.au/Cn/Show/' + u;
+    }
+    return 'https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(cnId || '');
   }
+
+  var THIN_MAX_CHARS = 60;
+  var THIN_MAX_DISCLOSURE = 0.4;
+
+  async function disclosureRows(ctx, op) {
+    if (DEMO) {
+      // The baked slice cannot run a model, so the demo shows what the deterministic half of the
+      // view would return — over the threshold, shortest-described first — and says so. It does NOT
+      // re-implement the gate or the judgment: a second copy of that rule in this file is exactly
+      // what the view exists to remove.
+      var d = await ensureDemo();
+      return (d.windowRows || [])
+        .filter(function (x) { return Number(x.amount || 0) >= ctx.minAmount; })
+        .map(function (x) {
+          var desc = String(x.description || '').trim();
+          return {
+            cnId: x.cnId, awardId: x.awardId || null, title: x.title, description: desc,
+            descriptionChars: desc.length, amount: Number(x.amount || 0),
+            supplier: x.supplierName, agency: x.agencyName, contactDivision: x.contactDivision || null,
+            disclosure: null,
+            descriptionEmpty: desc.length === 0,
+            descriptionEchoesTitle: desc.length > 0 && desc.toLowerCase() === String(x.title || '').trim().toLowerCase(),
+          };
+        })
+        .sort(function (a, b) { return b.amount - a.amount; });
+    }
+    if (!E || !E.createRunner) throw new Error('The live app runtime is unavailable.');
+    var res = await runnerFor('ThinDisclosureLargeCommitments').view('ThinDisclosureLargeCommitments', ctx, {
+      state: $('operation'), waitSeconds: 15,
+    });
+    var data = (res && res.data) || res || {};
+    return Array.isArray(data) ? data : (data.rows || []);
+  }
+
   function resetDeepViews() {
     loaded = {};
     // 'disclosure' is deliberately absent: it lives in the promoted section above the desk, which
@@ -651,7 +682,7 @@
     grounds:['Why was competition limited?','Decode the register\'s reason codes and compare their count and value. Recorded reasons are not assessments.','Load procurement paths','au-grounds','This re-fetches the selected window day by day. Wide windows can take several minutes.'],
     categories:['Is activity or value driving the window?','Compare fixed size bands and the government\'s UNSPSC category titles. No model classification is requested.','Load size & categories','au-money-by','This re-fetches the window and resolves category codes. Wide windows can take several minutes.'],
     portfolios:['Which portfolios are visible?','Join agency names to the seeded AGOR portfolio spine and show any value that could not be placed.','Load portfolio context','au-portfolio-themes','This re-fetches the window, joins agency reference data and generates summaries. Wide windows can take several minutes.'],
-    disclosure:['Which large notices say very little?','Screen large commitments whose published description is absent, extremely short, or merely repeats a title or category; model judgments remain separately labelled.','Load disclosure signals','au-opaque-spend','This re-fetches the window, then may read up to 40 descriptions with a model. Wide windows can take several minutes.']
+    disclosure:['Which large notices say very little?','Read the short descriptions on large commitments: length decides only which rows are worth asking about, and whether the words identify anything is the model\'s reading.','Show thin disclosure','ThinDisclosureLargeCommitments','This runs one view over the window and reads the short descriptions with a model. Wide windows can take a few minutes.']
   };
   function renderLazy(name) {
     var c = lazyCopy[name], pane = $('pane-' + name); if (!pane) return;
@@ -736,23 +767,45 @@
     return parliamentGroup(p.byContractId,'By contract notice id')+parliamentGroup(p.byNames,'By party names')+
       (p.note?'<div class="judgment">'+esc(p.note)+'</div>':'');
   }
-  function renderDisclosure(d) {
-    var h=d.headline||{}, rows=(d.contracts||[]).filter(function(x){return (x.signals||[]).length||x.judgedThin;});
-    var modelUsed=(d.contracts||[]).some(function(x){return x.disclosureScore!=null;});
-    var body=rows.map(function(x){
-      var facts=(x.signals||[]).map(function(s){return '<span class="fact-tag">Factual · '+esc(s)+'</span>';}).join('');
-      var judged=x.judgedThin?'<span class="fact-tag">Model assessment · disclosure '+esc(x.disclosureScore)+'</span>':'';
-      return '<div class="ground"><div><a class="source-link" target="_blank" rel="noopener" href="'+esc(x.austenderUrl||'#')+'">'+esc(x.cnId)+' ↗</a><strong style="float:right">'+esc(aud(x.amount,true))+'</strong></div>'+
-        '<div class="ground-meta">'+esc(x.supplierName||'supplier unstated')+' · '+esc(x.agencyName||'agency unstated')+'</div><div style="margin-top:7px;font-size:.83rem">The register’s entire description ('+Number(x.descriptionChars||0)+' chars): <strong>“'+esc(x.description||'(none)')+'”</strong></div>'+facts+judged+'</div>';
+  // VIEW rows, not a lens envelope. One statement decides which rows appear and in what order
+  // (ThinDisclosureLargeCommitments); this only draws them. The facts a reader can verify without
+  // trusting a model — an empty description, one that restates its own title — are separate columns
+  // and are labelled separately from the model's score.
+  function renderDisclosure(rows, ctx) {
+    rows = rows || [];
+    ctx = ctx || {};
+    var body = rows.map(function (x) {
+      var facts = '';
+      if (x.descriptionEmpty === true) facts += '<span class="fact-tag">Factual · no description</span>';
+      if (x.descriptionEchoesTitle === true) facts += '<span class="fact-tag">Factual · description merely repeats the title</span>';
+      var score = x.disclosure == null ? null : Math.round(Number(x.disclosure) * 100) / 100;
+      var judged = score == null ? '' : '<span class="fact-tag">Model reading · ' + esc(String(score)) + '</span>';
+      return '<div class="ground"><div><a class="source-link" target="_blank" rel="noopener" href="' +
+        esc(noticeUrl(x.awardId, x.cnId)) + '">' + esc(x.cnId || 'notice') + ' ↗</a>' +
+        '<strong style="float:right">' + esc(aud(x.amount, true)) + '</strong></div>' +
+        '<div class="ground-meta">' + esc(x.supplier || 'supplier unstated') + ' · ' + esc(x.agency || 'agency unstated') +
+        (x.contactDivision ? ' · ' + esc(x.contactDivision) : '') + '</div>' +
+        '<div style="margin-top:7px;font-size:.83rem">The register’s entire description (' +
+        Number(x.descriptionChars || 0) + ' chars): <strong>“' + esc(x.description || '(none)') + '”</strong></div>' +
+        facts + judged + '</div>';
     }).join('');
-    return '<div class="deep-result">'+deepHead('Big money, thin disclosure',d,'Published descriptions only; a disclosure finding is never a finding about the procurement.')+
-      '<div class="split"><div class="readout"><div class="readout-row"><div class="readout-label">Over threshold</div><div class="readout-value">'+esc(aud(h.valueOverThreshold,true))+'</div><div class="readout-note">'+Number(h.contractsOverThreshold||0)+' large notice(s)</div></div>'+
-      '<div class="readout-row"><div class="readout-label">Adds nothing by construction</div><div class="readout-value">'+esc(aud(h.flaggedValue,true))+'</div><div class="readout-note">'+Number(h.flaggedCount||0)+' absent, near-empty, or repeated descriptions</div></div></div>'+
-      '<div class="judgment"><strong>'+(modelUsed?'Model assessment':'Model assessment unavailable')+'</strong><br>'+(modelUsed
-        ?Number(h.judgedThinCount||0)+' additional descriptions were read as essentially uninformative. This is generated judgment, labelled separately from the factual screen.'
-        :'The deterministic screen still runs. No model score is implied.')+'</div></div>'+
-      (h.note?'<p class="panel-sub">'+esc(h.note)+'</p>':'')+(body||'<div class="panel-sub">No thin-disclosure signal was found at the threshold in this window.</div>')+notes(d)+'</div>';
+    var head = '<div class="deep-result"><div class="result-head"><div><div class="section-kicker">Line of sight</div>' +
+      '<h3>Large commitments that say almost nothing</h3>' +
+      '<div class="panel-sub">Published descriptions only. A disclosure reading is never a finding about the procurement.</div>' +
+      '</div></div>';
+    var readout = '<div class="readout"><div class="readout-row"><div class="readout-label">Reported</div>' +
+      '<div class="readout-value">' + esc(aud(rows.reduce(function (n, x) { return n + (Number(x.amount) || 0); }, 0), true)) + '</div>' +
+      '<div class="readout-note">' + rows.length + ' notice' + (rows.length === 1 ? '' : 's') +
+      ' at or over ' + esc(aud(ctx.minAmount, true)) + ', described in ' + Number(ctx.maxChars || 0) + ' characters or fewer</div></div>' +
+      '<div class="readout-row"><div class="readout-label">What decided it</div>' +
+      '<div class="readout-note">Length only decided which rows were WORTH READING. Whether the words identify ' +
+      'anything is the model\'s reading, scored below ' + esc(String(ctx.maxDisclosure)) + ' — a short description ' +
+      'naming a place, a period or an item discloses perfectly well.</div></div></div>';
+    return head + readout +
+      (body || '<div class="panel-sub">No notice at this threshold was read as failing to identify what it bought. ' +
+        'That is an answer, not a failure.</div>') + '</div>';
   }
+
   function renderContractContext(d,cnId) {
     if(!d.found)return '<div class="deep-result"><div class="result-head"><div><div class="section-kicker">Contract context</div><h3>'+esc(cnId)+'</h3></div><button class="profile-close" data-close-profile>Close</button></div><div class="judgment">'+esc(d.note||'No contract record was found.')+'</div>'+notes(d)+'</div>';
     var c=d.context||{}, r=d.register||{}, contextRows=[['Portfolio',c.portfolio],['Agency legal name',c.agencyLegalName],['Agency ABN',c.agencyAbn],['Body type',c.bodyType],['Recorded ground',c.groundText],['Recorded exemption',c.exemptionText]].filter(function(x){return x[1];});
@@ -778,17 +831,26 @@
       if (name==='portfolios') Object.assign(lensArgs,{portfolio:''});
       // The reader's threshold, not a constant. Blank or nonsense falls back to the $20m default
       // rather than to 0, which would fetch the entire window and read as a hang.
+      // DISCLOSURE IS A VIEW, not a lens: one Cypher statement decides which rows appear, in what
+      // order, and what the model is asked about. There is no screen in this file to disagree with it.
       if (name==='disclosure') {
         // The typed text is authoritative, parsed through the same grammar the Atlas uses; the hidden
         // field is the last GOOD value, so an unparseable entry falls back rather than fetching 0.
         var amount = syncThreshold(false);
         if (amount == null) amount = Number($('thin-threshold-value').value) || 20000000;
-        Object.assign(lensArgs,{minAmount:String(amount)});
+        var ctx = { window: lensArgs.from + '/' + lensArgs.to, minAmount: amount, maxChars: THIN_MAX_CHARS,
+                    maxDisclosure: THIN_MAX_DISCLOSURE };
+        var rows = await disclosureRows(ctx, op);
+        if(op.superseded)return;
+        finishOperation(op);
+        pane.innerHTML = renderDisclosure(rows, ctx);
+        loaded[name]=true;
+        return;
       }
       var d=await invoke(c[3],lensArgs,op); if(!d) throw new Error('The lens returned no readable result.');
       if(op.superseded)return;
       finishOperation(op);
-      pane.innerHTML=name==='amendments'?renderAmendments(d):name==='grounds'?renderGrounds(d):name==='categories'?renderCategories(d):name==='portfolios'?renderPortfolios(d):renderDisclosure(d);
+      pane.innerHTML=name==='amendments'?renderAmendments(d):name==='grounds'?renderGrounds(d):name==='categories'?renderCategories(d):renderPortfolios(d);
       loaded[name]=true;
     } catch(e) { if(op.superseded)return; finishOperation(op); pane.innerHTML='<div class="error-box">' + esc(e&&e.message||e) + '</div>'; }
   }

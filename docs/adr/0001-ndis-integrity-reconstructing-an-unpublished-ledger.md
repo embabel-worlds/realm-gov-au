@@ -114,7 +114,7 @@ only, and ASIC sells company extracts individually. No lens may imply one.
    first and misread even explicit citations (Worker Screening cited, labelled otherwise), so
    the LLM label was dropped for the register's own words; `ai.relevant`/`ai.score` remain the
    right tools where the discriminator is genuinely subjective (au-contract-search,
-   au-opaque-spend).
+   the ThinDisclosureLargeCommitments view, formerly the au-opaque-spend lens).
 2. **AIS → `au-provider-ledger`.** Candidates default to the ACNC's own program taxonomy
    (`programsByClassification`, five disability classes, 1,374 ABNs) because the beneficiary
    flag alone tops the ledger with hospitals and universities; `scope=roll` widens to the

@@ -1,7 +1,19 @@
 // Thorough offline regression for the Money Trail app: every tab, every panel, every route,
 // plus the honesty invariants (a stamp on every result, no raw "[object Object]", no console
 // errors anywhere). Run against `python3 -m http.server` in the apps dir.
-const { chromium } = require('playwright');
+// Playwright lives in the `me` repo's uit/; node resolves `require` from the SCRIPT's directory, so
+// it is found explicitly here. Override with PLAYWRIGHT_DIR. (This suite hardcoded a bare
+// require('playwright') and so could not run from this repo at all.)
+const chromium = (() => {
+  const path = require('path');
+  for (const dir of [process.env.PLAYWRIGHT_DIR,
+                     path.resolve(__dirname, '../../assistant/uit/node_modules/playwright'),
+                     'playwright'].filter(Boolean)) {
+    try { return require(dir).chromium; } catch (e) { /* try the next */ }
+  }
+  console.error('playwright not found. Set PLAYWRIGHT_DIR (the me repo has an install in uit/).');
+  process.exit(2);
+})();
 
 const BASE = 'http://localhost:8765/moneytrail.html?demo=1';
 let pass = 0, fail = 0;

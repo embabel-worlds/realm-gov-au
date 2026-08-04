@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers","au-opaque-spend","au-parliament","au-integrity-screen","au-accountability-gap","au-grant-hop","au-concentration","au-evergreen","au-year-end-rush","au-threshold-clusters","au-tax-vs-contracts","au-said-vs-signed"],"views":[],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers","au-parliament","au-integrity-screen","au-accountability-gap","au-grant-hop","au-concentration","au-evergreen","au-year-end-rush","au-threshold-clusters","au-tax-vs-contracts","au-said-vs-signed"],"views":["ThinDisclosureLargeCommitments"],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -767,7 +767,6 @@
       source: 'AusTender OCDS API (CC BY 3.0 AU)'
     };
     if (id === 'au-window-signed') out = demoData.window;
-    if (id === 'au-opaque-spend') out = demoOpaque(10000000);
     if (id === 'au-parliament') out = demoParliament(String((args || {}).phrase || 'Snowy Hydro'));
     if (id === 'au-current-members') out = {
       kind: 'au-current-members', status: 'COMPLETE', warnings: [],
@@ -1696,82 +1695,100 @@
 
   /** Demo: the SAME deterministic screen the lens runs, over the baked window rows — the model
    *  layer is honestly absent (it needs a running world), never faked. */
-  function demoOpaque(minAmount) {
-    var rows = (demoData.windowRows || []).filter(function (x) { return Number(x.amount || 0) >= (minAmount || 10000000); });
-    var screened = rows.map(function (r) {
-      var desc = String(r.description || '').trim();
-      var signals = [];
-      if (!desc) signals.push('no description');
-      else {
-        if (desc.toLowerCase() === String(r.title || '').trim().toLowerCase()) signals.push('description merely repeats the title');
-        if (desc.length < 60 && !signals.length) signals.push('description under 60 characters');
-      }
-      return Object.assign({}, r, { descriptionChars: desc.length, signals: signals,
-        disclosureScore: null, judgedThin: null,
-        austenderUrl: 'https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(r.cnId) });
-    }).sort(function (a, b) { return (b.signals.length - a.signals.length) || (b.amount - a.amount); });
-    var flagged = screened.filter(function (r) { return r.signals.length; });
-    var sum = function (xs) { return Math.round(xs.reduce(function (n, x) { return n + Number(x.amount || 0); }, 0)); };
-    return {
-      kind: 'au-opaque-spend', status: 'PARTIAL', warnings: [],
-      headline: { contractsOverThreshold: rows.length, valueOverThreshold: sum(rows),
-        flaggedCount: flagged.length, flaggedValue: sum(flagged), judgedThinCount: 0, judgedThinValue: 0,
-        note: flagged.length + ' of ' + rows.length + ' baked contracts over the threshold carry a description that adds nothing by construction. The model reading needs a running world.' },
-      contracts: screened.slice(0, 40),
-      truncatedList: screened.length > 40,
-      interpretation: { note: 'The signals are true by construction. The disclosure score is a model judgment and is unavailable in the standalone demo.' },
-      limits: ['This measures what was PUBLISHED, not what was procured — thin disclosure is a fact about the notice, not about the contract behind it.',
-               'Legitimate confidentiality exists; a flag is a reason to read the record, never a finding of wrongdoing.',
-               'Baked demo slice: one window, deterministic signals only.'],
-      source: 'AusTender OCDS API (baked demo slice)',
-    };
+  // The baked slice cannot run a model, so the demo returns what the DETERMINISTIC half of the view
+  // would return — over the threshold, biggest first — with no score. It deliberately does NOT
+  // re-implement the length gate or the judgment: a second copy of that rule in this file is exactly
+  // what moving the screen into a view removed.
+  function demoDisclosureRows(minAmount) {
+    return (demoData.windowRows || [])
+      .filter(function (x) { return Number(x.amount || 0) >= (minAmount || 20000000); })
+      .map(function (r) {
+        var desc = String(r.description || '').trim();
+        return {
+          cnId: r.cnId, awardId: r.awardId || null, title: r.title, description: desc,
+          descriptionChars: desc.length, amount: Number(r.amount || 0),
+          supplier: r.supplierName, agency: r.agencyName, contactDivision: r.contactDivision || null,
+          limitedTenderReason: r.limitedTenderReason || null, disclosure: null,
+          descriptionEmpty: desc.length === 0,
+          descriptionEchoesTitle: desc.length > 0 && desc.toLowerCase() === String(r.title || '').trim().toLowerCase(),
+        };
+      })
+      .sort(function (a, b) { return b.amount - a.amount; });
   }
 
   // ---- Big money, thin disclosure: verbatim text, screened then read ----------
   var opRunner = (!DEMO && E) ? E.createRunner({ timeoutMs: 300000 }) : null;
+  // The RECORD, not a search for it. awards[0].id is 'CN4250495-<32 hex>' and that hex IS
+  // AusTender's own record id, so /Cn/Show/<hyphenated> opens the notice itself; the keyword
+  // search only ever landed the reader on a results page they had to re-click. Verified live
+  // against both shapes. Falls back to the search when awardId is absent (a cached row from
+  // before the projection existed), because a working search beats a broken record link.
+  function noticeUrl(awardId, cnId) {
+    var h = String(awardId || '').split('-')[1] || '';
+    if (h.length === 32) {
+      var u = h.slice(0,8) + '-' + h.slice(8,12) + '-' + h.slice(12,16) + '-' + h.slice(16,20) + '-' + h.slice(20);
+      return 'https://www.tenders.gov.au/Cn/Show/' + u;
+    }
+    return 'https://www.tenders.gov.au/Search/KeywordSearch?keyword=' + encodeURIComponent(cnId || '');
+  }
+
+  var THIN_MAX_CHARS = 60;
+  var THIN_MAX_DISCLOSURE = 0.4;
   async function runOpaque() {
-    var args = { from: $('w-from').value, to: $('w-to').value,
-                 minAmount: String($('op-min').value || '10000000').replace(/[^0-9]/g, '') || '10000000' };
+    var minAmount = Number(String($('op-min').value || '20000000').replace(/[^0-9]/g, '')) || 20000000;
+    var ctx = { window: $('w-from').value + '/' + $('w-to').value, minAmount: minAmount,
+                maxChars: THIN_MAX_CHARS, maxDisclosure: THIN_MAX_DISCLOSURE };
     $('op-result').hidden = true;
-    stamp('op-stamp', 'Contracts ≥ <b>' + esc(aud(Number(args.minAmount), true)) + '</b> over <b>' + windowText() +
-      '</b> · lens <b>au-opaque-spend</b>');
+    stamp('op-stamp', 'Contracts ≥ <b>' + esc(aud(minAmount, true)) + '</b> over <b>' + windowText() +
+      '</b> · view <b>ThinDisclosureLargeCommitments</b>');
     try {
-      var d;
-      if (DEMO) { setState($('op-state-el'), 'loading', {}); await ensureDemo(); d = demoOpaque(Number(args.minAmount)); setState($('op-state-el'), d ? 'ready' : 'empty', {}); }
-      else {
-        var env = await withBusy(labelFor('au-opaque-spend'), function () {
-          return opRunner.lens('au-opaque-spend', args, { state: $('op-state-el'), waitSeconds: 15 });
-        }, expectationFor({ from: args.from, to: args.to }));
-        d = env ? lensData(env) : null;
+      var rows;
+      if (DEMO) {
+        setState($('op-state-el'), 'loading', {});
+        await ensureDemo();
+        rows = demoDisclosureRows(minAmount);
+        setState($('op-state-el'), rows.length ? 'ready' : 'empty', {});
+      } else {
+        var env = await withBusy('the thin-disclosure view', function () {
+          return opRunner.view('ThinDisclosureLargeCommitments', ctx, { state: $('op-state-el'), waitSeconds: 15 });
+        }, expectationFor({ from: $('w-from').value, to: $('w-to').value }));
+        var data = (env && env.data) || env || {};
+        rows = Array.isArray(data) ? data : (data.rows || []);
       }
-      if (d) renderOpaque(d);
+      renderOpaque(rows, ctx);
     } catch (e) { /* the state element shows it */ }
   }
-  function renderOpaque(d) {
+  function renderOpaque(rows, ctx) {
+    rows = rows || [];
+    ctx = ctx || {};
     var box = $('op-result');
-    var h = d.headline || {};
+    var total = rows.reduce(function (n, x) { return n + (Number(x.amount) || 0); }, 0);
+    var certain = rows.filter(function (x) { return x.descriptionEmpty === true || x.descriptionEchoesTitle === true; });
+    var sum = function (xs) { return Math.round(xs.reduce(function (n, x) { return n + Number(x.amount || 0); }, 0)); };
     var tiles =
       '<div class="tiles">' +
-      '<div class="tile"><div class="lbl">Over threshold</div><div class="val">' + esc(aud(h.valueOverThreshold, true)) + '</div><div class="note">' + (h.contractsOverThreshold || 0) + ' contracts</div></div>' +
-      '<div class="tile"><div class="lbl">Adds nothing by construction</div><div class="val">' + esc(aud(h.flaggedValue, true)) + '</div><div class="note">' + (h.flaggedCount || 0) + ' contracts — echo of title or category, or near-empty</div></div>' +
-      '<div class="tile"><div class="lbl">Model read as uninformative</div><div class="val">' + esc(aud(h.judgedThinValue, true)) + '</div><div class="note">' + (h.judgedThinCount || 0) + ' more — a JUDGMENT, labelled</div></div>' +
-      '</div>' + (h.note ? '<p class="fine">' + esc(h.note) + '</p>' : '');
-    var rows = (d.contracts || []).map(function (r) {
-      var badge = (r.signals || []).length
-        ? '<span class="pill" style="background:color-mix(in srgb, var(--embabel-accent) 18%, transparent)">' + esc(r.signals.join(' · ')) + '</span>'
-        : (r.disclosureScore != null ? '<span class="pill">model disclosure ' + esc(String(r.disclosureScore)) + '</span>' : '');
-      return '<div class="result"><div class="rhead"><b>' + esc(aud(r.amount)) + '</b> — ' + esc(r.supplierName || '(supplier unstated)') +
-        ' → ' + esc(r.agencyName || '(agency unstated)') + ' ' + badge + '</div>' +
+      '<div class="tile"><div class="lbl">Reported</div><div class="val">' + esc(aud(total, true)) + '</div><div class="note">' +
+      rows.length + ' notice' + (rows.length === 1 ? '' : 's') + ' at or over ' + esc(aud(ctx.minAmount, true)) + '</div></div>' +
+      '<div class="tile"><div class="lbl">Adds nothing by construction</div><div class="val">' + esc(aud(sum(certain), true)) +
+      '</div><div class="note">' + certain.length + ' empty, or merely restating the title — verifiable without a model</div></div>' +
+      '<div class="tile"><div class="lbl">What decided the rest</div><div class="val">a reading</div>' +
+      '<div class="note">Length only chose which rows were worth reading; the model scored below ' +
+      esc(String(ctx.maxDisclosure)) + '. A short description naming a place, a period or an item discloses fine.</div></div>' +
+      '</div>';
+    var body = rows.map(function (r) {
+      var badge = r.descriptionEmpty === true ? '<span class="pill">no description</span>'
+        : r.descriptionEchoesTitle === true ? '<span class="pill">description merely repeats the title</span>'
+        : (r.disclosure != null ? '<span class="pill">model reading ' + esc(String(Math.round(Number(r.disclosure) * 100) / 100)) + '</span>' : '');
+      return '<div class="result"><div class="rhead"><b>' + esc(aud(r.amount)) + '</b> — ' + esc(r.supplier || '(supplier unstated)') +
+        ' → ' + esc(r.agency || '(agency unstated)') + ' ' + badge + '</div>' +
         '<div class="fine">The register\u2019s ENTIRE description (' + (r.descriptionChars || 0) + ' chars): ' +
         '<b>\u201c' + esc(r.description || '(none)') + '\u201d</b></div>' +
         '<div class="fine">' + esc(r.cnId) + (r.limitedTenderReason ? ' · stated ground: ' + esc(r.limitedTenderReason) : '') +
-        ' · <a href="' + esc(r.austenderUrl) + '" target="_blank" rel="noopener">the notice \u2197</a></div></div>';
+        ' · <a href="' + esc(noticeUrl(r.awardId, r.cnId)) + '" target="_blank" rel="noopener">the notice \u2197</a></div></div>';
     }).join('');
-    var interp = d.interpretation || {};
-    box.innerHTML = tiles + (rows || '<p class="fine">Nothing at or over the threshold in this window.</p>') +
-      (d.truncatedList ? '<p class="fine">Showing the worst-disclosed 40.</p>' : '') +
-      '<p class="fine">' + esc(interp.note || '') + '</p>' +
-      '<p class="fine">' + (d.limits || []).map(esc).join(' ') + '</p>';
+    box.innerHTML = tiles +
+      (body || '<p class="fine">No notice at this threshold was read as failing to identify what it bought. That is an answer, not a failure.</p>') +
+      '<p class="fine">This measures what was PUBLISHED, not what was procured. Lawful confidentiality exists — a low reading is a reason to go and read the record, never evidence of wrongdoing.</p>';
     box.hidden = false;
   }
 
@@ -1989,7 +2006,7 @@
       'au-contract-passport': 'Opening the contract', 'au-supplier-lobbying': 'Checking the lobbyist register',
       'au-agency-profile': 'Profiling the agency', 'au-supplier-profile': 'Profiling the supplier',
       'au-short-dated': 'Finding contracts near their end', 'au-new-suppliers': 'Comparing two windows',
-      'au-ask': 'Writing and running a query', 'au-opaque-spend': 'Reading disclosure quality', 'au-parliament': 'Searching the parliamentary record', 'au-integrity-screen': 'Screening against the registers', 'au-accountability-gap': 'Checking the parliamentary record' })[id] || 'Working';
+      'au-ask': 'Writing and running a query', 'au-parliament': 'Searching the parliamentary record', 'au-integrity-screen': 'Screening against the registers', 'au-accountability-gap': 'Checking the parliamentary record' })[id] || 'Working';
   }
   async function runLensInto(runner, id, args, stampId, stampHtml, stateId, resultId, render) {
     $(resultId).hidden = true;
@@ -2323,7 +2340,6 @@
         'au-supplier-profile': { card: 'supplier-card', render: null },
         'au-short-dated': { card: 'short-card', render: null },
         'au-new-suppliers': { card: 'newsup-card', render: null },
-        'au-opaque-spend': { card: 'opaque-card', render: renderOpaque },
         'au-parliament': { card: 'parliament-card', render: renderParliament },
         'au-integrity-screen': { card: 'integrity-card', render: renderIntegrity },
         'au-accountability-gap': { card: 'gap-card', render: renderGap },

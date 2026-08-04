@@ -153,16 +153,19 @@ function compact(v) {
 
   const low = await runAt(1000000);
   check('the screen actually produces rows', low.rows > 0, `rows=${low.rows}`);
-  check('it reports a threshold total', /over threshold/i.test(low.text), low.text.slice(0, 120));
+  check('it reports what the threshold produced', /at or over/i.test(low.text), low.text.slice(0, 140));
   check('each row shows the description VERBATIM with its length',
     /entire description \(\d+ chars\)/i.test(low.text), low.text.slice(0, 200));
-  check('each row is labelled as a factual signal, not a verdict',
-    /Factual ·/.test(low.text), low.text.slice(0, 200));
+  // The view separates what a reader can verify (an empty description, one restating its title) from
+  // the model's score. The panel must say that length only chose which rows to read — the sentence
+  // that stops brevity being mistaken for the finding.
+  check('the panel says length only decided what was WORTH READING',
+    /worth reading/i.test(low.text), low.text.slice(0, 260));
 
   const high = await runAt(500000000);
   check('raising the threshold removes rows', high.rows < low.rows, `1m=${low.rows} 500m=${high.rows}`);
   check('and an empty result explains itself rather than showing a blank box',
-    /no thin-disclosure signal was found/i.test(high.text), high.text.slice(-160));
+    /that is an answer, not a failure/i.test(high.text), high.text.slice(-200));
 
   const back = await runAt(1000000);
   check('lowering it brings them back — the control re-runs, it does not cache',
