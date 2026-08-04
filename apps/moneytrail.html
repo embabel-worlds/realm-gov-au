@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
 <script src="/api/v1/apps-runtime/v1/embabel.js"></script>
 <script type="application/embabel-app+json">
-{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-new-suppliers","au-parliament","au-integrity-screen","au-accountability-gap","au-grant-hop","au-concentration","au-evergreen","au-year-end-rush","au-threshold-clusters","au-tax-vs-contracts","au-said-vs-signed"],"views":["ThinDisclosureLargeCommitments"],"realms":["gov-au"],"namespaces":[]}}
+{"version":1,"name":"moneytrail","requires":{"lenses":["au-contract-passport","au-window-signed","au-supplier-lobbying","au-contract-search","au-amended-up","au-portfolio-themes","au-contract-deepdive","au-grounds","au-money-by","au-ask","au-agency-profile","au-supplier-profile","au-short-dated","au-parliament","au-integrity-screen","au-accountability-gap","au-grant-hop","au-concentration","au-evergreen","au-year-end-rush","au-threshold-clusters","au-tax-vs-contracts","au-said-vs-signed"],"views":["ThinDisclosureLargeCommitments","NewSuppliersInWindow"],"realms":["gov-au"],"namespaces":[]}}
 </script>
 <style>
   /* Money Trail rides the v1 theme tokens and recolours only the accent pair — a deep federal
@@ -2005,8 +2005,7 @@
       'au-grounds': 'Counting procurement grounds', 'au-money-by': 'Breaking down the spend',
       'au-contract-passport': 'Opening the contract', 'au-supplier-lobbying': 'Checking the lobbyist register',
       'au-agency-profile': 'Profiling the agency', 'au-supplier-profile': 'Profiling the supplier',
-      'au-short-dated': 'Finding contracts near their end', 'au-new-suppliers': 'Comparing two windows',
-      'au-ask': 'Writing and running a query', 'au-parliament': 'Searching the parliamentary record', 'au-integrity-screen': 'Screening against the registers', 'au-accountability-gap': 'Checking the parliamentary record' })[id] || 'Working';
+      'au-short-dated': 'Finding contracts near their end',       'au-ask': 'Writing and running a query', 'au-parliament': 'Searching the parliamentary record', 'au-integrity-screen': 'Screening against the registers', 'au-accountability-gap': 'Checking the parliamentary record' })[id] || 'Working';
   }
   async function runLensInto(runner, id, args, stampId, stampHtml, stateId, resultId, render) {
     $(resultId).hidden = true;
@@ -2017,6 +2016,25 @@
       var env = await withBusy(labelFor(id), function () { return runner.lens(id, args, { state: $(stateId) }); });
       d = env ? lensData(env) : null;
       if (d) { render(d); $(resultId).hidden = false; }
+    } catch (e) { /* the state element shows it */ }
+  }
+  /**
+   * The VIEW sibling of runLensInto: same card plumbing, but the render callback receives ROWS.
+   * A view has no envelope — no headline, no limits — so whatever a card says about coverage or
+   * caveats is the card's own copy, lifted from the view's description.
+   */
+  async function runViewInto(runner, viewName, args, stampId, stampHtml, stateId, resultId, render) {
+    $(resultId).hidden = true;
+    stamp(stampId, stampHtml);
+    try {
+      if (DEMO) { setState($(stateId), 'error', { message: 'This view needs a running world — the standalone demo has no host.' }); return; }
+      var env = await withBusy('the ' + viewName + ' view', function () {
+        return runner.view(viewName, args, { state: $(stateId) });
+      });
+      var data = (env && env.data) || env || {};
+      var rows = Array.isArray(data) ? data : (data.rows || []);
+      render(rows);
+      $(resultId).hidden = false;
     } catch (e) { /* the state element shows it */ }
   }
   var tbl = function (head, rows) {
@@ -2121,26 +2139,36 @@
     var to = $('w-to').value, from = $('w-from').value;
     var span = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86400000));
     var pf = new Date(Date.parse(from) - span * 86400000).toISOString().slice(0, 10);
-    return runLensInto(nsR, 'au-new-suppliers',
-      { from: from, to: to, priorFrom: pf, priorTo: from },
-      'ns-stamp', 'New in <b>' + windowText() + '</b> vs the ' + span + ' days before · lens <b>au-new-suppliers</b>',
-      'ns-state-el', 'ns-result', function (d) {
-        var t = d.totals || {};
+    var iso = function (d) { return d + 'T00:00:00Z'; };
+    return runViewInto(nsR, 'NewSuppliersInWindow',
+      // minValue 0 keeps the lens's behaviour: the comparison had no floor, and adding one here would
+      // quietly hide the small first contracts that are often the interesting ones.
+      { window: iso(from) + '/' + iso(to), priorWindow: iso(pf) + '/' + iso(from), minValue: 0 },
+      'ns-stamp', 'New in <b>' + windowText() + '</b> vs the ' + span + ' days before · view <b>NewSuppliersInWindow</b>',
+      'ns-state-el', 'ns-result', function (rows) {
+        var value = rows.reduce(function (n, x) { return n + (Number(x.value) || 0); }, 0);
         $('ns-result').innerHTML =
           '<div class="tiles">' +
-          '<div class="tile"><div class="lbl">First-time suppliers</div><div class="val">' + t.newSuppliers + '</div>' +
-          '<div class="note">of ' + t.recentContracts + ' contracts</div></div>' +
-          '<div class="tile"><div class="lbl">Their value</div><div class="val">' + esc(aud(t.newSupplierValue, true)) + '</div>' +
-          '<div class="note">' + esc(String(t.newShareOfValuePct)) + '% of the window</div></div></div>' +
-          tbl([{t:'Supplier'},{t:'Agency'},{t:'What'},{t:'Value',num:true},{t:''}],
-            (d.newcomers || []).map(function (n) {
-              var ex = n.example || {};
-              return '<tr><td><span class="linky" data-supplier="' + esc(n.name) + '">' + esc(n.name) + '</span></td>' +
-                '<td>' + esc((n.agencies || [])[0] || '—') + '</td><td>' + esc(ex.description || '') + '</td>' +
-                '<td class="num">' + esc(aud(n.value)) + '</td>' +
-                '<td><a class="ext" target="_blank" rel="noopener" href="' + esc(n.austenderUrl) + '">↗</a></td></tr>'; })) +
-          '<div class="fine"><ul>' + (d.limits || []).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></div>';
-        wireRowLinks($('ns-result'));
+          '<div class="tile"><div class="lbl">First-time suppliers</div><div class="val">' + rows.length + '</div>' +
+          '<div class="note">absent from the previous ' + span + ' days</div></div>' +
+          '<div class="tile"><div class="lbl">Their value</div><div class="val">' + esc(aud(value, true)) + '</div>' +
+          '<div class="note">committed in this window</div></div></div>' +
+          tbl([{t:'Supplier'},{t:'Agencies',num:true},{t:'Notices',num:true},{t:'Value',num:true},{t:''}],
+            rows.map(function (x) {
+              var example = (x.exampleNotices || [])[0];
+              return '<tr><td>' + esc(x.supplier || '—') + (x.abn ? ' <span class="fine">' + esc(x.abn) + '</span>' : '') + '</td>' +
+                '<td class="num">' + Number(x.agencies || 0) + '</td>' +
+                '<td class="num">' + Number(x.notices || 0) + '</td>' +
+                '<td class="num">' + esc(aud(x.value)) + '</td>' +
+                '<td>' + (example ? '<a class="ext" target="_blank" rel="noopener" href="' +
+                  esc(noticeUrl(null, example)) + '">↗</a>' : '') + '</td></tr>';
+            })) +
+          '<div class="fine"><ul>' +
+          '<li>"New" means ABSENT FROM THE COMPARISON WINDOW — a long-standing supplier with no contract ' +
+          'published in those ' + span + ' days appears here. Widen the window to harden the claim.</li>' +
+          '<li>Grouped by ABN where published, else by a normalised name: that groups spelling variants ' +
+          'but cannot resolve a rebrand or a subsidiary to its parent.</li>' +
+          '</ul></div>';
       });
   }
 
@@ -2339,7 +2367,6 @@
         'au-agency-profile': { card: 'agency-card', render: null },
         'au-supplier-profile': { card: 'supplier-card', render: null },
         'au-short-dated': { card: 'short-card', render: null },
-        'au-new-suppliers': { card: 'newsup-card', render: null },
         'au-parliament': { card: 'parliament-card', render: renderParliament },
         'au-integrity-screen': { card: 'integrity-card', render: renderIntegrity },
         'au-accountability-gap': { card: 'gap-card', render: renderGap },
