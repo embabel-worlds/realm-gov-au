@@ -184,3 +184,76 @@
            CASE WHEN trim(coalesce(t.taxPayable, '')) = ''
                 THEN 'blank means <= $0 BY LEGISLATION, never unknown' ELSE null END AS taxPayableNote
     ORDER BY windowValue DESC
+
+# ─── DISCLOSURE ────────────────────────────────────────────────────────────────────────────────
+# Formerly the `au-opaque-spend` LENS, which post-processed rows in JavaScript — twice, since the
+# app carried its own copy of the screen for demo mode. Two copies of one rule is how the sort key
+# and the ordering silently disagreed. As a view there is one statement and nowhere for a second
+# copy to live.
+#
+# BREVITY IS A GATE, NOT A VERDICT. The lens flagged any description under 60 characters, which put
+# a flag beside a property lease that names its street address — short and completely checkable, a
+# reader can go and stand in front of the building. Length now only decides WHICH rows are worth
+# asking about; whether the text identifies anything is the model's judgment, because that is a
+# semantic question and a regex over prose is the wrong tool for it.
+#
+# ONE JUDGMENT, LAZILY EVALUATED. `ai.score` is not a per-row Cypher function — the parser harvests
+# it into a directive, the interpreter stamps a score on fetched rows, and the executor rewrites the
+# call to read the stamp. Deterministic predicates are applied BEFORE the judge (see
+# VirtualJoinInterpreter.applyAiComputed), so the amount threshold and the length gate narrow the
+# set that is ever read. That is what makes this lazy — NOT the position of the call in the WHERE.
+# The same criterion literal appears in the filter and the projection on purpose: a filter and a
+# score sharing a criterion share one judgment, so the model runs once per row, not twice.
+
+- name: ThinDisclosureLargeCommitments
+  description: >-
+    Large commitments whose published description does not let a reader identify what was bought.
+    Brevity alone is NOT the finding: a short description naming a specific place, period or item
+    discloses perfectly well, and only the model's reading decides. This measures what was
+    PUBLISHED, never what was procured — lawful confidentiality exists, national security among
+    other grounds, so a low score is a reason to go and read the record and never evidence of
+    wrongdoing. Descriptions are returned verbatim so a reader sees the vacuum rather than a
+    paraphrase of it.
+  params:
+    window:
+      type: string
+      default: "2026-07-28T00:00:00Z/2026-08-04T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'."
+    minAmount:
+      type: int
+      default: 20000000
+      description: "Only commitments at or above this value (AUD)."
+    maxChars:
+      type: int
+      default: 60
+      description: >-
+        The GATE, not a verdict: only descriptions this short are read by the model. Raising it
+        reads more rows and costs more; it never makes a row a finding on its own.
+    maxDisclosure:
+      type: float
+      default: 0.4
+      description: "Report rows the model scores below this (0..1). Higher reports more."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WHERE toFloat(r.amount) >= $minAmount
+      AND size(trim(coalesce(r.description, ''))) <= $maxChars
+      AND ai.score(r, 'a reader could identify and go and check exactly what this contract bought: a named place, a stated period or a counted item is adequate however briefly put, while a bare category word or a product noun alone is not') < $maxDisclosure
+    RETURN r.cnId AS cnId,
+           r.title AS title,
+           r.description AS description,
+           size(trim(coalesce(r.description, ''))) AS descriptionChars,
+           round(toFloat(r.amount)) AS amount,
+           r.supplierName AS supplier,
+           r.agencyName AS agency,
+           r.contactDivision AS contactDivision,
+           r.procurementMethod AS procurementMethod,
+           r.limitedTenderReason AS limitedTenderReason,
+           r.releaseDate AS releaseDate,
+           r.awardId AS awardId,
+           ai.score(r, 'a reader could identify and go and check exactly what this contract bought: a named place, a stated period or a counted item is adequate however briefly put, while a bare category word or a product noun alone is not') AS disclosure,
+           // FACTS beside the judgment, never blended into it: an empty description and one that
+           // merely restates its own title add nothing BY CONSTRUCTION, and a reader can verify
+           // both without trusting any model.
+           size(trim(coalesce(r.description, ''))) = 0 AS descriptionEmpty,
+           toLower(trim(coalesce(r.description, ''))) = toLower(trim(coalesce(r.title, ''))) AS descriptionEchoesTitle
+    ORDER BY amount DESC
