@@ -210,11 +210,19 @@
 # asking about; whether the text identifies anything is the model's judgment, because that is a
 # semantic question and a regex over prose is the wrong tool for it.
 #
-# ONE JUDGMENT, LAZILY EVALUATED. `ai.score` is not a per-row Cypher function — the parser harvests
-# it into a directive, the interpreter stamps a score on fetched rows, and the executor rewrites the
-# call to read the stamp. Deterministic predicates are applied BEFORE the judge (see
-# VirtualJoinInterpreter.applyAiComputed), so the amount threshold and the length gate narrow the
-# set that is ever read. That is what makes this lazy — NOT the position of the call in the WHERE.
+# ONE JUDGMENT, PARTLY GATED. `ai.score` is not a per-row Cypher function — the parser harvests it
+# into a directive, the interpreter stamps a score on fetched rows, and the executor rewrites the call
+# to read the stamp. Deterministic predicates are applied BEFORE the judge (see
+# VirtualJoinInterpreter.applyAiComputed), which is what makes gating possible — NOT the position of
+# the call in the WHERE.
+#
+# WHICH gate actually bounds the cost, measured: the AMOUNT threshold does. The LENGTH gate does NOT.
+# A `size(...)` comparison is about a derived quantity, so it cannot be pushed to a producer that
+# knows only the property — the engine used to try, harvesting `description <= 60`, which compared the
+# TEXT to a number and dropped every row ("deterministic prefilter kept 0 of 1153 record(s)" on a
+# view that returned SUCCEEDED and zero rows). It now filters in the final query instead: the rows are
+# right, and every notice over the amount threshold is still read by the model. Lowering minAmount
+# therefore costs real money, while lowering maxChars costs nothing.
 # The same criterion literal appears in the filter and the projection on purpose: a filter and a
 # score sharing a criterion share one judgment, so the model runs once per row, not twice.
 
