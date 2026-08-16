@@ -58,15 +58,6 @@
     exemption: "tender.exemption"
     exemptionCode: "tender.exemptionCode"
     unspscCodes: "contracts.0.items[*].classification.id"
-    # Same additions as versionsById above, same measured caveats — contactDivision is the CONTACT
-    # OFFICER'S unit (a command for Defence, a procurement branch elsewhere), awardDate is the
-    # PUBLICATION instant that reveals batch uploads, and contactPoint name/email/telephone are
-    # deliberately excluded as personal data.
-    contactDivision: "parties.0.contactPoint.division"
-    awardDate: "awards.0.date"
-    awardId: "awards.0.id"
-    contractStatus: "contracts.0.status"
-    limitedTenderExempt: "tender.limitedTenderExempt"
     # Fields the feed always carried and this realm discarded. Measured over 300 live releases
     # across three publication days (not one — the first day sampled was 100% Defence, which
     # flattered every number below):

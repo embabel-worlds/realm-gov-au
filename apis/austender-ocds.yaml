@@ -263,17 +263,6 @@ components:
         tender:
           type: object
           properties:
-            id: { type: string }
-            procurementMethod: { type: string, description: "open | selective | limited." }
-            procurementMethodDetails: { type: string }
-            limitedTenderExempt: { type: string }
-            limitedTenderReasonCode: { type: string }
-            limitedTenderReason:
-              type: string
-              description: >-
-                The stated CPR ground for a limited tender, verbatim (e.g. "10.3.e. Additional
-                deliveries by original supplier…"). A recorded reason, never a finding.
-            limitedTenderExempt: { type: string, description: "Flag beside the reason codes; '1' where set." }
             id:
               type: string
               description: >-
@@ -281,3 +270,12 @@ components:
                 verified across 100 live releases. The ATM ID and SON ID a reader sees on the
                 AusTender web record are NOT in this feed at all (zero SON-shaped values, zero
                 "standing offer" mentions in 100 releases), so no projection can recover them.
+            procurementMethod: { type: string, description: "open | selective | limited." }
+            procurementMethodDetails: { type: string }
+            limitedTenderReasonCode: { type: string }
+            limitedTenderReason:
+              type: string
+              description: >-
+                The stated CPR ground for a limited tender, verbatim (e.g. "10.3.e. Additional
+                deliveries by original supplier…"). A recorded reason, never a finding.
+            limitedTenderExempt: { type: string, description: "Flag beside the reason codes; '1' where set." }
