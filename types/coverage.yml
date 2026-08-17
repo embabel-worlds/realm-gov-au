@@ -15,7 +15,26 @@
 #   3. Absence of coverage means nothing was found by this search, in this window, with these
 #      terms — never that nothing happened.
 
+# ONE RESULT SHAPE, TWO INDEXES. News and web results differ only in which index answered and what
+# a reader should expect to find. `SearchResult` is the row; the two types below add their join.
+# `MATCH (r:SearchResult)` gathers the whole trail for a phrase — with the fencing above applying
+# to every row of it, whichever index produced it.
+- name: SearchResult
+  visibility: internal
+  description: >-
+    One search-index result for a pinned phrase. NOT a government record and NOT evidence about
+    anything it names: third-party material that matched the terms searched. Carries its own link,
+    title and freshness so a reader can go and judge the source. A match on a name establishes
+    nothing beyond the match — the reader opens the URL.
+  properties:
+    url: "The result's link — the thing a reader opens. Each index's own type keys on it."
+    title: "The title as the index reports it."
+    snippet: "The index's snippet. May contain highlight markup; render as text, never as a claim."
+    age: "Human-readable freshness label from the index (e.g. '2 days ago'); absent on undated results."
+    searchPhrase: "The phrase this result answered — stamped from the anchor, and the honest scope of the match."
+
 - name: ContractCoverage
+  parents: [SearchResult]
   visibility: internal
   description: >-
     A news result for a search phrase composed from a contract's parties. NOT a government record
@@ -30,10 +49,6 @@
   properties:
     url:
       metadata: { identity: "true" }
-    title: "The article's headline as the search index reports it."
-    snippet: "The index's snippet. May contain highlight markup; render as text, never as a claim."
-    age: "Human-readable freshness label from the index (e.g. '2 days ago'); absent on undated results."
-    searchPhrase: "The phrase this result answered — stamped from the anchor, and the honest scope of the match."
   virtualJoins:
     - anchorLabel: CoverageQuery
       relationship: HAS_COVERAGE
@@ -47,6 +62,7 @@
         traversal yields nothing, which the lens reports as UNAVAILABLE rather than as "no coverage".
 
 - name: WebHit
+  parents: [SearchResult]
   visibility: internal
   description: >-
     One WEB search result for a pinned phrase — the non-news trail: tribunal and court decisions
@@ -57,10 +73,6 @@
   properties:
     url:
       metadata: { identity: "true" }
-    title: "The page title as the index reports it."
-    snippet: "The index's snippet, verbatim text."
-    age: "Freshness label when the index knows it."
-    searchPhrase: "The phrase this result answered — stamped from the anchor."
   virtualJoins:
     - anchorLabel: CoverageQuery
       relationship: HAS_WEB_RESULT

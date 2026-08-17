@@ -2,14 +2,17 @@
 # anchor fetches the slice the query needs and rolls it back afterwards. Two anchors, because the
 # source serves exactly two access paths (by id, by date window) and nothing else: any agency- or
 # supplier-shaped question anchors a window and narrows AFTER the fetch.
+#
+# ONE ROW SHAPE, TWO ACCESS PATHS. The feed publishes a single kind of record — a contract release —
+# and the two access paths differ only in how you reach it. That is why `ContractNoticeRow` declares
+# the whole shape and the two reachable types add nothing but their join. A question about contracts
+# can then be asked once, of `:ContractNoticeRow`, instead of being written twice and kept in step.
 
-- name: ContractVersion
+- name: ContractNoticeRow
   visibility: internal
   description: >-
-    One published version of a Commonwealth contract notice — the original release or one
-    amendment — fetched on demand from the AusTender OCDS feed by anchoring a ContractNotice by
-    CN id. The sequence of versions IS the contract's value history: each carries the value as of
-    that version and the date it was published. CN3942784 has four ($402.5M → $736.3M).
+    One published release of a Commonwealth contract notice, however it was reached. Every field is
+    the register's own, reported verbatim.
 
     Three things this type records and must never be made to imply. First, `amount` is the
     contracted value AS AMENDED, not expenditure — AusTender records commitments, and an amended
@@ -21,12 +24,9 @@
     description states a $97,587.11 repayment. An answer about how a contract changed must read
     both, and must attribute the description's words to the description.
   properties:
-    releaseId:
-      metadata: { identity: "true" }
-    cnId: "The base CN id on every version, amendments included — how versions join their notice."
+    cnId: "The base CN id on every version, amendments included — how versions join their notice. Pin one as a ContractNotice to pull its full version chain."
     releaseDate: "When this version was published (ISO). The x-axis of the value curve."
-    tags: "contract for the original notice; contractAmendment for later versions."
-    amendmentIds: "The amendment's own id (e.g. CN3942784-A3) on amendment versions; absent on the original."
+    tags: "contract for the original notice; contractAmendment for later versions — in a ChangeWindow, the amendment marker."
     title: "The register's title field — usually an internal reference, not a human title."
     description: "Free text as published. Sometimes records repayments/variations the structured fields never carry."
     amount: "Contracted value in AUD as of this version. A commitment, not expenditure."
@@ -48,6 +48,19 @@
     exemption: "Verbatim Appendix A exemption text, where one was claimed."
     exemptionCode: "The exemption's code (e.g. 'LH') — joins to (:ProcurementGround {code})."
     unspscCodes: "UNSPSC category codes on the contract items."
+
+- name: ContractVersion
+  parents: [ContractNoticeRow]
+  visibility: internal
+  description: >-
+    A contract release reached BY CN ID — the original release or one amendment — fetched on demand
+    by anchoring a ContractNotice. The sequence of versions IS the contract's value history: each
+    carries the value as of that version and the date it was published. CN3942784 has four
+    ($402.5M → $736.3M).
+  properties:
+    releaseId:
+      metadata: { identity: "true" }
+    amendmentIds: "The amendment's own id (e.g. CN3942784-A3) on amendment versions; absent on the original."
   virtualJoins:
     - anchorLabel: ContractNotice
       relationship: HAS_VERSION
@@ -60,10 +73,10 @@
         value curve; the last version's amount over the first's is the growth through amendments.
 
 - name: ContractRelease
+  parents: [ContractNoticeRow]
   visibility: internal
   description: >-
-    One release row from a date-window scan of the AusTender feed — same record shape as
-    ContractVersion, reached by window instead of by id. Two windows exist and they answer
+    The same release row, reached BY DATE WINDOW instead of by id. Two windows exist and they answer
     different questions: a PublicationWindow holds contracts FIRST PUBLISHED in the period ("what
     was signed"); a ChangeWindow holds releases LAST MODIFIED in the period, which is where
     amendment releases surface ("what changed"). The feed cannot filter by agency, supplier, ABN
@@ -72,30 +85,6 @@
   properties:
     releaseId:
       metadata: { identity: "true" }
-    cnId: "The base CN id — pin a ContractNotice with it to pull the full version chain."
-    releaseDate: "When this release was published (ISO)."
-    tags: "contract | contractAmendment — in a ChangeWindow, the amendment marker."
-    title: "The register's title field."
-    description: "Free text as published."
-    amount: "Contracted value in AUD as of this release."
-    currency: "Currency code."
-    dateSigned: "When signed (ISO)."
-    startDate: "Contract period start (ISO)."
-    endDate: "Contract period end (ISO)."
-    supplierName: "Supplier legal name, from the award record."
-    supplierAbn: "Supplier ABN where carried."
-    agencyName: "The procuring Commonwealth entity."
-    agencyAbn: "The procuring entity's ABN where carried."
-    supplierLocality: "Supplier suburb/locality."
-    supplierRegion: "Supplier state/region."
-    supplierPostcode: "Supplier postcode — the registered location, not a delivery location."
-    procurementMethod: "open | selective | limited."
-    procurementMethodDetails: "The register's label for the method."
-    limitedTenderReason: "Verbatim stated CPR ground when limited; absent otherwise."
-    limitedTenderReasonCode: "The ground's code (e.g. 'AD') — joins to (:ProcurementGround {code})."
-    exemption: "Verbatim Appendix A exemption text, where one was claimed."
-    exemptionCode: "The exemption's code (e.g. 'LH') — joins to (:ProcurementGround {code})."
-    unspscCodes: "UNSPSC category codes."
   virtualJoins:
     - anchorLabel: PublicationWindow
       relationship: PUBLISHED

@@ -92,7 +92,9 @@ third-party only). Fetch failure and genuine absence never render the same way.
 ```
 realm.yml          realm manifest + measured retry policy
 apis/              vendored OpenAPI specs (the upstreams publish none that work keyless)
-types/             ContractVersion, ContractRelease, LobbyistFirm, RegisteredLobbyist
+types/             ContractNoticeRow + ContractVersion/ContractRelease, CharityRegisterRow +
+                   its three access paths, AnnualInformationStatement + its two years,
+                   CharityProgramRow, SearchResult, LobbyistFirm, RegisteredLobbyist
 producers/         versionsById, releases{Published,Modified}InWindow, firm{Summary,Lobbyists}ById
 lenses/            au-contract-passport, au-window-signed, au-supplier-lobbying
 sources.yml        collection shapes and the live-vs-mirror reasoning

@@ -188,29 +188,47 @@
 
 # ── The charity layer: the only open Australian source that puts an ADDRESS against an ABN ─────
 
-- name: CharityRecord
+# ── The ACNC register row, and the three ways in ─────────────────────────────────────────────────
+# One register entry is reachable by ABN, by postcode, and off the disability roll. The row is the
+# same row each time; only the access path differs. `CharityRegisterRow` holds what the register
+# publishes about a charity, and each reachable type adds its own key, its anchor echo, and whatever
+# that particular extract carries. `MATCH (c:CharityRegisterRow)` then answers a question about
+# charities without it having to know which path found them.
+#
+# A CAUTION for the query author: the three paths key differently (abn, charityKey, rollKey), so the
+# same charity CAN appear once per path in a query that walks more than one. Aggregate on `abn`, or
+# DISTINCT on it, when you span them.
+- name: CharityRegisterRow
   visibility: internal
   description: >-
-    One entity on the ACNC Register of Australian Charities, matched by ABN. Carries the full
-    registered street address — the join that makes co-located providers visible — plus
-    registration and establishment dates (entity AGE without the 379 MB ASIC extract) and a
-    disability-beneficiary flag. A register entry about a charity, never a finding about it.
-    `responsiblePersons` is a COUNT: no open Australian source publishes officer NAMES in bulk,
-    so a shared-director graph cannot be built and no lens may imply one.
+    One entity on the ACNC Register of Australian Charities, however it was reached. A register
+    entry about a charity, never a finding about it. `responsiblePersons`, where an extract carries
+    it, is a COUNT: no open Australian source publishes officer NAMES in bulk, so a shared-director
+    graph cannot be built and no lens may imply one.
   properties:
-    abn:
-      metadata: { identity: "true" }
+    abn: "The charity's ABN — the join back to money."
     charityName: "Registered legal name."
     otherNames: "Other/trading names as registered — the name a grant may be published under."
-    addressLine1: "Registered address, line 1 — verbatim, unnormalized."
-    addressLine2: "Registered address, line 2."
     town: "Town or city."
     state: "State."
     postcode: "Postcode."
-    website: "Charity website as registered."
     registrationDate: "Date registered with the ACNC."
     established: "Date the organisation itself was established — earlier than registration."
     charitySize: "ACNC size band (small/medium/large), which is a REVENUE band, not a headcount."
+
+- name: CharityRecord
+  parents: [CharityRegisterRow]
+  visibility: internal
+  description: >-
+    The register entry matched BY ABN. The richest of the three paths: it carries the full
+    registered street address — the join that makes co-located providers visible — plus the
+    website and the disability-beneficiary flag, on top of what every register row carries.
+  properties:
+    abn:
+      metadata: { identity: "true" }
+    addressLine1: "Registered address, line 1 — verbatim, unnormalized."
+    addressLine2: "Registered address, line 2."
+    website: "Charity website as registered."
     responsiblePersons: "COUNT of responsible persons. Never names — they are not published in bulk."
     servesPeopleWithDisabilities: "The register's own beneficiary flag for people with disabilities."
   virtualJoins:
@@ -239,24 +257,16 @@
       metadata: { identity: "true" }
 
 - name: DisabilityCharity
+  parents: [CharityRegisterRow]
   visibility: internal
   description: >-
-    One charity on the ACNC's disability-serving roll, with the register's own name, size band
-    (a REVENUE band, not headcount) and location. The abn is the join back to money, the AIS
-    return and the compliance register.
+    The register entry reached off the ACNC's disability-serving roll — the whole cohort in one
+    walk, rather than one ABN at a time. Carries the register row and nothing more: this extract
+    publishes no street address, no website and no responsible-person count.
   properties:
     rollKey:
       metadata: { identity: "true" }
     marker: "The pinned flag, stamped from the anchor."
-    abn: "The charity's ABN."
-    charityName: "Registered legal name."
-    otherNames: "Other/trading names as registered."
-    town: "Town or city."
-    state: "State."
-    postcode: "Postcode."
-    registrationDate: "Date registered with the ACNC."
-    established: "Date the organisation was established."
-    charitySize: "ACNC size band (small/medium/large) — a revenue band."
   virtualJoins:
     - anchorLabel: DisabilityServiceRoll
       relationship: HAS_CHARITY
@@ -265,7 +275,38 @@
       producer: charitiesServingDisabilities
       description: "The whole disability-serving slice of the charity register: `MATCH (r:DisabilityServiceRoll {marker:'Y'})-[:HAS_CHARITY]->(c:DisabilityCharity)`."
 
+# ── The Annual Information Statement, and the two years the realm fetches ─────────────────────────
+# FY24 and FY23 are the same filing shape a year apart. `AnnualInformationStatement` declares the
+# shape once so a trajectory question — revenue, FTE, expenses over time — can read one label and
+# ORDER BY the reporting period, instead of naming two types and pairing their variables by hand.
+# Each year keeps its own key and whatever detail its extract carries.
+- name: AnnualInformationStatement
+  visibility: internal
+  description: >-
+    One Annual Information Statement row as filed with the ACNC, for whichever year was fetched.
+    Everything here is SELF-reported and lagged; small charities file reduced detail; a
+    consolidated report ('y') covers a GROUP and makes per-entity arithmetic meaningless; and NDIS
+    fee-for-service may sit under goods-and-services rather than government revenue — which line a
+    provider uses is itself informative. Comparing two years compares two SELF-REPORTS, and a
+    changed reporting period or a group-structure change moves figures without anything happening
+    in the world.
+  properties:
+    abn: "The matched ABN, stamped from the anchor."
+    charityName: "Name as filed."
+    charitySize: "ACNC size band for the year."
+    reportingPeriodTo: "Financial report period end, as filed — compare money to THIS period, not to a calendar year, and compare like with like across years."
+    consolidated: "'y' when the report consolidates more than one entity — group figures, not this entity's."
+    fteTotal: "Total full-time-equivalent staff, as filed — the denominator of revenue per FTE."
+    employeeExpenses: "Employee expenses $, as filed — the cross-check that separates 'few staff' from 'mis-keyed FTE'."
+    revenueGovernment: "Revenue from government $, as filed — self-reported, all levels of government."
+    revenueGoodsServices: "Revenue from goods and services $, as filed — where NDIS fee-for-service often books."
+    revenueTotal: "Total revenue $, as filed."
+    otherExpenses: "All other expenses $ — everything that is not employee expenses, interest or grants made."
+    expensesTotal: "Total expenses $, as filed."
+    relatedPartyTransactions: "'y'/'n' — the charity's own declaration of reportable related-party transactions."
+
 - name: AisReturn
+  parents: [AnnualInformationStatement]
   visibility: internal
   description: >-
     The charity's FY2024 Annual Information Statement row — its OWN filing to the ACNC: revenue
@@ -278,39 +319,27 @@
   properties:
     aisKey:
       metadata: { identity: "true" }
-    abn: "The matched ABN, stamped from the anchor."
-    charityName: "Name as filed."
     registrationStatus: >-
       ACNC registration status carried by the published AIS dataset, including Registered and
       the specific revocation category. A voluntary revocation often means the charity ceased,
       merged or chose to continue outside ACNC registration; it is context for a historical
       filing anomaly, not evidence of misconduct.
-    charitySize: "ACNC size band for the year."
     reportingPeriodFrom: "Financial report period start, as filed."
-    reportingPeriodTo: "Financial report period end, as filed — compare money to THIS period, not to a calendar year."
     statementType: "Type of financial statement filed."
     purposesPursued: >-
       FREE TEXT: how the charity says it pursued its purposes that year, in its own words. The only
       narrative field in the AIS, and the only place a provider describes what it actually did —
       clusterable, and the counterpart to the money columns beside it.
-    consolidated: "'y' when the report consolidates more than one entity — group figures, not this entity's."
     staffFullTime: "Full-time staff headcount, as filed."
     staffPartTime: "Part-time staff headcount, as filed."
     staffCasual: "Casual staff headcount, as filed."
     staffVolunteers: "Volunteers, as filed."
-    fteTotal: "Total full-time-equivalent staff, as filed — the denominator of revenue per FTE."
-    employeeExpenses: "Employee expenses $, as filed — the cross-check that separates 'few staff' from 'mis-keyed FTE'."
-    revenueGovernment: "Revenue from government $, as filed — self-reported, all levels of government."
-    revenueGoodsServices: "Revenue from goods and services $, as filed — where NDIS fee-for-service often books."
     donationsBequests: "Donations and bequests $, as filed."
-    revenueTotal: "Total revenue $, as filed."
     grossIncomeTotal: "Total gross income $, as filed."
     grantsMadeAustralia: "Grants and donations the charity made for use in Australia $ — high pass-through explains revenue without staff."
     grantsMadeOverseas: "Grants and donations made for use outside Australia $."
     otherExpenses: "All other expenses $ — everything that is not employee expenses, interest or grants made. For a provider that BROKERS services rather than employing staff, this is where the money leaves; its recipients are named nowhere public."
-    expensesTotal: "Total expenses $, as filed."
     netSurplus: "Net surplus/deficit $, as filed."
-    relatedPartyTransactions: "'y'/'n' — the charity's own declaration of reportable related-party transactions."
   virtualJoins:
     - anchorLabel: IntegrityQuery
       relationship: HAS_AIS
@@ -324,7 +353,25 @@
       maxAnchors: 3000
       description: "The FY24 AIS row for a pinned ABN: `MATCH (q:IntegrityQuery {abn:'…'})-[:HAS_AIS]->(a:AisReturn)`."
 
+# ── A charity's declared programs, and the three ways in ─────────────────────────────────────────
+# The same AIS program row is reachable by the charity's ABN, by FY24 classification, and by FY23
+# classification. `CharityProgramRow` is that row; each type below adds its key and its anchor echo.
+- name: CharityProgramRow
+  visibility: internal
+  description: >-
+    One program a charity declared in an Annual Information Statement — its name, the ACNC
+    classification the charity chose for it, and the entity that filed it. The MIX of programs is
+    what tells a reader whether a flagged figure is even NDIS money: the AIS reports a single
+    government-revenue line covering aged care, disability, homelessness and everything else the
+    charity does.
+  properties:
+    abn: "The reporting charity's ABN."
+    charityName: "The reporting charity's name as filed."
+    programName: "The program name as the charity filed it."
+    classification: "The ACNC classification the charity chose for the program."
+
 - name: DeclaredProgram
+  parents: [CharityProgramRow]
   visibility: internal
   description: >-
     One program a charity declared in its FY24 AIS, fetched BY ABN — the whole mix for one
@@ -334,10 +381,6 @@
   properties:
     programKey:
       metadata: { identity: "true" }
-    abn: "The reporting charity's ABN, stamped from the anchor."
-    charityName: "The reporting charity's name."
-    programName: "The program name as filed."
-    classification: "The ACNC classification the charity chose for it."
   virtualJoins:
     - anchorLabel: IntegrityQuery
       relationship: HAS_DECLARED_PROGRAM
@@ -363,6 +406,7 @@
       metadata: { identity: "true" }
 
 - name: PriorCharityProgram
+  parents: [CharityProgramRow]
   visibility: internal
   description: >-
     One program a charity reported in its FY23 AIS, under a pinned classification.
@@ -370,9 +414,6 @@
     programKey:
       metadata: { identity: "true" }
     classification: "The pinned classification, stamped from the anchor."
-    abn: "The reporting charity's ABN."
-    charityName: "The reporting charity's name as filed for FY23."
-    programName: "The program name as the charity filed it."
   virtualJoins:
     - anchorLabel: PriorProgramClass
       relationship: HAS_PROGRAM
@@ -382,6 +423,7 @@
       description: "Every FY23 program under a pinned classification: `MATCH (p:PriorProgramClass {classification:'Disability services'})-[:HAS_PROGRAM]->(g:PriorCharityProgram)`."
 
 - name: AisPriorReturn
+  parents: [AnnualInformationStatement]
   visibility: internal
   description: >-
     The same charity's FY2023 Annual Information Statement row — the prior point that makes a
@@ -392,19 +434,7 @@
   properties:
     aisPriorKey:
       metadata: { identity: "true" }
-    abn: "The matched ABN, stamped from the anchor."
-    charityName: "Name as filed for FY23."
-    charitySize: "ACNC size band for FY23."
-    reportingPeriodTo: "FY23 financial report period end, as filed — compare like with like."
-    consolidated: "'y' when the FY23 report consolidates more than one entity."
-    fteTotal: "Total FTE staff, as filed for FY23."
-    employeeExpenses: "Employee expenses $, FY23."
-    revenueGovernment: "Revenue from government $, FY23."
-    revenueGoodsServices: "Revenue from goods and services $, FY23."
-    revenueTotal: "Total revenue $, FY23."
     otherExpenses: "All other expenses $, FY23 — the prior point that makes a workforce-model change visible."
-    expensesTotal: "Total expenses $, FY23."
-    relatedPartyTransactions: "'y'/'n' related-party declaration, FY23."
   virtualJoins:
     - anchorLabel: IntegrityQuery
       relationship: HAS_AIS_PRIOR
@@ -431,6 +461,7 @@
       metadata: { identity: "true" }
 
 - name: CharityProgram
+  parents: [CharityProgramRow]
   visibility: internal
   description: >-
     One program a charity reported in its FY24 AIS, under a pinned classification. The program
@@ -439,12 +470,9 @@
     programKey:
       metadata: { identity: "true" }
     classification: "The pinned classification, stamped from the anchor."
-    abn: "The reporting charity's ABN."
-    charityName: "The reporting charity's name."
     registrationStatus: >-
       The ACNC registration status carried on the FY24 program row, including the exact voluntary
       revocation category. It describes the charity-registration position, not NDIS registration.
-    programName: "The program name as the charity filed it."
   virtualJoins:
     - anchorLabel: ProgramClass
       relationship: HAS_PROGRAM
@@ -464,6 +492,7 @@
       metadata: { identity: "true" }
 
 - name: CharityAtPostcode
+  parents: [CharityRegisterRow]
   visibility: internal
   description: >-
     One charity registered in a pinned postcode, with its verbatim address so a consumer can
@@ -474,16 +503,8 @@
     charityKey:
       metadata: { identity: "true" }
     postcode: "The pinned postcode, stamped from the anchor."
-    abn: "The charity's ABN — the join back to money."
-    charityName: "Registered legal name."
-    otherNames: "Other/trading names as registered."
     addressLine1: "Registered address, line 1 — verbatim, unnormalized."
     addressLine2: "Registered address, line 2."
-    town: "Town or city."
-    state: "State."
-    registrationDate: "Date registered with the ACNC."
-    established: "Date the organisation was established."
-    charitySize: "ACNC size band (a revenue band)."
     responsiblePersons: "COUNT of responsible persons; never names."
     servesPeopleWithDisabilities: "The register's own disability-beneficiary flag."
   virtualJoins:
