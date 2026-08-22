@@ -110,4 +110,4 @@ spec:
       source: "AusTender OCDS API (CC BY 3.0 AU)",
     }) });
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/gov-au/moneytrail.html

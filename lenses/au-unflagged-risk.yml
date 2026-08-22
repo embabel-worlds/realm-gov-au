@@ -352,7 +352,7 @@ spec:
       const hostOf = (u) => { const m = String(u || "").match(/^https?:\/\/([^/]+)/i); return m ? m[1].toLowerCase() : ""; };
 
       const itemRows = (await ask("coverage items", `
-        MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:ContractCoverage)
+        MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:SearchResult)
         WHERE q.phrase IN [${inList}]
         RETURN q.phrase AS phrase, c.title AS title, c.url AS url, c.snippet AS snippet`, 1)).rows;
       const itemsByPhrase = {};
@@ -389,7 +389,7 @@ spec:
         const hostClauses = hosts.length ? " AND NOT (" + hosts.map(h => `c.url CONTAINS ${JSON.stringify(h)}`).join(" OR ") + ")" : "";
         const phraseList = t.phrases.map(x => JSON.stringify(x)).join(", ");
         const red = (await ask(`coverage reduction: ${t.f.name}`, `
-          MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:ContractCoverage)
+          MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:SearchResult)
           WHERE q.phrase IN [${phraseList}] AND ${clauses}${hostClauses}
           RETURN summarize(c.snippet, 'what this coverage says about this organisation, in two sentences') AS digest,
                  holds(c.snippet, 'this coverage reports an investigation, an allegation of misused public money, or regulatory action against THIS organisation') AS reportsAllegationOrAction,
@@ -475,4 +475,4 @@ spec:
       source: "ACNC Annual Information Statements 2023 and 2024 incl. programs files (data.gov.au); NDIS Commission compliance actions register; Brave search index for coverage",
     }) });
 presentation:
-  href: /apps/scrutiny-room.html
+  href: /apps/gov-au/scrutiny-room.html

@@ -114,4 +114,4 @@ spec:
       source: "AusTender OCDS API (CC BY 3.0 AU)",
     }) });
 presentation:
-  href: /apps/pattern-room.html
+  href: /apps/gov-au/pattern-room.html

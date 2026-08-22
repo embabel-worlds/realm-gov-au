@@ -31,7 +31,7 @@ spec:
 
     const r = await gateway.kg.query({
       cypher: `
-        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
+        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)
         RETURN v.releaseId AS releaseId, v.awardId AS awardId, v.releaseDate AS releaseDate, v.tags AS tags,
                v.amendmentIds AS amendmentIds, v.amount AS amount, v.currency AS currency,
                v.title AS title, v.description AS description, v.dateSigned AS dateSigned,
@@ -138,7 +138,7 @@ spec:
       queries: [{
         title: "Version chain for one contract notice",
         note: "One row per published version — the original and each amendment, value as amended.",
-        cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)\n" +
+        cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)\n" +
                 "RETURN v.releaseDate, v.amount, v.tags, v.amendmentIds ORDER BY v.releaseDate",
       }],
       joins: [{ source: "AusTender OCDS API", role: "All published versions of the notice",
@@ -202,4 +202,4 @@ spec:
     }) });
     }
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/gov-au/moneytrail.html

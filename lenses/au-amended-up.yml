@@ -87,7 +87,7 @@ spec:
     for (const cnId of cnIds) {
       const r = await gateway.kg.query({
         cypher: `
-          MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
+          MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)
           RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount,
                  v.amendmentIds AS amendmentIds,
                  v.supplierName AS supplierName, v.agencyName AS agencyName,
@@ -171,7 +171,7 @@ spec:
           cypher: "MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)\n" +
                   "WHERE 'contractAmendment' IN r.tags RETURN DISTINCT r.cnId" },
         { title: "Each notice's before/after",
-          cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)\n" +
+          cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)\n" +
                   "RETURN v.amount ORDER BY v.releaseDate  // growth = last over first" },
       ],
       joins: [
@@ -198,4 +198,4 @@ spec:
       source: "AusTender OCDS API (CC BY 3.0 AU)",
     }) });
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/gov-au/moneytrail.html

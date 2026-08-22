@@ -163,4 +163,4 @@ spec:
       source: "AusTender OCDS API (CC BY 3.0 AU) + AGOR (CC BY 3.0 AU, seeded)",
     }) });
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/gov-au/moneytrail.html

@@ -45,7 +45,7 @@ spec:
     // ---- TIER 1: the register ------------------------------------------------------------
     const v = await gateway.kg.query({
       cypher: `
-        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
+        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)
         RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount, v.tags AS tags,
                v.description AS description, v.title AS title,
                v.supplierName AS supplierName, v.supplierAbn AS supplierAbn,
@@ -111,7 +111,7 @@ spec:
     } else {
       const cov = await gateway.kg.query({
         cypher: `
-          MATCH (q:CoverageQuery {phrase:$phrase})-[:HAS_COVERAGE]->(x:ContractCoverage)
+          MATCH (q:CoverageQuery {phrase:$phrase})-[:HAS_COVERAGE]->(x:SearchResult)
           RETURN x.title AS title, x.url AS url, x.snippet AS snippet, x.age AS age
           LIMIT 8
         `,
@@ -273,4 +273,4 @@ spec:
     }) });
     }
 presentation:
-  href: /apps/moneytrail.html
+  href: /apps/gov-au/moneytrail.html

@@ -133,4 +133,4 @@ spec:
       source: "AusTender OCDS API (CC BY 3.0 AU) · ParlInfo search feeds (keyless)",
     }) });
 presentation:
-  href: /apps/scrutiny-room.html
+  href: /apps/gov-au/scrutiny-room.html

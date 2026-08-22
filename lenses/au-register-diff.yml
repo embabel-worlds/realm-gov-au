@@ -251,11 +251,11 @@ spec:
       const newsPhrases = targets.map(t => `"${t.name}" NDIS`);
       const inList = (arr) => arr.map(p => JSON.stringify(p)).join(", ");
       const web = targets.length ? await ask("AustLII probe", `
-        MATCH (q:CoverageQuery)-[:HAS_WEB_RESULT]->(w:WebHit)
+        MATCH (q:CoverageQuery)-[:HAS_WEB_RESULT]->(w:SearchResult)
         WHERE q.phrase IN [${inList(austliiPhrases)}]
         RETURN q.phrase AS phrase, w.url AS url, w.title AS title, w.snippet AS snippet`) : [];
       const news = targets.length ? await ask("news probe", `
-        MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:ContractCoverage)
+        MATCH (q:CoverageQuery)-[:HAS_COVERAGE]->(c:SearchResult)
         WHERE q.phrase IN [${inList(newsPhrases)}]
           AND ai.relevant(c, 'about NDIS provider regulation, a banning or compliance action, or a tribunal or court review involving the person or entity the search names')
         RETURN q.phrase AS phrase, c.url AS url, c.title AS title, c.snippet AS snippet, c.age AS age`) : [];
@@ -344,4 +344,4 @@ spec:
       source: "NDIS Commission compliance actions — dated extracts on data.gov.au; series enumerated via the data.gov.au CKAN catalogue API",
     }) });
 presentation:
-  href: /apps/scrutiny-room.html
+  href: /apps/gov-au/scrutiny-room.html
