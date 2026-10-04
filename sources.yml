@@ -25,7 +25,7 @@ sources:
     # cnId IS the fetch key — versionsById takes it as keyArgs, one call per notice. Omitting it
     # here made the registry warn that this live source needs its whole partition, which it does not.
     filterableAtSource: [cnId]
-    ordering: version-order         # releases arrive original-first; ORDER BY releaseDate anyway
+    ordering: oldest-first          # releases arrive original-first; ORDER BY releaseDate anyway
     updates: business-days
     sync:
       strategy: live                # a passport is one instant call; nothing to mirror
@@ -48,7 +48,9 @@ sources:
     # a capped window presented as complete would silently understate an agency's month.
     queriedBy: [agency, supplier, amount, method]
     filterableAtSource: [window]
-    ordering: cursor-forward
+    # Newest-first within the window (the cursor walks backwards in time), so a capped window
+    # keeps its most recent releases and drops its earliest — the bias the cap warning must carry.
+    ordering: newest-first
     updates: business-days
     sync:
       strategy: live
@@ -68,7 +70,9 @@ sources:
     partition: window
     queriedBy: [tags, agency, supplier, amount]
     filterableAtSource: [window]
-    ordering: cursor-forward
+    # Newest-first within the window (the cursor walks backwards in time), so a capped window
+    # keeps its most recent releases and drops its earliest — the bias the cap warning must carry.
+    ordering: newest-first
     updates: business-days
     sync:
       strategy: live
