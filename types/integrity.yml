@@ -83,7 +83,7 @@
   visibility: internal
   description: >-
     The entity's row in the ATO corporate tax transparency report (total income ≥ $100M),
-    matched by ABN. TWO published caveats every consumer carries verbatim: a BLANK taxable
+    matched by ABN. TWO published caveats every consumer carries verbatim: an ABSENT (blank) taxable
     income or tax payable means '≤ 0' BY LEGISLATION (amounts of zero or less may not be
     reported), never 'unknown'; and the report is entity-level, not consolidated groups — the
     contracting entity often differs from the reporting entity.
@@ -91,9 +91,15 @@
     abn:
       metadata: { identity: "true" }
     name: "The entity name as the ATO reports it."
-    totalIncome: "Total income $, as reported."
-    taxableIncome: "Taxable income $; BLANK = ≤ 0 by legislation."
-    taxPayable: "Tax payable $; BLANK = ≤ 0 by legislation."
+    totalIncome:
+      type: int
+      description: "Total income $, as reported, as a whole-dollar number."
+    taxableIncome:
+      type: int
+      description: "Taxable income $ as a number; ABSENT (blank in the report) = ≤ 0 by legislation."
+    taxPayable:
+      type: int
+      description: "Tax payable $ as a number; ABSENT (blank in the report) = ≤ 0 by legislation."
     incomeYear: "The income year of this report row."
   virtualJoins:
     - anchorLabel: IntegrityQuery

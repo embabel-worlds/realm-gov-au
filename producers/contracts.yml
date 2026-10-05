@@ -87,6 +87,12 @@
     awardId: "awards.0.id"
     contractStatus: "contracts.0.status"
     limitedTenderExempt: "tender.limitedTenderExempt"
+  # The feed QUOTES its numbers ("297457923.41") and project does not coerce, so a bare amount
+  # is a string: ORDER BY amount sorts it as text and puts 995000.00 above 297,457,923.41.
+  # Converted here, once, it is a number for every query. Every amount in the feed parses
+  # (201 of 201 releases on a measured publication day), so an absent amount is the feed's own.
+  compute:
+    amount: "toFloat(r.amount)"
   # Notices amend on business days; an hour's TTL keeps a repeated passport instant. An unknown
   # CN id returns an EMPTY release list — that emptiness is an answer (the id does not exist in
   # the register) and is cached as one.
@@ -155,6 +161,9 @@
     awardId: "awards.0.id"
     contractStatus: "contracts.0.status"
     limitedTenderExempt: "tender.limitedTenderExempt"
+  # amount arrives quoted — numeric here for the same reason as versionsById.
+  compute:
+    amount: "toFloat(r.amount)"
   # A closed window's contents never change; an open one gains releases through the business day.
   cache: { kind: ttl, seconds: 3600 }
   cost:
@@ -215,6 +224,9 @@
     awardId: "awards.0.id"
     contractStatus: "contracts.0.status"
     limitedTenderExempt: "tender.limitedTenderExempt"
+  # amount arrives quoted — numeric here for the same reason as versionsById.
+  compute:
+    amount: "toFloat(r.amount)"
   cache: { kind: ttl, seconds: 3600 }
   cost:
     bucket: "austender"

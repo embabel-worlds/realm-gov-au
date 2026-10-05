@@ -23,7 +23,11 @@
       metadata: { identity: "true" }
     agency: "The awarding agency, as published."
     recipient: "Recipient name, as published."
-    recipientAbn: "Recipient ABN as published (spaced); digits-normalize before joining."
+    recipientAbn: >-
+      Recipient ABN, digits only (the export spaces it; normalized so it joins supplierAbn on
+      contracts and the ABN-keyed registers as is). ABSENT where the export carries a sentinel
+      instead of an ABN — 'ABN Exempt' or 'Aggregate' (awards reported in aggregate) — because a
+      sentinel is not an identifier, and as a value it would match itself across unrelated awards.
     program: "Grant program."
     activity: "Grant activity title."
     goId: >-
@@ -32,9 +36,9 @@
     purpose: "The published purpose text, verbatim."
     category: "The published category."
     selectionProcess: "The published selection process (open, targeted, closed, …)."
-    publishDate: "Publish date, as published."
-    startDate: "Grant start date."
-    endDate: "Grant end date."
+    publishDate: "Publish date, ISO yyyy-MM-dd (the export writes 7-Sep-2026; normalized so it sorts and compares)."
+    startDate: "Grant start date, ISO yyyy-MM-dd."
+    endDate: "Grant end date, ISO yyyy-MM-dd."
     value:
       type: number
       description: "Value (AUD), as published. Numeric so deterministic thresholds can narrow before optional LLM relevance judging."

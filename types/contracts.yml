@@ -29,7 +29,9 @@
     tags: "contract for the original notice; contractAmendment for later versions — in a ChangeWindow, the amendment marker."
     title: "The register's title field — usually an internal reference, not a human title."
     description: "Free text as published. Sometimes records repayments/variations the structured fields never carry."
-    amount: "Contracted value in AUD as of this version. A commitment, not expenditure."
+    amount:
+      type: number
+      description: "Contracted value in AUD as of this version, as a number. A commitment, not expenditure."
     currency: "Currency code, AUD in practice."
     dateSigned: "When the contract was signed (ISO)."
     startDate: "Contract period start (ISO)."
