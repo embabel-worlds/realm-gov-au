@@ -194,7 +194,7 @@
            abn, notices, round(windowValue) AS windowValue,
            t.name AS atoReportedName, t.incomeYear AS incomeYear,
            t.totalIncome AS totalIncome, t.taxableIncome AS taxableIncome, t.taxPayable AS taxPayable,
-           CASE WHEN trim(coalesce(t.taxPayable, '')) = ''
+           CASE WHEN t.taxPayable IS NULL
                 THEN 'blank means <= $0 BY LEGISLATION, never unknown' ELSE null END AS taxPayableNote
     ORDER BY windowValue DESC
 

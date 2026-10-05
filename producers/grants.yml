@@ -47,5 +47,34 @@
     recipientState: "Recipient State/Territory"
     deliveryState: "Delivery State/Territory"
     deliveryPostcode: "Delivery Postcode"
+  # The export writes dates as 7-Sep-2026 (day unpadded, month abbreviated). As text they neither
+  # sort nor compare — 7-Sep-2026 sorts above 1-Jan-2027 — so they are rewritten to ISO yyyy-MM-dd
+  # here. Measured over a week and a year of awards (over 150,000 dates): every value is d-MMM-yyyy
+  # or dd-MMM-yyyy with an English three-letter month. An already-ISO value passes through
+  # untouched; any other shape becomes ABSENT rather than a string that sorts wrongly.
+  #
+  # recipientAbn arrives spaced ('98 706 024 048') or as a sentinel ('ABN Exempt', 'Aggregate').
+  # Digits-only is the form every other ABN in this realm takes, so it joins as is; a sentinel is
+  # not an identifier and becomes absent.
+  compute:
+    publishDate: >-
+      [p IN [split(trim(r.publishDate), '-')] WHERE size(p) = 3 |
+              CASE WHEN size(p[0]) = 4 THEN trim(r.publishDate)
+              ELSE p[2] + '-' + CASE toLower(p[1]) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END
+                   + '-' + CASE size(p[0]) WHEN 1 THEN '0' + p[0] ELSE p[0] END END][0]
+    startDate: >-
+      [p IN [split(trim(r.startDate), '-')] WHERE size(p) = 3 |
+              CASE WHEN size(p[0]) = 4 THEN trim(r.startDate)
+              ELSE p[2] + '-' + CASE toLower(p[1]) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END
+                   + '-' + CASE size(p[0]) WHEN 1 THEN '0' + p[0] ELSE p[0] END END][0]
+    endDate: >-
+      [p IN [split(trim(r.endDate), '-')] WHERE size(p) = 3 |
+              CASE WHEN size(p[0]) = 4 THEN trim(r.endDate)
+              ELSE p[2] + '-' + CASE toLower(p[1]) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END
+                   + '-' + CASE size(p[0]) WHEN 1 THEN '0' + p[0] ELSE p[0] END END][0]
+    recipientAbn: >-
+      CASE WHEN size(replace(r.recipientAbn, ' ', '')) = 11
+                AND toInteger(replace(r.recipientAbn, ' ', '')) IS NOT NULL
+           THEN replace(r.recipientAbn, ' ', '') END
   fileCacheSeconds: 21600
   cache: { kind: ttl, seconds: 21600 }

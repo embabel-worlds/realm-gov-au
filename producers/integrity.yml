@@ -138,6 +138,14 @@
     taxableIncome: "Taxable income $"
     taxPayable: "Tax payable $"
     incomeYear: "Income year"
+  # The workbook's cells are integers, but they reach the record as the sheet DISPLAYS them —
+  # '61,492,803,786' — on which toFloat is null and sum() is a silent 0. Stripped and converted
+  # here. A blank cell (≤ 0 by legislation) stays absent: it must never become 0, which would
+  # read as a reported figure.
+  compute:
+    totalIncome: "toInteger(replace(trim(r.totalIncome), ',', ''))"
+    taxableIncome: "toInteger(replace(trim(r.taxableIncome), ',', ''))"
+    taxPayable: "toInteger(replace(trim(r.taxPayable), ',', ''))"
   fileCacheSeconds: 604800
   cache: { kind: ttl, seconds: 86400, negativeTtlSeconds: 86400 }
 
