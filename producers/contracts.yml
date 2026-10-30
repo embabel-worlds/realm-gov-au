@@ -123,6 +123,11 @@
   # Partitioning fetches each UTC day with its own page budget and stamps records back to the
   # caller's window; queries and the app change not at all.
   partition: { unit: day, maxUnits: 366 }
+  # The feed filters on nothing but the window itself: its only parameters are the path's from/to
+  # (the key, sent by keyArgs) and the page cursor (apis/austender-ocds.yaml). Supplier, agency,
+  # amount, procurement method — every WHERE over these releases is applied by the graph after the
+  # window is read, and an empty list says so rather than leaving it unstated.
+  pushdown: []
   project:
     releaseId: id
     cnId: "contracts.0.id"
@@ -186,6 +191,11 @@
   # partitioning that is every quiet weekend, and it is an answer, not an error.
   emptyErrorPatterns: ["No Records found"]
   partition: { unit: day, maxUnits: 366 }
+  # The feed filters on nothing but the window itself: its only parameters are the path's from/to
+  # (the key, sent by keyArgs) and the page cursor (apis/austender-ocds.yaml). Supplier, agency,
+  # amount, procurement method — every WHERE over these releases is applied by the graph after the
+  # window is read, and an empty list says so rather than leaving it unstated.
+  pushdown: []
   project:
     releaseId: id
     cnId: "contracts.0.id"

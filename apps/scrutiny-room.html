@@ -17,6 +17,7 @@
   @media(max-width:700px){.wrap{width:min(100% - 28px,1080px)}.mast .wrap{padding-bottom:54px}.hero{padding-top:48px}.controls{margin-top:-22px}.control-note{width:100%;margin-left:0}.tabs{overflow:auto;padding-bottom:3px}.intro{grid-template-columns:1fr}.intro .run{width:100%}.split{grid-template-columns:1fr}.headline{grid-template-columns:1fr;gap:5px}.row{grid-template-columns:1fr}.amount{white-space:normal}.foot{flex-direction:column}}
   @media(prefers-reduced-motion:reduce){.pulse{animation:none}}
 </style>
+<style>#how-it-works{display:none;margin:40px 0 0;padding:22px;background:var(--card);border:1px solid var(--line);border-radius:17px;color:var(--ink);font-size:.82rem;line-height:1.55}#how-it-works:target{display:block}#how-it-works h2{margin:0 0 8px;font-size:1.6rem;letter-spacing:-.03em}#how-it-works h3{margin:20px 0 6px;font-size:1rem}#how-it-works p,#how-it-works li{color:var(--muted)}#how-it-works details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0}#how-it-works summary{cursor:pointer;color:var(--ink)}#how-it-works pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);margin:8px 0 0;overflow-x:auto}.hiw-p{margin:6px 0 0}body{padding-bottom:40px}</style>
 </head>
 <body>
 <embabel-app-shell>
@@ -28,7 +29,39 @@
     <section class="pane" id="pane-accountability"><div class="intro"><div><div class="kicker">Money and scrutiny</div><h2>Did the largest notice IDs reach Parliament?</h2><p>Checks the ten largest commitments against Chamber Hansard, committees and Estimates. Exact ID search is precise but misses discussion that names only a program or supplier.</p></div><button class="run" data-run="accountability">Check the largest ten</button></div><div class="result" id="result-accountability"><div class="empty">Run this check when parliamentary coverage is the question.</div></div></section>
     <section class="pane" id="pane-integrity" hidden><div class="intro"><div><div class="kicker">ABN-level screening</div><h2>What do the adjacent registers record?</h2><p>Checks NDIS compliance actions, Modern Slavery statements and ATO transparency. A hit is a register entry for human review; a miss is never an all-clear.</p></div><button class="run" data-run="integrity">Screen the winners</button></div><div class="result" id="result-integrity"><div class="empty">No federal debarment register exists. This is a qualified screen of three published substitutes.</div></div></section>
     <section class="pane" id="pane-tax" hidden><div class="intro"><div><div class="kicker">Different periods, shown honestly</div><h2>Contracts beside published tax payable</h2><p>Joins contract winners by ABN to the 2023–24 corporate tax transparency report. It reports the timing and entity mismatch prominently and draws no allegation.</p></div><button class="run" data-run="tax">Compare the records</button></div><div class="result" id="result-tax"><div class="empty">Run only when the tax-report comparison itself is useful.</div></div></section>
-    <footer class="foot"><div>Every amount is a contract commitment, not expenditure.</div><div>Every absence is scoped to a named register and its published snapshot.</div></footer>
+    <section id="how-it-works" aria-label="How it works">
+<h2>How it works</h2>
+<h3>1. The data</h3>
+<p>All three checks start from the AusTender OCDS publication window (<code>PublicationWindow -[:PUBLISHED]-&gt; ContractRelease</code>, producer <code>releasesPublishedInWindow</code>), fetched live one UTC day at a time and cached for one hour. Then:</p><ul><li><b>Parliament coverage</b> reads ParlInfo's RSS search across Chamber Hansard, committees and Estimates by exact contract notice id (<code>ParliamentQuery -[:MENTIONED_IN {via:'any'}]-&gt; ParliamentMention</code>, producer <code>parliamentAnyMentions</code>, cached six hours).</li><li><b>Integrity registers</b> read three published files by ABN: NDIS Commission compliance actions (the 06.07.2026 extract), the Modern Slavery register's statement file, and the ATO 2023–24 corporate tax transparency report (producers <code>ndisActionsByAbn</code>, <code>slaveryStatementsByAbn</code>, <code>taxRecordByAbn</code>; files cached one to seven days, answers six to 24 hours).</li><li><b>Tax comparison</b> reads only the ATO 2023–24 report (<code>taxRecordByAbn</code>).</li></ul><p>From and To (exclusive) set the window for every check. Minimum contract applies to the integrity and tax checks; Parliament coverage is sent it but ignores it and checks the ten largest commitments in the window.</p>
+<h3>2. The questions</h3>
+<details><summary><b>au-accountability-gap</b> (lens) — whether the window's largest commitments appear, by exact notice id, in the parliamentary record.</summary><p class="hiw-p">Lens <code>au-accountability-gap</code>, run through the app runtime (<code>runner.lens</code>). Arguments: <code>from</code>, <code>to</code>, <code>topN</code> = 10 (set by this app); <code>minAmount</code> is also sent and not used by this lens. The ten largest notice ids are inlined into the second query's <code>IN</code> list.</p><p class="hiw-p"><b>Window releases, largest first</b></p><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+RETURN r.cnId AS cnId, r.awardId AS awardId, r.supplierName AS supplierName, r.agencyName AS agencyName,
+       toFloat(r.amount) AS amount, r.description AS description
+ORDER BY amount DESC</pre><p class="hiw-p"><b>Parliamentary mentions per notice id</b></p><pre>MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:'any'}]-&gt;(m:ParliamentMention)
+WHERE q.phrase IN [${inList}]
+RETURN q.phrase AS cnId, m.title AS title, m.url AS url, m.publishedAt AS publishedAt</pre></details>
+<details><summary><b>au-integrity-screen</b> (lens) — what the NDIS compliance, Modern Slavery and ATO registers record against the ABNs of the window's winners.</summary><p class="hiw-p">Lens <code>au-integrity-screen</code>, run through the app runtime (<code>runner.lens</code>). Arguments: <code>from</code>, <code>to</code>, <code>minAmount</code>. Up to 25 distinct ABNs are inlined into the second query, which runs three times: <code>HAS_ADVERSE</code>/<code>AdverseRecord</code>, <code>HAS_STATEMENT</code>/<code>SlaveryStatement</code> and <code>HAS_TAX_RECORD</code>/<code>TaxRecord</code>, each with that register's fields.</p><p class="hiw-p"><b>Window releases at or above the minimum</b></p><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toFloat(r.amount) &gt;= $minAmount
+RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+       toFloat(r.amount) AS amount, r.agencyName AS agencyName,
+       r.startDate AS startDate, r.endDate AS endDate
+ORDER BY amount DESC</pre><p class="hiw-p"><b>One register, for the batch of ABNs</b></p><pre>MATCH (q:IntegrityQuery)-[:${rel}]-&gt;(x:${label})
+WHERE q.abn IN [${inList}]
+RETURN q.abn AS abn, ${fields}</pre></details>
+<details><summary><b>au-tax-vs-contracts</b> (lens) — which winners the ATO transparency report lists, and which reported nil or below-zero tax payable.</summary><p class="hiw-p">Lens <code>au-tax-vs-contracts</code>, run through the app runtime (<code>runner.lens</code>). Arguments: <code>from</code>, <code>to</code>, <code>minAmount</code>. Up to 40 distinct ABNs are inlined into the second query.</p><p class="hiw-p"><b>Window releases at or above the minimum</b></p><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toFloat(r.amount) &gt;= $minAmount
+RETURN r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+       toFloat(r.amount) AS amount, r.cnId AS cnId, r.agencyName AS agencyName
+ORDER BY amount DESC</pre><p class="hiw-p"><b>ATO report rows for those ABNs</b></p><pre>MATCH (q:IntegrityQuery)-[:HAS_TAX_RECORD]-&gt;(x:TaxRecord)
+WHERE q.abn IN [${inList}]
+RETURN q.abn AS abn, x.name AS name, x.totalIncome AS totalIncome,
+       x.taxableIncome AS taxableIncome, x.taxPayable AS taxPayable, x.incomeYear AS incomeYear</pre></details>
+<h3>3. When it looks wrong</h3>
+<ul><li>"Not found" in Parliament coverage means the exact notice id was not in those record classes. Discussion that names only a program or supplier is not searched, and Questions on Notice are not covered.</li><li>An integrity miss is a miss in one named register snapshot, never an all-clear. A supplier with no published ABN cannot be screened; the lens lists it in its limits.</li><li>The tax report is 2023–24 and entity-level, so it rarely lines up with this window's contracts or a corporate group; a blank tax payable means ≤ $0 by legislation.</li><li>If a register or feed could not be read, the lens returns status PARTIAL and the app says so above the result; read the limits before interpreting it. Errors show in the operation panel with a retry.</li></ul>
+<h3>4. What made this possible</h3>
+<ul><li>Each register is joined by a virtual relationship from an ABN or notice id: listing several ids in one <code>IN</code> makes the appliance fetch each one once, at a pace the source tolerates, and cache it.</li><li>The contract window, Parliament's RSS search and three spreadsheet files are read by the same Cypher, without loading any of them into a database first.</li></ul>
+</section>
+<footer class="foot"><div>Every amount is a contract commitment, not expenditure. · <a href="#how-it-works">How it works</a></div><div>Every absence is scoped to a named register and its published snapshot.</div></footer>
   </main>
 </embabel-app-shell>
 <script>
@@ -50,5 +83,8 @@ if(E&&E.progress)E.progress.label(function(n){return /parliament/i.test(n)?'the 
 function iso(d){var p=function(n){return String(n).padStart(2,'0')};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}var now=new Date(),before=new Date(now.getTime()-7*86400000);$('from').value=iso(before);$('to').value=iso(now);
 })();
 </script>
+<div id="embabel-badge" style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:6px 0;background:rgba(10,10,15,0.9);border-top:1px solid rgba(99,192,245,0.2);font-size:0.75rem;color:#6b7280;z-index:9999;pointer-events:none;">
+  Created with <a href="https://worlds.embabel.com" target="_blank" rel="noopener noreferrer" style="color:#63c0f5;text-decoration:none;pointer-events:auto;">Embabel Worlds</a>
+</div>
 </body>
 </html>

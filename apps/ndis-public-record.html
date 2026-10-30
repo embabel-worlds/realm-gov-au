@@ -31,6 +31,7 @@
   @media(max-width:650px){.wrap{width:min(100% - 28px,1120px)}.hero .wrap{padding-bottom:55px}.hero-copy{padding-top:48px}.source-date{display:none}.section{margin-top:60px}.section-head{grid-template-columns:1fr}.section-head .refresh{width:100%}.impact-grid,.shape-grid,.explain-grid,.reading,.sources,.fact-grid{grid-template-columns:1fr}.impact{min-height:180px}.result-head{grid-template-columns:1fr;gap:5px}.foot{flex-direction:column}.plain-note{grid-template-columns:1fr}.jump a{padding-inline:10px}.official-link{flex:1 1 100%;justify-content:center}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
+<style>#how-it-works{display:none;margin:40px 0 0;padding:22px;background:var(--card);border:1px solid var(--line);border-radius:17px;color:var(--ink);font-size:.82rem;line-height:1.55}#how-it-works:target{display:block}#how-it-works h2{margin:0 0 8px;font-size:1.6rem;letter-spacing:-.03em}#how-it-works h3{margin:20px 0 6px;font-size:1rem}#how-it-works p,#how-it-works li{color:var(--muted)}#how-it-works details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0}#how-it-works summary{cursor:pointer;color:var(--ink)}#how-it-works pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);margin:8px 0 0;overflow-x:auto}.hiw-p{margin:6px 0 0}body{padding-bottom:40px}</style>
 </head>
 <body>
 <embabel-app-shell>
@@ -103,7 +104,114 @@
       <details class="method"><summary>Coverage and method in plain English</summary><p>This work covers the NDIS Commission's published compliance-action extracts from February 2026 onward and ACNC-registered charities with disability programs in their filings. It does not cover every NDIS provider, unregistered operators or a complete per-provider NDIS payment ledger, because those data are not public. Register changes are computed without a model. Accounting screens are arithmetic. The connection finder uses a model to propose names, then drops any name that does not literally appear in the Commission's text.</p></details>
     </section>
 
-    <footer class="foot"><div>This app reports public records and arithmetic over them. It does not determine fraud.</div><div id="mode-label">Verified research snapshot · 3 August 2026</div></footer>
+    <section id="how-it-works" aria-label="How it works">
+<h2>How it works</h2>
+<h3>1. The data</h3>
+<p>The page first shows a verified research snapshot written into the page (3 August 2026); nothing on it is fetched until a button is pressed. The live buttons read, through this realm (gov-au):</p><ul><li><b>The data.gov.au catalogue</b> (<code>CatalogueSearch -[:HAS_DATASET]-&gt; CatalogueDataset</code>, producer <code>datasetCatalogue</code>, cached six hours) to list every dated compliance-register extract.</li><li><b>NDIS compliance register extracts</b>: the Commission publishes dated extracts of its current register on data.gov.au. <code>NdisSnapshot -[:HAS_ACTION]-&gt; SnapshotAction</code> reads one extract by its key <code>datasetId|resourceId|filename</code> (producer <code>ndisActionsSnapshotRows</code>, file kept seven days, answers cached one day).</li><li><b>Charity filings</b>: ACNC Annual Information Statements for FY2024 and FY2023 (<code>IntegrityQuery -[:HAS_AIS]-&gt; AisReturn</code>, <code>-[:HAS_AIS_PRIOR]-&gt; AisPriorReturn</code>) for the charities that declared a program in the classification (<code>ProgramClass -[:HAS_PROGRAM]-&gt; CharityProgram</code>). Published files on data.gov.au, kept up to seven days and answered from a one-day cache; the screens ask for <code>{ai: {fresh: true}}</code> on the program and FY2024 reads, which skips that one-day cache.</li><li><b>The ACNC disability roll</b> (<code>DisabilityServiceRoll -[:HAS_CHARITY]-&gt; DisabilityCharity</code>, producer <code>charitiesServingDisabilities</code>), to match names the register prose mentions.</li><li><b>A news index</b> (Brave Search, <code>CoverageQuery -[:HAS_COVERAGE]-&gt;</code>, producer <code>newsForPhrase</code>, cached one hour) for "Check press mentions". It needs the world's Brave key.</li></ul>
+<h3>2. The questions</h3>
+<details><summary><b>au-register-diff</b> (lens) — every dated extract, compared consecutively: what appeared, and what left before its published end date.</summary><p class="hiw-p">Lens <code>au-register-diff</code>, run through the app runtime (<code>runner.lens</code>). "Check the live register" passes <code>followUp</code> = no, so the AustLII and news follow-up queries in this lens are not run. Extract keys are inlined from the catalogue result.</p><p class="hiw-p"><b>The extract series, from the catalogue</b></p><pre>MATCH (s:CatalogueSearch {query:'${q.replace(/'/g, "\\'")}'})-[:HAS_DATASET]-&gt;(d:CatalogueDataset)
+RETURN d.title AS title, d.datasetId AS datasetId, d.resourceId AS resourceId,
+       d.resourceUrl AS resourceUrl, d.resourceFormat AS fmt</pre><p class="hiw-p"><b>One extract, whole (run per extract)</b></p><pre>MATCH (n:NdisSnapshot {snapshotKey:'${s.key}'})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+RETURN a.rowKey AS rowKey, a.register AS register, a.name AS name, a.abn AS abn,
+       a.city AS city, a.state AS state, a.dateFrom AS dateFrom, a.dateTo AS dateTo,
+       a.detail AS detail</pre></details>
+<details><summary><b>au-register-names</b> (lens) — the latest extract's action types and themes, and organisations its banning and revocation narratives name.</summary><p class="hiw-p">Lens <code>au-register-names</code>, run through the app runtime (<code>runner.lens</code>). "Read the live register" and "Find live connections" share one run of this lens, with no arguments. <code>themes()</code> and <code>extract()</code> are model calls; every extracted name is kept only if the narrative text literally contains it.</p><p class="hiw-p"><b>Catalogue</b></p><pre>MATCH (s:CatalogueSearch {query:'${q.replace(/'/g, "\\'")}'})-[:HAS_DATASET]-&gt;(d:CatalogueDataset)
+RETURN d.title AS title, d.datasetId AS datasetId, d.resourceId AS resourceId, d.resourceUrl AS resourceUrl</pre><p class="hiw-p"><b>Latest extract</b></p><pre>MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+RETURN a.register AS register, a.name AS name, a.abn AS abn, a.state AS state,
+       a.dateFrom AS dateFrom, a.dateTo AS dateTo, a.detail AS detail</pre><p class="hiw-p"><b>Themes per action type</b></p><pre>MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+RETURN a.register AS actionType, themes(a.detail, 'the kinds of conduct, breach or obligation the text describes', 6) AS enforcementThemes</pre><p class="hiw-p"><b>Names in banning and revocation narratives</b></p><pre>MATCH (n:NdisSnapshot {snapshotKey:'${latest.key}'})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+WHERE a.register CONTAINS 'Banning' OR a.register CONTAINS 'Revocation'
+RETURN extract(a.detail, 'names of provider organisations, companies, trusts or business entities mentioned in the text — not government bodies, not Acts or Rules, not the NDIS Commission itself') AS names</pre><p class="hiw-p"><b>ACNC disability roll</b></p><pre>MATCH (r:DisabilityServiceRoll {marker:'Y'})-[:HAS_CHARITY]-&gt;(c:DisabilityCharity)
+RETURN c.abn AS abn, c.charityName AS charityName</pre></details>
+<details><summary><b>NdisWorkforceFlip</b> (view) — Providers whose employee expenses collapsed as a share of service revenue between FY23 and FY24 while revenue held or grew — the work is now done by someone other than employees. Lawful, and the documented precondition of both sham contracting and billing intermediation.</summary><p class="hiw-p">Parameters: <code>classification</code> = &#x27;Disability services&#x27;, <code>minService</code> = 1000000. "Check the latest filings" runs these four views together, with defaults.</p><pre>MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]-&gt;(g:CharityProgram)
+WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]-&gt;(now:AisReturn)
+MATCH (q)-[:HAS_AIS_PRIOR]-&gt;(prior:AisPriorReturn)
+WITH abn, registrationStatus, now, prior,
+     coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
+     coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
+     coalesce(toFloat(now.employeeExpenses), 0.0) AS empNow,
+     coalesce(toFloat(prior.employeeExpenses), 0.0) AS empPrior
+WHERE toLower(coalesce(now.consolidated, 'n')) &lt;&gt; 'y'
+  AND svcNow &gt;= $minService AND svcPrior &gt; 0
+  AND empPrior / svcPrior &gt;= 0.5
+  AND empNow / svcNow &lt; 0.3
+RETURN now.charityName AS provider, abn, registrationStatus,
+       svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
+       empPrior AS employeeExpensesFy23, empNow AS employeeExpensesFy24,
+       round(empPrior / svcPrior * 100) AS labourShareFy23Pct,
+       round(empNow / svcNow * 100) AS labourShareFy24Pct,
+       prior.fteTotal AS fteFy23, now.fteTotal AS fteFy24,
+       coalesce(toFloat(now.otherExpenses), 0.0) AS otherExpensesFy24,
+       now.relatedPartyTransactions AS relatedPartyDeclared,
+       now.reportingPeriodTo AS reportingPeriodTo
+ORDER BY serviceRevenueFy24 DESC</pre></details>
+<details><summary><b>NdisMoneyLeavesUnspecified</b> (view) — Providers where most money leaves as unspecified &quot;all other expenses&quot; rather than wages or named grants — the brokerage / plan-management shape. Lawful and common, and the one place where public money&#x27;s ultimate recipient is named in no public register.</summary><p class="hiw-p">Parameters: <code>classification</code> = &#x27;Disability services&#x27;, <code>minService</code> = 2000000, <code>minOtherShare</code> = 80. Run with defaults.</p><pre>MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]-&gt;(g:CharityProgram)
+WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]-&gt;(a:AisReturn)
+WITH abn, registrationStatus, a,
+     coalesce(toFloat(a.revenueGovernment), 0.0) + coalesce(toFloat(a.revenueGoodsServices), 0.0) AS svc,
+     coalesce(toFloat(a.otherExpenses), 0.0) AS other,
+     coalesce(toFloat(a.expensesTotal), 0.0) AS expenses,
+     coalesce(toFloat(a.employeeExpenses), 0.0) AS emp
+WHERE toLower(coalesce(a.consolidated, 'n')) &lt;&gt; 'y'
+  AND svc &gt;= $minService AND expenses &gt; 0
+  AND other / expenses * 100 &gt;= $minOtherShare
+  AND emp / svc &lt; 0.35
+RETURN a.charityName AS provider, abn, registrationStatus,
+       svc AS serviceRevenueFy24, other AS otherExpensesFy24, expenses AS totalExpensesFy24,
+       round(other / expenses * 100) AS otherExpensesSharePct,
+       emp AS employeeExpensesFy24, a.fteTotal AS fteFy24,
+       a.relatedPartyTransactions AS relatedPartyDeclared
+ORDER BY serviceRevenueFy24 DESC</pre></details>
+<details><summary><b>NdisRevenueSurgeWithoutStaff</b> (view) — Providers whose service revenue multiplied year on year while full-time-equivalent staff did not — the shape a phantom-services claim would have to survive. A capital grant, a merger or a first full year of operation produces it innocently.</summary><p class="hiw-p">Parameters: <code>classification</code> = &#x27;Disability services&#x27;, <code>minService</code> = 1000000, <code>minMultiple</code> = 250. Run with defaults.</p><pre>MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]-&gt;(g:CharityProgram)
+WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]-&gt;(now:AisReturn)
+MATCH (q)-[:HAS_AIS_PRIOR]-&gt;(prior:AisPriorReturn)
+WITH abn, registrationStatus, now, prior,
+     coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
+     coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
+     coalesce(toFloat(now.fteTotal), 0.0) AS fteNow,
+     coalesce(toFloat(prior.fteTotal), 0.0) AS ftePrior
+WHERE toLower(coalesce(now.consolidated, 'n')) &lt;&gt; 'y'
+  AND svcNow &gt;= $minService AND svcPrior &gt; 50000
+  AND svcNow / svcPrior * 100 &gt;= $minMultiple
+  AND fteNow &lt;= ftePrior * 1.25
+RETURN now.charityName AS provider, abn, registrationStatus,
+       svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
+       round(svcNow / svcPrior * 100) / 100.0 AS revenueMultiple,
+       ftePrior AS fteFy23, fteNow AS fteFy24,
+       now.reportingPeriodTo AS reportingPeriodTo,
+       now.relatedPartyTransactions AS relatedPartyDeclared
+ORDER BY serviceRevenueFy24 DESC</pre></details>
+<details><summary><b>NdisSelfContradictingFiling</b> (view) — Filings that disagree with themselves — government revenue above total revenue, or employee expenses reported with zero full-time-equivalent staff. Most often a keying error, which is itself worth knowing about a self-reported dataset used to hold providers to account.</summary><p class="hiw-p">Parameters: <code>classification</code> = &#x27;Disability services&#x27;. Run with defaults.</p><pre>MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]-&gt;(g:CharityProgram)
+WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]-&gt;(a:AisReturn)
+WITH abn, registrationStatus, a,
+     coalesce(toFloat(a.revenueGovernment), 0.0) AS gov,
+     coalesce(toFloat(a.revenueTotal), 0.0) AS total,
+     coalesce(toFloat(a.employeeExpenses), 0.0) AS emp,
+     coalesce(toFloat(a.fteTotal), 0.0) AS fte
+WHERE toLower(coalesce(a.consolidated, 'n')) &lt;&gt; 'y'
+  AND ((gov &gt; total * 1.02 AND gov &gt; 100000) OR (fte = 0.0 AND emp &gt; 500000))
+RETURN a.charityName AS provider, abn, registrationStatus,
+       gov AS revenueGovernmentFy24, total AS revenueTotalFy24,
+       emp AS employeeExpensesFy24, fte AS fteFy24,
+       CASE WHEN gov &gt; total * 1.02 AND gov &gt; 100000
+            THEN 'government revenue exceeds total revenue'
+            ELSE 'employee expenses reported with zero FTE staff' END AS contradiction
+ORDER BY revenueGovernmentFy24 DESC</pre></details>
+<details><summary><b>NdisPersonPressTrail</b> (view) — News-index results for one person named in an NDIS compliance action. The search phrase is built per invocation as the person&#x27;s exact quoted name plus NDIS, making this a separate virtual Cypher traversal for each card rather than part of the register-diff finding. A result is third-party material whose index text matched that phrase: names collide, snippets are not verified facts, and no result may be used to create, suppress or strengthen a register finding. Every row retains the searched phrase, headline, snippet, freshness and URL so the citizen can open the publisher&#x27;s page and judge it.</summary><p class="hiw-p">Parameters: <code>person</code> = &#x27;Christine Coop&#x27;. "Check press mentions" on a person's card passes <code>person</code>.</p><pre>WITH trim($person) AS person
+WHERE size(person) &gt;= 5
+WITH person, '"' + replace(person, '"', '') + '" NDIS' AS phrase
+OPTIONAL MATCH (q:CoverageQuery {phrase: phrase})-[:HAS_COVERAGE]-&gt;(c:ContractCoverage)
+RETURN person, phrase, c.title AS title, c.url AS url,
+       c.snippet AS snippet, c.age AS age
+ORDER BY age DESC, title</pre></details>
+<h3>3. When it looks wrong</h3><ul><li>Until a live button is pressed, the figures are the 3 August 2026 snapshot; the footer label changes to "Live public records loaded in this session" once a live call succeeds.</li><li>No removal or no connection is a result about the extracts read, not an all-clear. Name extraction can miss relationships.</li><li>No press result means the index matched nothing for that exact phrase. Names collide, so a result must be opened before it is relied on.</li><li>If a live lens result is PARTIAL (a source capped or unavailable) or FAILED, the page says so in a notice and keeps the snapshot in place; treat counts as floors. Errors show in the operation panel with a retry.</li><li>Every screen finds a shape in self-reported or published numbers. Contracting, brokerage, restructures, closures and keying errors produce the same shapes lawfully.</li></ul>
+<h3>4. What made this possible</h3><ul><li>The register's history is rebuilt from the catalogue at run time: every dated extract is listed and read whole, with no list of files kept in the app or the realm.</li><li>The model reads the Commission's prose inside the query (<code>extract()</code>, <code>themes()</code>), and the lens drops any name the text does not literally contain.</li><li>The page has no backend of its own: it names lenses and views, and the appliance runs them and tracks them as operations the page can follow and retry.</li></ul>
+</section>
+<footer class="foot"><div>This app reports public records and arithmetic over them. It does not determine fraud. · <a href="#how-it-works">How it works</a></div><div id="mode-label">Verified research snapshot · 3 August 2026</div></footer>
   </main>
 </embabel-app-shell>
 <script>
@@ -147,5 +255,8 @@
   if(new URLSearchParams(location.search).get('demo')==='1')$('mode-label').textContent='Standalone demo · verified research snapshot, 3 August 2026';
 })();
 </script>
+<div id="embabel-badge" style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:6px 0;background:rgba(10,10,15,0.9);border-top:1px solid rgba(99,192,245,0.2);font-size:0.75rem;color:#6b7280;z-index:9999;pointer-events:none;">
+  Created with <a href="https://worlds.embabel.com" target="_blank" rel="noopener noreferrer" style="color:#63c0f5;text-decoration:none;pointer-events:auto;">Embabel Worlds</a>
+</div>
 </body>
 </html>

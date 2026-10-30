@@ -130,6 +130,10 @@
   .fine { font-size:.78rem; color:var(--embabel-text-muted); margin-top:.9rem; }
   .fine ul { margin:.3rem 0 0; padding-left:1.1rem; } .fine li { margin:.15rem 0; }
   .provenance { font-size:.78rem; color:var(--embabel-text-muted); margin-top:.6rem; }
+  #how-it-works { display:none; } #how-it-works:target { display:block; }
+  #how-it-works details { margin:.5rem 0; border:1px solid var(--embabel-border); border-radius:var(--embabel-radius-sm); padding:.5rem .75rem; background:var(--embabel-surface-subtle); }
+  #how-it-works summary { cursor:pointer; line-height:1.5; }
+  #how-it-works pre { white-space:pre-wrap; font:.76rem/1.5 ui-monospace,Menlo,monospace; color:var(--embabel-text-muted); margin:.5rem 0 0; }
   .provenance b { color:var(--embabel-text); }
   embabel-operation-state { margin-top:.9rem; }
   embabel-warning-panel { margin-top:.6rem; display:grid; gap:.4rem; }
@@ -673,11 +677,279 @@
       </section>
     </div><!-- /pane-how -->
 
+    <section id="how-it-works" class="card how" style="margin-top:1rem" aria-labelledby="hiw-heading">
+      <h2 id="hiw-heading">How it works</h2>
+      <p class="sub">The calls this page makes, and the Cypher each runs. The "How this works" tab above describes the approach; this section lists the machinery.</p>
+      <h3>The data</h3>
+      <p>Contract notices come from the AusTender OCDS API through this realm's (gov-au) producers: notices first published in a window (<code>releasesPublishedInWindow</code>), notices changed in a window (<code>releasesModifiedInWindow</code>) and one notice's version chain (<code>versionsById</code>). Window reads are fetched one UTC day at a time, up to 1,200 notices per day, and cached for an hour. The lobbyist register (its index read directly through the realm's API, firm records cached a day), ParlInfo's search feeds (an hour; six hours for the any-record search), the NDIS, Modern Slavery and ATO tax registers (six to twenty-four hours) and a web search for press are read the same way, at question time. Agency, portfolio, UNSPSC category and procurement-ground names are reference data seeded with the realm. Nothing is stored except the transcripts you choose to index from the parliamentary panel. With <code>?demo=1</code> the page reads a baked slice, <code>moneytrail-demo-data.json</code>, and panels that need live registers say so.</p>
+      <h3>The questions</h3>
+      <p>Sixteen lenses and two views of the gov-au realm, each with its parameters and the Cypher it runs. The Lenses tab also lists every installed <code>au-</code> lens from the app runtime's catalogue and runs any of them with the arguments you enter, showing the raw result.</p>
+      <details><summary><b>au-window-signed</b> — Window scan: every notice first published between your From and To dates; the totals, method split and largest contracts, suppliers and agencies are arithmetic over these rows. Parameters <code>from</code>, <code>to</code>, <code>minAmount</code> 0.</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toFloat(r.amount) &gt;= $minAmount
+RETURN r.cnId AS cnId, r.awardId AS awardId, r.title AS title, r.description AS description,
+       toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+       r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
+       r.supplierRegion AS supplierRegion,
+       r.procurementMethod AS procurementMethod,
+       r.limitedTenderReason AS limitedTenderReason,
+       r.releaseDate AS releaseDate
+ORDER BY amount DESC</pre></details>
+<details><summary><b>au-contract-search</b> — Search: contract descriptions, supplier and agency names in the window. Parameters <code>query</code>, <code>mode</code> (keyword or semantic), <code>state</code>, <code>from</code>, <code>to</code>. Keyword mode runs the first statement; semantic mode runs the second, where a model decides relevance and order.</summary><pre>// keyword
+MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE (toLower(r.description) CONTAINS toLower($query)
+   OR toLower(r.supplierName) CONTAINS toLower($query)
+   OR toLower(r.agencyName) CONTAINS toLower($query))
+  AND ($state = &#x27;&#x27; OR toUpper(coalesce(r.supplierRegion,&#x27;&#x27;)) = $state)
+RETURN r.cnId AS cnId, r.awardId AS awardId, r.title AS title, r.description AS description,
+       toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+       r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
+       r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
+       r.supplierPostcode AS supplierPostcode,
+       r.procurementMethod AS procurementMethod,
+       r.limitedTenderReason AS limitedTenderReason, r.releaseDate AS releaseDate
+ORDER BY amount DESC
+LIMIT 40
+
+// semantic
+MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE ai.relevant(r, &#x27;${criterion}&#x27;)
+  AND ($state = &#x27;&#x27; OR toUpper(coalesce(r.supplierRegion,&#x27;&#x27;)) = $state)
+RETURN r.cnId AS cnId, r.awardId AS awardId, r.title AS title, r.description AS description,
+       toFloat(r.amount) AS amount, r.supplierName AS supplierName,
+       r.supplierAbn AS supplierAbn, r.agencyName AS agencyName,
+       r.supplierLocality AS supplierLocality, r.supplierRegion AS supplierRegion,
+       r.supplierPostcode AS supplierPostcode,
+       r.procurementMethod AS procurementMethod,
+       r.limitedTenderReason AS limitedTenderReason, r.releaseDate AS releaseDate
+ORDER BY ai.score(r, &#x27;${criterion}&#x27;) DESC
+LIMIT 40</pre></details>
+<details><summary><b>au-contract-passport</b> — A contract passport: every published version of one notice, in order. Parameter <code>cnId</code>.</summary><pre>MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]-&gt;(v:ContractVersion)
+RETURN v.releaseId AS releaseId, v.awardId AS awardId, v.releaseDate AS releaseDate, v.tags AS tags,
+       v.amendmentIds AS amendmentIds, v.amount AS amount, v.currency AS currency,
+       v.title AS title, v.description AS description, v.dateSigned AS dateSigned,
+       v.startDate AS startDate, v.endDate AS endDate,
+       v.supplierName AS supplierName, v.supplierAbn AS supplierAbn,
+       v.agencyName AS agencyName, v.agencyAbn AS agencyAbn,
+       v.supplierLocality AS supplierLocality, v.supplierRegion AS supplierRegion,
+       v.supplierPostcode AS supplierPostcode,
+       v.procurementMethod AS procurementMethod,
+       v.procurementMethodDetails AS procurementMethodDetails,
+       v.limitedTenderReason AS limitedTenderReason,
+       v.unspscCodes AS unspscCodes
+ORDER BY v.releaseDate ASC</pre></details>
+<details><summary><b>au-amended-up</b> — Amendment league: notices amended in the window (the change feed), then each one's version chain to measure growth. Parameters <code>from</code>, <code>to</code>, <code>state</code>, <code>rankBy</code> <code>growthPct</code>.</summary><pre>MATCH (w:ChangeWindow {window:$window})-[:CHANGED]-&gt;(r:ContractRelease)
+WHERE &#x27;contractAmendment&#x27; IN r.tags
+  AND ($state = &#x27;&#x27; OR toUpper(coalesce(r.supplierRegion,&#x27;&#x27;)) = $state)
+RETURN r.cnId AS cnId, max(toFloat(r.amount)) AS amount
+ORDER BY amount DESC
+
+MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]-&gt;(v:ContractVersion)
+RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount,
+       v.amendmentIds AS amendmentIds,
+       v.supplierName AS supplierName, v.agencyName AS agencyName,
+       v.supplierRegion AS supplierRegion, v.supplierPostcode AS supplierPostcode,
+       v.description AS description, v.endDate AS endDate
+ORDER BY v.releaseDate ASC</pre></details>
+<details><summary><b>au-supplier-lobbying</b> — Lobbying check: whether a supplier name is listed as a client on the federal Register of Lobbyists (read from the register's index through the realm's API), then each listing firm's lobbyists and former-representative declarations. Parameter <code>supplierName</code>.</summary><pre>MATCH (o:LobbyistOrg {firmId:$firmId})-[:HAS_RECORD]-&gt;(fm:LobbyistFirm)
+OPTIONAL MATCH (o)-[:REGISTERS]-&gt;(p:RegisteredLobbyist)
+RETURN fm.name AS name, fm.abn AS abn, fm.registeredOn AS registeredOn,
+       fm.deregistered AS deregistered,
+       count(p) AS lobbyists,
+       count(CASE WHEN p.isFormerRepresentative THEN 1 END) AS formerReps,
+       collect(CASE WHEN p.isFormerRepresentative
+                    THEN {name: p.name, position: p.position,
+                          previousPosition: coalesce(p.previousPosition, p.previousPositionOther),
+                          cessationDate: p.cessationDate} END) AS formerRepPeople</pre></details>
+<details><summary><b>au-contract-deepdive</b> — Deep dive on one notice: version chain, agency and ground reference data, a press search (supplier + agency, fenced as not evidence) and ParlInfo searches for the notice id and the names. Parameters <code>cnId</code>, <code>searchPhrase</code> (blank).</summary><pre>MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]-&gt;(v:ContractVersion)
+RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount, v.tags AS tags,
+       v.description AS description, v.title AS title,
+       v.supplierName AS supplierName, v.supplierAbn AS supplierAbn,
+       v.agencyName AS agencyName, v.dateSigned AS dateSigned,
+       v.startDate AS startDate, v.endDate AS endDate,
+       v.procurementMethod AS procurementMethod,
+       v.limitedTenderReason AS limitedTenderReason,
+       v.limitedTenderReasonCode AS limitedTenderReasonCode,
+       v.exemption AS exemption, v.exemptionCode AS exemptionCode
+ORDER BY v.releaseDate ASC
+
+OPTIONAL MATCH (a:Agency)
+  WHERE a.name = $agencyName OR $agencyName IN a.austenderAliases
+OPTIONAL MATCH (a)-[:IN_PORTFOLIO]-&gt;(p:Portfolio)
+OPTIONAL MATCH (g:ProcurementGround {code: $groundCode})
+OPTIONAL MATCH (x:ProcurementGround {code: $exemptionCode})
+RETURN a.name AS agencyLegalName, a.abn AS agencyAbn, a.bodyType AS bodyType,
+       a.staffingLevel AS staffingLevel, a.website AS agencyWebsite,
+       p.name AS portfolio,
+       g.text AS groundText, g.kind AS groundKind,
+       x.text AS exemptionText, x.kind AS exemptionKind
+
+MATCH (q:CoverageQuery {phrase:$phrase})-[:HAS_COVERAGE]-&gt;(x:SearchResult)
+RETURN x.title AS title, x.url AS url, x.snippet AS snippet, x.age AS age
+LIMIT 8
+
+MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:&#x27;${via}&#x27;}]-&gt;(m:ParliamentMention)
+RETURN m.title AS title, m.url AS url, m.summary AS snippet, m.publishedAt AS publishedAt
+LIMIT 8</pre></details>
+<details><summary><b>au-portfolio-themes</b> — Portfolio themes: agencies joined to the seeded AGOR portfolio reference data, the value that could not be placed, and model themes and summaries. Parameters <code>from</code>, <code>to</code>, <code>portfolio</code>.</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+MATCH (a:Agency)
+WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+MATCH (a)-[:IN_PORTFOLIO]-&gt;(p:Portfolio)
+WHERE $portfolio = &#x27;&#x27; OR p.name = $portfolio
+RETURN p.name AS portfolio, count(r) AS contracts,
+       sum(toFloat(r.amount)) AS committed,
+       count(CASE WHEN r.procurementMethod = &#x27;limited&#x27; THEN 1 END) AS limitedCount
+ORDER BY committed DESC
+
+MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE NOT EXISTS {
+  MATCH (a:Agency) WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+}
+RETURN count(r) AS contracts, sum(toFloat(r.amount)) AS committed,
+       collect(DISTINCT r.agencyName)[0..8] AS names
+
+MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+MATCH (a:Agency)
+WHERE r.agencyName = a.name OR r.agencyName IN a.austenderAliases
+MATCH (a)-[:IN_PORTFOLIO]-&gt;(p:Portfolio)
+WHERE $portfolio = &#x27;&#x27; OR p.name = $portfolio
+RETURN p.name AS portfolio,
+       themes(r.description, 6) AS topics,
+       cluster(r.description) AS clusters,
+       summarize(r.description, &#x27;what this portfolio bought, in three plain sentences&#x27;) AS digest,
+       argmax(r.cnId, r.description,
+              &#x27;least informative description for the money committed&#x27;) AS vaguest</pre></details>
+<details><summary><b>au-grounds</b> — Procurement grounds: the reason codes agencies recorded for limited tender or exemption, counted and valued. Parameters <code>from</code>, <code>to</code>.</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.agencyName AS agencyName,
+       r.supplierName AS supplierName, r.procurementMethod AS procurementMethod,
+       r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
+       r.exemptionCode AS exemptionCode, r.exemption AS exemptionText</pre></details>
+<details><summary><b>au-money-by</b> — Where the money went: value by size band and UNSPSC category title, and, only when you enter sector labels, a model classification by sector (the last statement). Parameters <code>from</code>, <code>to</code>, <code>sectors</code>.</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+RETURN r.cnId AS cnId, toFloat(r.amount) AS amount, r.description AS description,
+       r.supplierName AS supplierName, r.agencyName AS agencyName,
+       r.unspscCodes AS unspscCodes
+
+MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code AS code, c.title AS title
+
+MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code AS code, c.title AS title
+
+MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+RETURN ai.classify(r, &#x27;${dimension}&#x27;) AS sector,
+       count(r) AS contracts, sum(toFloat(r.amount)) AS value</pre></details>
+<details><summary><b>au-agency-profile</b> — Agency profile in the window, with its AGOR record and category titles. Parameters <code>agency</code>, <code>from</code>, <code>to</code>.</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toLower(r.agencyName) CONTAINS toLower($agency)
+RETURN r.cnId AS cnId, r.awardId AS awardId, toFloat(r.amount) AS amount, r.description AS description,
+       r.supplierName AS supplierName, r.agencyName AS agencyName,
+       r.procurementMethod AS procurementMethod,
+       r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
+       r.exemptionCode AS exemptionCode, r.exemption AS exemptionText,
+       r.unspscCodes AS unspscCodes, r.startDate AS startDate, r.endDate AS endDate
+ORDER BY amount DESC
+
+MATCH (a:Agency) WHERE toLower(a.name) CONTAINS toLower($agency)
+   OR any(x IN coalesce(a.austenderAliases, []) WHERE toLower(x) CONTAINS toLower($agency))
+OPTIONAL MATCH (a)-[:IN_PORTFOLIO]-&gt;(p:Portfolio)
+RETURN a.name AS legalName, a.abn AS abn, a.bodyType AS bodyType,
+       a.staffingLevel AS staffingLevel, a.appropriationsThousands AS appropriations,
+       a.website AS website, p.name AS portfolio LIMIT 1
+
+MATCH (c:ProcurementCategory) WHERE c.code IN $codes RETURN c.code AS code, c.title AS title</pre></details>
+<details><summary><b>au-supplier-profile</b> — Supplier profile in the window, plus an Estimates check over the same dates and a lobbyist-register check. Parameters <code>supplier</code>, <code>from</code>, <code>to</code>, <code>checkLobbying</code> true.</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toLower(r.supplierName) CONTAINS toLower($supplier)
+RETURN r.cnId AS cnId, r.awardId AS awardId, toFloat(r.amount) AS amount, r.description AS description,
+       r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+       r.agencyName AS agencyName, r.procurementMethod AS procurementMethod,
+       r.limitedTenderReasonCode AS groundCode, r.limitedTenderReason AS groundText,
+       r.unspscCodes AS unspscCodes, r.startDate AS startDate, r.endDate AS endDate
+ORDER BY amount DESC
+
+MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:&#x27;estimates-period&#x27;}]-&gt;(m:ParliamentMention)
+RETURN m.title AS title, m.url AS url, m.summary AS snippet, m.publishedAt AS publishedAt
+LIMIT 8</pre></details>
+<details><summary><b>au-short-dated</b> — Contracts near their end: notices in the window already within your horizon of their stated end date. Parameters <code>from</code>, <code>to</code>, <code>withinDays</code> (default 180).</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE r.endDate IS NOT NULL
+RETURN r.cnId AS cnId, r.awardId AS awardId, toFloat(r.amount) AS amount, r.description AS description,
+       r.supplierName AS supplierName, r.agencyName AS agencyName,
+       r.procurementMethod AS procurementMethod,
+       r.startDate AS startDate, r.endDate AS endDate</pre></details>
+<details><summary><b>NewSuppliersInWindow</b> — New suppliers: suppliers (by ABN, else normalised name) with notices in the window and none in the equally long window before it. Parameters <code>window</code>, <code>priorWindow</code>, <code>minValue</code> 0.</summary><pre>MATCH (pw:PublicationWindow {window: $priorWindow})-[:PUBLISHED]-&gt;(p:ContractRelease)
+WITH collect(DISTINCT coalesce(p.supplierAbn,
+         replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(toUpper(coalesce(p.supplierName, &#x27;&#x27;)), &#x27; &#x27;, &#x27;&#x27;), &#x27;.&#x27;, &#x27;&#x27;), &#x27;,&#x27;, &#x27;&#x27;), &#x27;-&#x27;, &#x27;&#x27;), &#x27;&amp;&#x27;, &#x27;&#x27;), &#x27;\&#x27;&#x27;, &#x27;&#x27;), &#x27;/&#x27;, &#x27;&#x27;), &#x27;(&#x27;, &#x27;&#x27;), &#x27;)&#x27;, &#x27;&#x27;), &#x27;#&#x27;, &#x27;&#x27;), &#x27;+&#x27;, &#x27;&#x27;), &#x27;[&#x27;, &#x27;&#x27;), &#x27;]&#x27;, &#x27;&#x27;), &#x27;&quot;&#x27;, &#x27;&#x27;))) AS priorKeys
+MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WITH priorKeys, r,
+     coalesce(r.supplierAbn,
+              replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(toUpper(coalesce(r.supplierName, &#x27;&#x27;)), &#x27; &#x27;, &#x27;&#x27;), &#x27;.&#x27;, &#x27;&#x27;), &#x27;,&#x27;, &#x27;&#x27;), &#x27;-&#x27;, &#x27;&#x27;), &#x27;&amp;&#x27;, &#x27;&#x27;), &#x27;\&#x27;&#x27;, &#x27;&#x27;), &#x27;/&#x27;, &#x27;&#x27;), &#x27;(&#x27;, &#x27;&#x27;), &#x27;)&#x27;, &#x27;&#x27;), &#x27;#&#x27;, &#x27;&#x27;), &#x27;+&#x27;, &#x27;&#x27;), &#x27;[&#x27;, &#x27;&#x27;), &#x27;]&#x27;, &#x27;&#x27;), &#x27;&quot;&#x27;, &#x27;&#x27;)) AS supplierKey
+WHERE supplierKey &lt;&gt; &#x27;&#x27; AND NOT supplierKey IN priorKeys
+WITH supplierKey, collect(DISTINCT r.supplierName)[0] AS supplier, r.supplierAbn AS abn,
+     count(*) AS notices, sum(toFloat(r.amount)) AS value,
+     count(DISTINCT r.agencyName) AS agencies, collect(r.cnId)[0..3] AS exampleNotices
+WHERE value &gt;= $minValue
+RETURN supplier, abn, notices, round(value) AS value, agencies, exampleNotices
+ORDER BY value DESC</pre></details>
+<details><summary><b>ThinDisclosureLargeCommitments</b> — Large commitments that say almost nothing: notices at or over your threshold whose short description a model scores as not identifying what was bought. Parameters <code>window</code>, <code>minAmount</code>, <code>maxChars</code> 60, <code>maxDisclosure</code> 0.4.</summary><pre>MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toFloat(r.amount) &gt;= $minAmount
+  AND size(trim(coalesce(r.description, &#x27;&#x27;))) &lt;= $maxChars
+  AND ai.score(r, &#x27;a reader could identify and go and check exactly what this contract bought: a named place, a stated period or a counted item is adequate however briefly put, while a bare category word or a product noun alone is not&#x27;) &lt; $maxDisclosure
+RETURN r.cnId AS cnId,
+       r.title AS title,
+       r.description AS description,
+       size(trim(coalesce(r.description, &#x27;&#x27;))) AS descriptionChars,
+       round(toFloat(r.amount)) AS amount,
+       r.supplierName AS supplier,
+       r.agencyName AS agency,
+       r.contactDivision AS contactDivision,
+       r.procurementMethod AS procurementMethod,
+       r.limitedTenderReason AS limitedTenderReason,
+       r.releaseDate AS releaseDate,
+       r.awardId AS awardId,
+       ai.score(r, &#x27;a reader could identify and go and check exactly what this contract bought: a named place, a stated period or a counted item is adequate however briefly put, while a bare category word or a product noun alone is not&#x27;) AS disclosure,
+       // FACTS beside the judgment, never blended into it: an empty description and one that
+       // merely restates its own title add nothing BY CONSTRUCTION, and a reader can verify
+       // both without trusting any model.
+       size(trim(coalesce(r.description, &#x27;&#x27;))) = 0 AS descriptionEmpty,
+       toLower(trim(coalesce(r.description, &#x27;&#x27;))) = toLower(trim(coalesce(r.title, &#x27;&#x27;))) AS descriptionEchoesTitle
+ORDER BY amount DESC</pre></details>
+<details><summary><b>au-parliament</b> — Parliamentary record: the phrase in Chamber Hansard, committee evidence, Estimates and Estimates within the window, with a model summary of the quoted excerpts. Parameters <code>phrase</code>, <code>from</code>, <code>to</code>; the "index" button runs it again with <code>index</code> true, which also fetches up to three Estimates transcripts and writes them to your documents.</summary><pre>MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:&#x27;${via}&#x27;}]-&gt;(m:ParliamentMention)
+RETURN m.title AS title, m.url AS url, m.summary AS summary, m.publishedAt AS publishedAt,
+     m.content AS content
+ORDER BY m.publishedAt DESC
+LIMIT 8
+
+MATCH (q:ParliamentQuery {phrase:$phrase})-[:MENTIONED_IN {via:&#x27;estimates&#x27;}]-&gt;(m:ParliamentMention)
+WHERE m.content IS NOT NULL
+RETURN summarize(m.content, &#x27;in what contexts does ${crit} come up in these hearing excerpts, and which senators or officials are speaking&#x27;) AS discussion,
+       themes(m.content, 5) AS topics,
+       argmax(m.url, m.content, &#x27;the exchange most substantive about ${crit}&#x27;) AS startHere</pre></details>
+<details><summary><b>au-integrity-screen</b> — Integrity screen: the window's winners at or over your minimum, by ABN, against three registers (NDIS compliance actions, Modern Slavery statements, ATO tax transparency); the second statement runs once per register. Parameters <code>from</code>, <code>to</code>, <code>minAmount</code> (default 5,000,000).</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+WHERE toFloat(r.amount) &gt;= $minAmount
+RETURN r.cnId AS cnId, r.supplierName AS supplierName, r.supplierAbn AS supplierAbn,
+       toFloat(r.amount) AS amount, r.agencyName AS agencyName,
+       r.startDate AS startDate, r.endDate AS endDate
+ORDER BY amount DESC
+
+MATCH (q:IntegrityQuery)-[:${rel}]-&gt;(x:${label})
+WHERE q.abn IN [${inList}]
+RETURN q.abn AS abn, ${fields}</pre></details>
+<details><summary><b>au-accountability-gap</b> — Accountability gap: the window's largest commitments, each notice id searched across the parliamentary record. Parameters <code>from</code>, <code>to</code>, <code>topN</code> (default 5).</summary><pre>MATCH (w:PublicationWindow {window:$window})-[:PUBLISHED]-&gt;(r:ContractRelease)
+RETURN r.cnId AS cnId, r.awardId AS awardId, r.supplierName AS supplierName, r.agencyName AS agencyName,
+       toFloat(r.amount) AS amount, r.description AS description
+ORDER BY amount DESC
+
+MATCH (q:ParliamentQuery)-[:MENTIONED_IN {via:&#x27;any&#x27;}]-&gt;(m:ParliamentMention)
+WHERE q.phrase IN [${inList}]
+RETURN q.phrase AS cnId, m.title AS title, m.url AS url, m.publishedAt AS publishedAt</pre></details>
+<details><summary><b>au-ask</b> — Ask the graph: your question is turned into Cypher by the platform (<code>kg.ask</code>), run against the same registers, and the page shows the generated query beside its rows. Parameter <code>question</code>.</summary><pre>// No fixed Cypher: the query is generated per question and shown with the answer.</pre></details>
+
+      <h3>When it looks wrong</h3>
+      <p>Each result shows the status its lens reported. PARTIAL means a fetch was capped or a source failed, so a total is a lower bound; read the coverage line before comparing numbers. An empty table means the register returned nothing matching in that window, not that nothing exists outside it. A register that could not be reached is reported as not looked at, which is different from no match. Integrity screening needs an ABN, so suppliers published without one are listed as unscreenable. Parliamentary results are literal phrase matches, at most eight per record class, and Questions on Notice are not searched. Wide windows take minutes because each day is a separate fetch; slow lenses continue as background runs and the page waits for them.</p>
+      <h3>What made this possible</h3>
+      <p>Each panel is a Cypher query whose anchor (<code>PublicationWindow {window}</code>, <code>ChangeWindow</code>, <code>ContractNotice {cnId}</code>, <code>ParliamentQuery {phrase}</code>, <code>IntegrityQuery</code>) tells the appliance which public API to call; nothing is copied into a database first. Joins to agencies, portfolios and procurement grounds happen in the same query against seeded reference nodes. Model judgments (<code>ai.score</code>, <code>ai.relevant</code>, <code>summarize</code>, <code>themes</code>) are functions inside those queries, so only the rows a query reaches are read by a model. The page calls lenses and views by name through the app runtime and has no backend of its own.</p>
+    </section>
+
     <footer class="provenance">
       Sources: <b>AusTender OCDS API</b> (contract notices $10,000+ since 2013, CC BY 3.0 AU) ·
       <b>Australian Government Register of Lobbyists</b> (third-party lobbyists only — in-house are exempt by design).
       This app reports what the registers record. An amendment, a limited tender or a lobbying
-      relationship is a sourced fact, not a finding.
+      relationship is a sourced fact, not a finding. · <a href="#how-it-works">How it works</a>
     </footer>
   </div>
 </embabel-app-shell>
