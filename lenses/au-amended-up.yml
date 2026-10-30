@@ -87,7 +87,7 @@ spec:
     for (const cnId of cnIds) {
       const r = await gateway.kg.query({
         cypher: `
-          MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)
+          MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
           RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount,
                  v.amendmentIds AS amendmentIds,
                  v.supplierName AS supplierName, v.agencyName AS agencyName,
@@ -171,7 +171,7 @@ spec:
           cypher: "MATCH (w:ChangeWindow {window:$window})-[:CHANGED]->(r:ContractRelease)\n" +
                   "WHERE 'contractAmendment' IN r.tags RETURN DISTINCT r.cnId" },
         { title: "Each notice's before/after",
-          cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)\n" +
+          cypher: "MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)\n" +
                   "RETURN v.amount ORDER BY v.releaseDate  // growth = last over first" },
       ],
       joins: [

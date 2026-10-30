@@ -45,7 +45,7 @@ spec:
     // ---- TIER 1: the register ------------------------------------------------------------
     const v = await gateway.kg.query({
       cypher: `
-        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractRelease)
+        MATCH (n:ContractNotice {cnId:$cnId})-[:HAS_VERSION]->(v:ContractVersion)
         RETURN v.releaseDate AS releaseDate, v.awardId AS awardId, toFloat(v.amount) AS amount, v.tags AS tags,
                v.description AS description, v.title AS title,
                v.supplierName AS supplierName, v.supplierAbn AS supplierAbn,
