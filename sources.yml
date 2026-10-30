@@ -20,7 +20,7 @@ sources:
       keyProperty: cnId
       edge: HAS_VERSION
     shape: per-key
-    partition: contract-notice
+    partition: cnId                 # named as filterableAtSource names it: the source fetches by it
     queriedBy: [cnId]
     # cnId IS the fetch key — versionsById takes it as keyArgs, one call per notice. Omitting it
     # here made the registry warn that this live source needs its whole partition, which it does not.
@@ -46,6 +46,9 @@ sources:
     # category or text filter exists — agency/supplier questions fetch the window and narrow
     # after. That is why windows must stay small and why the page-cap PARTIAL warning matters:
     # a capped window presented as complete would silently understate an agency's month.
+    # Live stays right while every view anchors a window (they all do): `partition: window`, listed
+    # in filterableAtSource, tells the platform each read takes one window whole — day by day,
+    # within the producer's page budget — so the unfiltered axes are narrowed over a complete set.
     queriedBy: [agency, supplier, amount, method]
     filterableAtSource: [window]
     # Newest-first within the window (the cursor walks backwards in time), so a capped window
@@ -89,7 +92,7 @@ sources:
       keyProperty: firmId
       edge: HAS_RECORD
     shape: per-key
-    partition: firm
+    partition: firmId               # the fetch key, named as filterableAtSource names it
     queriedBy: [firmId]
     filterableAtSource: [firmId]   # the fetch key — firmSummaryById is one call per firm
     ordering: irrelevant
@@ -107,11 +110,13 @@ sources:
       keyProperty: firmId
       edge: REGISTERS
     shape: per-key
-    partition: firm
+    partition: firmId
     queriedBy: [firmId, isFormerRepresentative]
-    # firmId is the fetch key; isFormerRepresentative is NOT filterable at the register, so this
-    # source still warns — correctly. A former-representative question fetches the firm's people
-    # and narrows here.
+    # firmId is the fetch key; isFormerRepresentative is NOT filterable at the register (its only
+    # GETs are the whole-register index and one firm's profile), so the gap stays declared. It is
+    # not a reason to mirror: every question of this source starts from a firm (REGISTERS hangs off
+    # LobbyistOrg), one call returns that firm's every lobbyist, and the flag is narrowed over that
+    # complete set. `partition` names the fetch key so the platform can see that.
     filterableAtSource: [firmId]
     ordering: irrelevant
     updates: on-registration-events
