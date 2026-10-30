@@ -89,6 +89,7 @@
   .main{padding-bottom:56px}
   @media(max-width:700px){.wrap{width:min(100% - 26px,1140px)}.head{grid-template-columns:1fr}.head .run{width:100%}.tabs{overflow:auto}}
 </style>
+<style>#how-it-works{display:none;margin:40px 0 0;padding:22px;background:var(--card);border:1px solid var(--line);border-radius:17px;color:var(--ink);font-size:.82rem;line-height:1.55}#how-it-works:target{display:block}#how-it-works h2{margin:0 0 8px;font-size:1.6rem;letter-spacing:-.03em}#how-it-works h3{margin:20px 0 6px;font-size:1rem}#how-it-works p,#how-it-works li{color:var(--muted)}#how-it-works details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0}#how-it-works summary{cursor:pointer;color:var(--ink)}#how-it-works pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);margin:8px 0 0;overflow-x:auto}.hiw-p{margin:6px 0 0}body{padding-bottom:40px}</style>
 </head>
 <body>
 <embabel-app-shell>
@@ -153,7 +154,96 @@
       <div id="result-passthrough"><div class="empty">Run to see the pass-through cohort.</div></div>
     </section>
 
-    <div class="foot">Sources: NDIS Commission compliance actions and ACNC Annual Information Statements 2023 and 2024, both published on data.gov.au. Figures are self-reported by providers or published by the Commission; this app computes arithmetic over them and adds nothing. Money is a committed or reported amount, never verified expenditure.</div>
+<section id="how-it-works" aria-label="How it works">
+<h2>How it works</h2>
+<h3>1. The data</h3>
+<p>Two published sources, read by this realm (gov-au) when a view runs:</p><ul><li><b>NDIS compliance register extracts</b>: the Commission publishes dated extracts of its current register on data.gov.au. <code>NdisSnapshot -[:HAS_ACTION]-&gt; SnapshotAction</code> reads one extract by its key <code>datasetId|resourceId|filename</code> (producer <code>ndisActionsSnapshotRows</code>, file kept seven days, answers cached one day).</li><li><b>Charity filings</b>: ACNC Annual Information Statements for FY2024 and FY2023 (<code>IntegrityQuery -[:HAS_AIS]-&gt; AisReturn</code>, <code>-[:HAS_AIS_PRIOR]-&gt; AisPriorReturn</code>) for the charities that declared a program in the classification (<code>ProgramClass -[:HAS_PROGRAM]-&gt; CharityProgram</code>). Published files on data.gov.au, kept up to seven days and answered from a one-day cache; the screens ask for <code>{ai: {fresh: true}}</code> on the program and FY2024 reads, which skips that one-day cache.</li></ul><p>The register views read the extract named by their default <code>snapshotKey</code> parameters (06.07.2026, and 04.06.2026 as the older side of the diff). This app passes no arguments, so every view runs with its defaults.</p>
+<h3>2. The questions</h3><p>One saved view per tab, run only when its Run button is pressed (<code>runner.view(name, {})</code>).</p>
+<details><summary><b>NdisNewEnforcement</b> (view) — Actions present in one dated extract and absent from an earlier one — enforcement that APPEARED, which no single extract shows. An appearance is dated to the interval between two extracts, not to a day: the register&#x27;s own effective date frequently precedes publication by months, and a row appearing now may concern conduct years old.</summary><p class="hiw-p">Parameters: <code>newerSnapshot</code> = &#x27;4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv&#x27;, <code>olderSnapshot</code> = &#x27;5087fd94-96e4-44a6-af20-e6c8177a4bca|7478346e-1fd9-4e9c-9487-b8e64ec608dd|ndis-commission-compliance-actions-04.06.2026.csv&#x27;. Run with defaults.</p><pre>MATCH (o:NdisSnapshot {snapshotKey: $olderSnapshot})-[:HAS_ACTION]-&gt;(b:SnapshotAction)
+WITH collect(b.register + '|' + toLower(b.name) + '|' + substring(coalesce(b.dateFrom, ''), 0, 10)) AS priorIds
+MATCH (n:NdisSnapshot {snapshotKey: $newerSnapshot})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+WHERE NOT (a.register + '|' + toLower(a.name) + '|' + substring(coalesce(a.dateFrom, ''), 0, 10)) IN priorIds
+RETURN a.register AS actionType, a.name AS subject, a.abn AS abn, a.state AS state,
+       substring(coalesce(a.dateFrom, ''), 0, 10) AS effectiveFrom,
+       substring(coalesce(a.dateTo, ''), 0, 10) AS publishedUntil,
+       CASE WHEN a.detail CONTAINS 'on the basis that'
+              OR a.detail CONTAINS 'reasonably believes'
+              OR a.detail CONTAINS 'convicted of'
+              OR a.detail CONTAINS 'identified conduct' THEN true ELSE false END AS statesABasis,
+       CASE WHEN a.detail CONTAINS 'section 73J' THEN 'audit obligation (s73J)'
+            WHEN a.detail CONTAINS 'Worker Screening' THEN 'worker screening'
+            WHEN a.detail CONTAINS 'Code of Conduct' THEN 'code of conduct'
+            WHEN a.detail CONTAINS 'Incident Management' THEN 'incident management'
+            WHEN a.detail CONTAINS 'Behaviour Support' OR a.detail CONTAINS 'Restrictive' THEN 'behaviour support / restrictive practices'
+            ELSE 'not cited' END AS instrumentCited,
+       substring(coalesce(a.detail, ''), 0, 400) AS commissionNarrative
+ORDER BY actionType, effectiveFrom DESC</pre></details>
+<details><summary><b>NdisEnforcementWaves</b> (view) — Compliance notices grouped by the day they took effect. The register is not a stream of individual findings: notices arrive in mass batches on single dates, so a provider&#x27;s presence in it may mean only that it sat inside one.</summary><p class="hiw-p">Parameters: <code>snapshotKey</code> = &#x27;4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv&#x27;, <code>minNotices</code> = 20. Run with defaults.</p><pre>MATCH (n:NdisSnapshot {snapshotKey: $snapshotKey})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+WHERE a.register CONTAINS 'Compliance notice'
+WITH substring(a.dateFrom, 0, 10) AS effectiveDay, count(*) AS notices,
+     sum(CASE WHEN a.detail CONTAINS 'section 73J' THEN 1 ELSE 0 END) AS citingAuditObligation
+WHERE notices &gt;= $minNotices
+RETURN effectiveDay, notices, citingAuditObligation
+ORDER BY notices DESC</pre></details>
+<details><summary><b>NdisRegisterOpacity</b> (view) — How specifically the register explains itself, per action type: how many rows state a basis (&quot;on the basis that…&quot;, &quot;reasonably believes&quot;, &quot;convicted of&quot;) versus only describing what is prohibited or required. Banning orders publish scope, not conduct — this counts it.</summary><p class="hiw-p">Parameters: <code>snapshotKey</code> = &#x27;4ad8bb94-1982-43ff-a030-d6587b9aa460|8a6ce1fc-8f92-44ad-9c9d-2290dab7ee4f|ndis-commission-compliance-actions-06.07.2026.csv&#x27;. Run with defaults.</p><pre>MATCH (n:NdisSnapshot {snapshotKey: $snapshotKey})-[:HAS_ACTION]-&gt;(a:SnapshotAction)
+WITH a.register AS actionType, count(*) AS rows,
+     sum(CASE WHEN a.detail CONTAINS 'on the basis that'
+                OR a.detail CONTAINS 'reasonably believes'
+                OR a.detail CONTAINS 'convicted of'
+                OR a.detail CONTAINS 'identified conduct'
+              THEN 1 ELSE 0 END) AS statingABasis,
+     sum(CASE WHEN toLower(a.detail) CONTAINS 'criminal' THEN 1 ELSE 0 END) AS citingCriminalHistory,
+     sum(CASE WHEN toLower(a.detail) CONTAINS 'falsif' OR toLower(a.detail) CONTAINS 'fraud'
+              THEN 1 ELSE 0 END) AS citingFraudOrFalsification
+RETURN actionType, rows, statingABasis,
+       round(toFloat(statingABasis) / rows * 100) AS statingABasisPct,
+       citingCriminalHistory, citingFraudOrFalsification
+ORDER BY rows DESC</pre></details>
+<details><summary><b>NdisWorkforceFlip</b> (view) — Providers whose employee expenses collapsed as a share of service revenue between FY23 and FY24 while revenue held or grew — the work is now done by someone other than employees. Lawful, and the documented precondition of both sham contracting and billing intermediation.</summary><p class="hiw-p">Parameters: <code>classification</code> = &#x27;Disability services&#x27;, <code>minService</code> = 1000000. Run with defaults.</p><pre>MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]-&gt;(g:CharityProgram)
+WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]-&gt;(now:AisReturn)
+MATCH (q)-[:HAS_AIS_PRIOR]-&gt;(prior:AisPriorReturn)
+WITH abn, registrationStatus, now, prior,
+     coalesce(toFloat(now.revenueGovernment), 0.0) + coalesce(toFloat(now.revenueGoodsServices), 0.0) AS svcNow,
+     coalesce(toFloat(prior.revenueGovernment), 0.0) + coalesce(toFloat(prior.revenueGoodsServices), 0.0) AS svcPrior,
+     coalesce(toFloat(now.employeeExpenses), 0.0) AS empNow,
+     coalesce(toFloat(prior.employeeExpenses), 0.0) AS empPrior
+WHERE toLower(coalesce(now.consolidated, 'n')) &lt;&gt; 'y'
+  AND svcNow &gt;= $minService AND svcPrior &gt; 0
+  AND empPrior / svcPrior &gt;= 0.5
+  AND empNow / svcNow &lt; 0.3
+RETURN now.charityName AS provider, abn, registrationStatus,
+       svcPrior AS serviceRevenueFy23, svcNow AS serviceRevenueFy24,
+       empPrior AS employeeExpensesFy23, empNow AS employeeExpensesFy24,
+       round(empPrior / svcPrior * 100) AS labourShareFy23Pct,
+       round(empNow / svcNow * 100) AS labourShareFy24Pct,
+       prior.fteTotal AS fteFy23, now.fteTotal AS fteFy24,
+       coalesce(toFloat(now.otherExpenses), 0.0) AS otherExpensesFy24,
+       now.relatedPartyTransactions AS relatedPartyDeclared,
+       now.reportingPeriodTo AS reportingPeriodTo
+ORDER BY serviceRevenueFy24 DESC</pre></details>
+<details><summary><b>NdisMoneyLeavesUnspecified</b> (view) — Providers where most money leaves as unspecified &quot;all other expenses&quot; rather than wages or named grants — the brokerage / plan-management shape. Lawful and common, and the one place where public money&#x27;s ultimate recipient is named in no public register.</summary><p class="hiw-p">Parameters: <code>classification</code> = &#x27;Disability services&#x27;, <code>minService</code> = 2000000, <code>minOtherShare</code> = 80. Run with defaults.</p><pre>MATCH (p:ProgramClass {classification: $classification})-[:HAS_PROGRAM {ai: {fresh: true}}]-&gt;(g:CharityProgram)
+WITH g.abn AS abn, head(collect(g.registrationStatus)) AS registrationStatus
+MATCH (q:IntegrityQuery {abn: abn})-[:HAS_AIS {ai: {fresh: true}}]-&gt;(a:AisReturn)
+WITH abn, registrationStatus, a,
+     coalesce(toFloat(a.revenueGovernment), 0.0) + coalesce(toFloat(a.revenueGoodsServices), 0.0) AS svc,
+     coalesce(toFloat(a.otherExpenses), 0.0) AS other,
+     coalesce(toFloat(a.expensesTotal), 0.0) AS expenses,
+     coalesce(toFloat(a.employeeExpenses), 0.0) AS emp
+WHERE toLower(coalesce(a.consolidated, 'n')) &lt;&gt; 'y'
+  AND svc &gt;= $minService AND expenses &gt; 0
+  AND other / expenses * 100 &gt;= $minOtherShare
+  AND emp / svc &lt; 0.35
+RETURN a.charityName AS provider, abn, registrationStatus,
+       svc AS serviceRevenueFy24, other AS otherExpensesFy24, expenses AS totalExpensesFy24,
+       round(other / expenses * 100) AS otherExpensesSharePct,
+       emp AS employeeExpensesFy24, a.fteTotal AS fteFy24,
+       a.relatedPartyTransactions AS relatedPartyDeclared
+ORDER BY serviceRevenueFy24 DESC</pre></details>
+<h3>3. When it looks wrong</h3><ul><li>"No rows" is an answer: the shape is absent from the data the view read, not a failure.</li><li>The register tabs read fixed dated extracts (the defaults above). A newer extract is not read until those defaults change, so "What appeared" is the difference between those two extracts only.</li><li>If a source was capped or unavailable the result is PARTIAL and the page says so; treat counts as floors. Errors show in the operation panel with a retry.</li><li>Every screen finds a shape in self-reported or published numbers. Contracting, brokerage, restructures, closures and keying errors produce the same shapes lawfully.</li></ul>
+<h3>4. What made this possible</h3><ul><li>Each tab is a saved Cypher view over files the Commission and the ACNC publish; nothing is loaded into a database first, and the page has no backend of its own.</li><li>The filing screens start from program rows and use each row's ABN to seed the next fetch (<code>MATCH (q:IntegrityQuery {abn: abn})</code>), so only those charities' filings are read.</li><li>"What appeared" is a set difference between two extracts written as one query: the older extract's identities are collected, then excluded from the newer.</li></ul>
+</section>
+    <div class="foot"><a href="#how-it-works">How it works</a> · Sources: NDIS Commission compliance actions and ACNC Annual Information Statements 2023 and 2024, both published on data.gov.au. Figures are self-reported by providers or published by the Commission; this app computes arithmetic over them and adds nothing. Money is a committed or reported amount, never verified expenditure.</div>
   </main>
 </embabel-app-shell>
 <script>
@@ -308,5 +398,8 @@
   });
 })();
 </script>
+<div id="embabel-badge" style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:6px 0;background:rgba(10,10,15,0.9);border-top:1px solid rgba(99,192,245,0.2);font-size:0.75rem;color:#6b7280;z-index:9999;pointer-events:none;">
+  Created with <a href="https://worlds.embabel.com" target="_blank" rel="noopener noreferrer" style="color:#63c0f5;text-decoration:none;pointer-events:auto;">Embabel Worlds</a>
+</div>
 </body>
 </html>
