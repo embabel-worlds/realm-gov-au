@@ -123,3 +123,29 @@ sources:
     sync:
       strategy: live
     visibility: public
+
+  # The auditor's account, as DOCUMENTS rather than records. ANAO performance audits are long,
+  # stable reports — the opposite of a register — so they land in the document store, chunked
+  # and embedded, where a relevance join (`(:Concept)-[:RELEVANT_TO]->(:Document)`) reaches them
+  # from a row of live AusTender data. AuditedLimitedTender (views/audit-reading.yml) is that join.
+  #
+  # A curated set, not a crawl: the procurement audits of the agencies that carry the most
+  # limited-tender value, plus the whole-of-government limited tender audit. Every tag is
+  # `anao`, which is how a view keeps the user's own documents out of the auditor's mouth.
+  # Pages carry their own Last-Modified, so a run re-reads only a report ANAO has re-issued.
+  - name: anao-procurement-audits
+    lane: documents
+    from:
+      urls:
+        - https://www.anao.gov.au/sites/default/files/2026-03/Auditor-General_Report_2025-26_26.pdf   # Defence — Land 400 Phase 3
+        - https://www.anao.gov.au/sites/default/files/2024-06/Auditor-General_Report_2023-24_47.pdf   # Defence — munitions supply contracts, Part 1
+        - https://www.anao.gov.au/sites/default/files/2022-10/Auditor-General_Report_2022-23_5.pdf    # DTA — procurement of ICT-related services
+        - https://www.anao.gov.au/sites/default/files/2025-12/Auditor-General_Report_2025-26_11.pdf   # Health — onshore vaccine manufacturing
+        - https://www.anao.gov.au/sites/default/files/Auditor-General_Report_2020-21_39.pdf           # Health — National Medical Stockpile
+        - https://www.anao.gov.au/sites/default/files/ANAO_Report_2014-2015_48.pdf                    # whole of government — limited tender procurement
+    document:
+      sourceKind: anao
+      tags: [anao, audit]
+    sync:
+      trigger: on-install
+      prune: true

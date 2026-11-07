@@ -19,6 +19,11 @@ lead demo of the AU-government suite (`target-customers/demos/au-government/`).
 - **Is this supplier a registered lobbying client** — the federal Register of Lobbyists joined by
   conservative name match (the register publishes no client ABNs; the lens says so and shows the
   matched strings), with the register's own former-government-representative declarations.
+- **What the auditor has said about the agencies spending without competition** — the
+  `AuditedLimitedTender` view sums a window's limited-tender value by agency, then reaches the
+  ANAO performance audits this realm ingests through a relevance join and summarises the passages
+  it retrieved. A live register and a document store in one statement; the reading is a model's,
+  of the quoted passages, and an agency with no audit in the shipped set has no row.
 
 ## Sources (all keyless, verified live 2026-08-01)
 
@@ -29,6 +34,7 @@ lead demo of the AU-government suite (`target-customers/demos/au-government/`).
 | Parliamentary Handbook (`handbookapi.aph.gov.au`) | current House members with party + division, one OData call | aph.gov.au; API terms unverified |
 | ParlInfo (`parlinfo.aph.gov.au`) | Chamber Hansard, committee evidence and Senate Estimates phrase search; selected records can be fetched and indexed on demand | aph.gov.au; keyless |
 | AGOR via seeded reference data | 17 portfolios + 195 agencies (ABN, body type, staffing, appropriations) — the portfolio spine AusTender has no field for | CC BY 3.0 AU |
+| ANAO performance audits (`anao.gov.au`) — ingested as DOCUMENTS, not records | six procurement audits fetched by URL on install (`sources.yml`, `anao-procurement-audits`), chunked, embedded and tagged `anao`; re-read only when ANAO re-issues one | Commonwealth copyright, published for public use |
 | **Brave Search** (`api.search.brave.com`) — the ONLY non-government source, and the only keyed one | press coverage for a composed phrase; absent key ⇒ the lens reports UNAVAILABLE, never "no coverage" | third-party, `BRAVE_API_KEY` |
 | Geo assets (build-time, `scripts/build-grants-reference.py` + `scripts/build-electorate-map-centroids.py`) | Natural Earth outline (PD) · GeoNames postcode centroids (CC BY 4.0) · AEC March-2025 boundaries (CC BY) → postcode→division by **centroid-in-polygon**, plus approximate division display points | mixed, attributed in file headers |
 
@@ -97,7 +103,8 @@ types/             ContractNoticeRow + ContractVersion/ContractRelease, CharityR
                    CharityProgramRow, SearchResult, LobbyistFirm, RegisteredLobbyist
 producers/         versionsById, releases{Published,Modified}InWindow, firm{Summary,Lobbyists}ById
 lenses/            au-contract-passport, au-window-signed, au-supplier-lobbying
-sources.yml        collection shapes and the live-vs-mirror reasoning
+views/             procurement shape, NDIS reading and integrity, and AuditedLimitedTender
+sources.yml        collection shapes and the live-vs-mirror reasoning; the ANAO document lane
 apps/              Money Trail, Signal Room, Hansard Room + focused scrutiny/pattern/grant apps
 ```
 

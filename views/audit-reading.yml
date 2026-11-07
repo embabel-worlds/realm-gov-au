@@ -1,0 +1,60 @@
+# Live procurement read against the auditor's documents — the realm's one view that crosses from
+# a register into the document store. AusTender says where limited-tender money went this window;
+# the ANAO reports the realm ingests (sources.yml, anao-procurement-audits) say what the auditor
+# has found about how those agencies buy.
+#
+# Three choices here were measured, not guessed (2026-11-07, week of 2026-06-22, 1,829 releases):
+#   · The summary reads the PASSAGES the relevance join retrieved (`rel.snippet` +
+#     `rel.morePassages`), never `d.content`. Whole reports priced at ~104 model calls and were
+#     refused TOO_EXPENSIVE; the passages cost one call per agency.
+#   · The probe is `<agency> procurement`. Adding 'limited tender' to it pulled in every audit
+#     that discusses limited tender, and one agency's summary quoted another agency's findings.
+#   · `rel.score > 0.8` keeps an agency to its own audits on the shipped set. A weaker match is
+#     a different agency's report that happens to share vocabulary.
+#   · The reading is steered to a plain voice and about sixty words (`{ai: {voice, wordcount}}`):
+#     it sits in a table beside a dollar figure, and the auditor's own register reads as hedging there.
+# A window wider than about a week hits the AusTender page cap, and the realm refuses to sum a
+# partial window (INCOMPLETE_AGGREGATE) — keep the default's width.
+#
+# The summary is a model's reading of the quoted passages, not the audits' conclusions, and an
+# agency with no matching audit simply has no row: the shipped set is six reports, not the ANAO's
+# whole output. Values are committed values as published, never expenditure.
+
+- name: AuditedLimitedTender
+  description: >-
+    The agencies that committed the most through limited tender in a publication window, each with
+    the ANAO performance audits that concern how it procures and a short reading of what those
+    audits found. THE answer for "what has the auditor said about the agencies spending without
+    open competition". Only agencies over the value threshold, and only those with a matching
+    audit in the realm's ANAO set, appear. A row reports the register and the audit side by side;
+    it does not claim the window's contracts were among those audited.
+  params:
+    window:
+      type: string
+      default: "2026-06-22T00:00:00Z/2026-06-29T00:00:00Z"
+      description: "Publication window as 'fromInstant/toInstant'. About a week: wider windows hit the AusTender page cap."
+    minValue:
+      type: number
+      default: 50000000
+      description: "Minimum limited-tender value in AUD for an agency to be read against the audits."
+  cypher: |
+    MATCH (w:PublicationWindow {window: $window})-[:PUBLISHED]->(r:ContractRelease)
+    WHERE r.procurementMethod = 'limited'
+    WITH r.agencyName AS agency, count(r) AS contracts, sum(toFloat(r.amount)) AS limitedValue
+    WHERE limitedValue > $minValue
+    MATCH (:Concept {value: agency + ' procurement'})-[rel:RELEVANT_TO]->(d:Document)
+    WHERE 'anao' IN d.tags AND rel.score > 0.8
+    WITH agency, contracts, limitedValue,
+         collect(d.title) AS audits,
+         collect(d.uri) AS auditLinks,
+         summarize([rel.snippet] + rel.morePassages,
+                   'what the auditor found about how this agency procures and manages contracts',
+                   {ai: {voice: 'plain-spoken, for a general reader', wordcount: 60}}) AS auditorSaid
+    ORDER BY limitedValue DESC
+    RETURN agency,
+           contracts,
+           '$' + toString(round(limitedValue / 1000000.0, 1)) + 'M' AS limitedTender,
+           limitedValue,
+           audits,
+           auditLinks,
+           auditorSaid
