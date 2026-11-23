@@ -93,6 +93,11 @@
       keyField: window
       recordKeyField: publishedWindow
       producer: releasesPublishedInWindow
+      # The default 5,000 is a fortnight of this feed: a four-week window answers ~5,500 notices
+      # and a quarter ~24,000, so every view over a month or more was refused as FETCH_CAPPED.
+      # 50,000 holds a quarter with its end-of-financial-year spike; a wider window that passes it
+      # is still refused rather than totalled over part of the period.
+      maxFanoutTotal: 50000
       description: >-
         Contract notices first published in an ISO window, keyed as 'from/to' — e.g.
         '2026-07-01T00:00:00Z/2026-07-28T00:00:00Z'. New contracts only; amendments to older
@@ -102,6 +107,8 @@
       keyField: window
       recordKeyField: changedWindow
       producer: releasesModifiedInWindow
+      # The same feed and the same volume as PUBLISHED, so the same cap, for the same reason.
+      maxFanoutTotal: 50000
       description: >-
         Releases last modified in an ISO window, keyed as 'from/to'. This is the amendment feed:
         WHERE 'contractAmendment' IN r.tags isolates the contracts whose value or terms changed
