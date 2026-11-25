@@ -80,43 +80,14 @@ function serve(dir) {
 }
 
 /*
- * A view's rows are not the view's answer when the engine says they are short. short(d) reads the
- * envelope's status, outcome and warnings and is null when the answer is whole, else the line that
- * stands in for the count: "REFUSED: <why>" or "PARTIAL <n>: <the engine's reason>". It also reads
- * a query answer (`error`, `reason`, `warnings` as coded strings), the other wire a battery meets.
+ * A view's rows are not the view's answer when the engine says they are short. short(d), from the
+ * battery library (tests/lib, pinned from embabel-worlds/realm-spec), is null when the answer is
+ * whole, else the line that stands in for the count: "REFUSED: <why>" or "PARTIAL <n>: <the
+ * engine's reason>". The library is an ES module and this suite is CommonJS, so it is imported
+ * once, on first use.
  */
-const SHORT_CODES = new Set(['PARTIAL_RESULT', 'PRODUCER_ERROR', 'NEEDS_FILTER', 'NEEDS_PRODUCER', 'FILTER_REJECTED',
-  'UNPUSHED_FILTER', 'AMBIGUOUS_LABEL', 'INCOMPLETE_TRAVERSAL', 'INCOMPLETE_RANKING', 'INCOMPLETE_AGGREGATE',
-  'INCOMPLETE_INPUT', 'MATERIALIZATION_FAILED', 'REDUCTION_FAILED', 'UNPARSEABLE_ANSWER', 'TERMS_UNAVAILABLE',
-  'COMPUTE_FAILED', 'PROPERTY_NOT_STORED', 'FOLLOW_CAPPED', 'UNLINKED_CHILDREN', 'RESOLUTION_DROPPED',
-  'AGENTIC_DEGRADED', 'SOURCE_UNANSWERED'])
-const SHORT_REASONS = new Set(['UNBOUNDED', 'PARTIAL_NOT_MATCHED', 'UNPUSHED_FILTER', 'DISCONNECTED',
-  'INTERNAL_ERROR', 'WRITE_IN_PROGRESS', 'KILLED', 'TOO_EXPENSIVE'])
-const SHORT_PUBLIC = new Set(['PARTIAL', 'REDUCTION_FAILED', 'COMPUTE_FAILED', 'PROPERTY_NOT_STORED',
-  'AGENTIC_DEGRADED', 'RATE_LIMITED', 'SOURCE_UNAVAILABLE', 'SOURCE_REJECTED', 'INVALID_FILTER',
-  'UNPUSHED_FILTER', 'TOO_BROAD', 'FETCH_CAPPED', 'INDEX_UNAVAILABLE', 'ARGUMENT_REFUSED'])
-
-function short(d, figure = null) {
-  const tag = figure === null ? 'PARTIAL' : `PARTIAL ${figure}`
-  if (!d || typeof d !== 'object') return `REFUSED: not an engine answer: ${String(d).slice(0, 160)}`
-  if ('outcome' in d || 'status' in d) {
-    if (d.status !== 'SUCCEEDED') {
-      const e = d.error || {}
-      return `REFUSED: ${d.status} ${`${e.code || ''} ${e.message || ''}`.trim().slice(0, 160)}`
-    }
-    const ws = (d.warnings || []).filter(w => w && SHORT_PUBLIC.has(w.code))
-    if (!['OK', 'EMPTY'].includes(d.outcome) || ws.length) {
-      return `${tag}: ${(ws.length ? `${ws[0].code}: ${ws[0].message || ''}` : `outcome ${d.outcome}`).slice(0, 200)}`
-    }
-    return null
-  }
-  if (d.error) return `REFUSED: ${String(d.error).slice(0, 160)}`
-  if (d.run) return `${tag}: the run had not finished (${JSON.stringify(d.run)})`
-  const ws = (d.warnings || []).filter(w => typeof w === 'string' && SHORT_CODES.has(w.split(':')[0].trim()))
-  if (ws.length) return `${tag}: ${ws[0].slice(0, 200)}`
-  if (SHORT_REASONS.has(d.reason)) return `${tag}: reason ${d.reason}`
-  return null
-}
+let library
+const shortLibrary = () => (library ??= import(require('url').pathToFileURL(path.join(__dirname, 'lib', 'short.mjs')).href))
 
 async function invokeView(name) {
   const res = await fetch(`${API}/api/v1/views/${name}/invoke`, {
@@ -132,6 +103,7 @@ async function invokeView(name) {
   try { json = JSON.parse(text); } catch (e) { /* leave null */ }
   const data = json && json.data !== undefined ? json.data : json;
   const rows = Array.isArray(data) ? data : (data && Array.isArray(data.rows) ? data.rows : []);
+  const { short } = await shortLibrary();
   return { status: json && json.status, rows, short: short(json, rows.length) };
 }
 
