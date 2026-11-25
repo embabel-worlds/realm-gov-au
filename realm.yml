@@ -14,7 +14,7 @@ description: >-
   both open and unauthenticated. This realm reports what the registers record and never
   characterises it: a limited tender, an amendment, or a lobbying relationship is a sourced fact,
   not a finding.
-version: "0.1.0"
+version: "0.1.1"
 author: "Embabel"
 url: https://github.com/embabel/realm-gov-au
 icon: icon.svg
