@@ -7,20 +7,32 @@
 - url: austender-ocds.yaml
   name: austender
   type: openapi
+  operation-ids:
+    - findContractNoticeById
+    - findContractsPublishedBetween
+    - findContractsModifiedBetween
   auth: none
 
 - url: ag-lobbyists.yaml
   name: agLobbyists
   type: openapi
+  operation-ids:
+    - registerIndex
+    - organisationProfile
   auth: none
 
 - url: data-gov-au-ckan.yaml
   name: dataGovAu
   type: openapi
+  operation-ids:
+    - searchDatasets
   auth: none
 
 - url: brave.yaml
   name: brave
   type: openapi
+  operation-ids:
+    - webSearch
+    - newsSearch
   auth: api-key
   token-env: BRAVE_API_KEY
